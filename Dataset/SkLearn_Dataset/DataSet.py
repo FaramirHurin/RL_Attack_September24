@@ -1,6 +1,7 @@
 from sklearn.datasets import make_classification
 from collections import namedtuple
 import pandas as pd
+import os
 
 def generate_SKLearn_Data(n_samples, dimensions_list, clusters_list, sep_classes_list):
     Params = namedtuple('Params', ['n_features', 'n_clusters', 'class_sep'])
@@ -18,10 +19,13 @@ def generate_SKLearn_Data(n_samples, dimensions_list, clusters_list, sep_classes
                                     n_clusters_per_class=n_clusters, class_sep=class_sep)
                 df = pd.DataFrame(X)
                 df['label'] = y
-                df.to_csv(filename)
+
+                parent_dir = os.path.abspath('.')
+                path_to_save = os.path.join(parent_dir, 'Dataset', 'SkLearn_Dataset', filename)
+                df.to_csv(path_to_save, index=False)
                 print(filename)
 
 
 print('Starting')
-generate_SKLearn_Data(n_samples=10000, dimensions_list=[16, 32, 64], clusters_list=[1, 8, 16], sep_classes_list=[0.5, 1, 2, 8])
+#generate_SKLearn_Data(n_samples=20000, dimensions_list=[16, 32, 64], clusters_list=[1, 8, 16], sep_classes_list=[0.5, 1, 2, 8])
 DEBUG = 0

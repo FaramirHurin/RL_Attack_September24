@@ -1,12 +1,8 @@
 from marlenv import Transition
-import torch
-import logging
-import numpy as np
-import util
+from Classes import util
 from Classes.fraud_env import FraudEnv
-from .agents import Agent
 # from.agents.continuous_bandit import ContinuousBandit
-from Classes.quantile_forest import QuantileForest_Bandit
+# from Classes.Eventually_to_drop.quantile_forest import QuantileForest_Bandit
 from rl.agents import  PPO
 import numpy as np
 import logging
@@ -54,7 +50,7 @@ def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
         scores = scores + [0] * (n_steps - len(scores))
     return np.array(scores)
 
-
+"""
 def train_bandit(agent: QuantileForest_Bandit, env: FraudEnv, n_steps: int):
     import logging
 
@@ -100,16 +96,4 @@ def train_bandit(agent: QuantileForest_Bandit, env: FraudEnv, n_steps: int):
         scores = scores + [0] * (n_steps - len(scores))
     return np.array(scores)
 
-
-# Example usage
-if __name__ == "__main__":
-    # Define your environment and bandit
-    env = FraudEnv()  # Replace with your environment setup
-    action_min = [0, 0]  # Example minimum bounds for each dimension
-    action_max = [1, 1]  # Example maximum bounds for each dimension
-    bandit = QuantileForest_Bandit(action_min, action_max)
-
-    # Train the bandit agent
-    n_steps = 1000  # Define the number of steps
-    logs = dict[str, np.ndarray]()
-    logs["bandit"] = train_bandit(bandit, env, n_steps)
+"""

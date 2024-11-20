@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import Normalizer
 from typing import Literal
 from sklearn.model_selection import train_test_split
@@ -17,7 +18,7 @@ def optimally_fit_classifier(classifier_class, grid, train, test):
     y_test = test['label']
 
     classifier = classifier_class()
-    grid_search = GridSearchCV(estimator=classifier, param_grid=grid, cv=4, scoring='accuracy', n_jobs=-1, verbose=2)
+    grid_search = GridSearchCV(estimator=classifier, param_grid=grid, cv=5, scoring='f1', n_jobs=-1, verbose=2)
     grid_search.fit(X_train, y_train)
 
     best_clf = grid_search.best_estimator_
@@ -28,7 +29,7 @@ def optimally_fit_classifier(classifier_class, grid, train, test):
 
 
 def get_dataset_list(dataset_type: Literal["Generator", "Kaggle", "SkLearn"]) -> object:
-    parent_dir = os.path.abspath('..')
+    parent_dir = os.path.abspath('.')
     dictionary = {'Kaggle':'Kaggle_Dataset', 'Generator': 'Generator_Dataset', 'SkLearn': 'SkLearn_Dataset'}
     csv_folder_path = os.path.join(parent_dir, 'Dataset', dictionary[dataset_type])
     print(csv_folder_path)
@@ -70,6 +71,8 @@ def preprocess_dataset(fraud_fraction, normalize, dataset):
 
     return balanced_dataset
 
+
+"""
 def fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, dataset_type,
                               normalize=True):
     datasets_dict = get_dataset_list(dataset_type)
@@ -104,8 +107,106 @@ def fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_clas
                 print(report)
                 with open(classifier_path, 'wb') as f:
                     pickle.dump(trained_classifier, f)
+"""
 
 
+def fit_and_store_classifiers(
+        fraud_fractions, classifier_types, classifier_classes, grids, dataset_type, normalize=True
+):
+    """
+    Fits classifiers for various datasets and fraud fractions, storing the results.
+
+    Args:
+        fraud_fractions (list): List of fraud fractions to process.
+        classifier_types (list): List of classifier type names.
+        classifier_classes (dict): Mapping from classifier type to classifier class.
+        grids (dict): Grid search parameters for each classifier type.
+        dataset_type (str): The dataset category (e.g., "financial", "healthcare").
+        normalize (bool): Whether to normalize datasets during preprocessing.
+    """
+    datasets = get_dataset_list(dataset_type)
+
+    for dataset_name, global_dataset in datasets.items():
+        process_dataset(
+            dataset_name,
+            global_dataset,
+            fraud_fractions,
+            classifier_types,
+            classifier_classes,
+            grids,
+            dataset_type,
+            normalize
+        )
+
+
+def process_dataset(
+        dataset_name, global_dataset, fraud_fractions, classifier_types, classifier_classes, grids, dataset_type,
+        normalize
+):
+    """
+    Processes a single dataset, training and saving classifiers for different fraud fractions.
+    """
+    for fraud_fraction in fraud_fractions:
+        # Preprocess the dataset
+        processed_dataset = preprocess_dataset(fraud_fraction, normalize, global_dataset)
+        train_val, test = train_test_split(processed_dataset, test_size=0.2)
+        train, val = train_test_split(train_val, test_size=0.25)
+
+        # Set up directory paths
+        dataset_base_path = prepare_directories(dataset_type, dataset_name, fraud_fraction)
+        save_datasets(train_val, test, dataset_base_path)
+
+        # Train and save classifiers
+        for classifier_type in classifier_types:
+            train_and_save_classifier(
+                classifier_type, classifier_classes[classifier_type], grids[classifier_type], train, val,
+                dataset_base_path
+            )
+
+
+def prepare_directories(dataset_type, dataset_name, fraud_fraction):
+    """
+    Prepares directories for storing dataset and classifier outputs.
+
+    Returns:
+        str: Base directory path for the dataset and classifiers.
+    """
+    base_path = os.path.join(os.getcwd(), 'Classifiers' , dataset_type, dataset_name,  str(fraud_fraction))
+    os.makedirs(base_path, exist_ok=True)
+    return base_path
+
+
+def save_datasets(train_val, test, base_path):
+    """
+    Saves the train/validation and test datasets to CSV files.
+    """
+    train_val_path = os.path.join(base_path, 'train_val.csv')
+    test_path = os.path.join(base_path, 'test.csv')
+
+    train_val.to_csv(train_val_path, index=False)
+    test.to_csv(test_path, index=False)
+
+
+def train_and_save_classifier(classifier_type, classifier_class, grid, train, val, base_path):
+    """
+    Trains a classifier and saves it to a file.
+    """
+    # Directory and file paths
+    classifier_dir = os.path.join(base_path, classifier_type)
+    os.makedirs(classifier_dir, exist_ok=True)
+    classifier_filename = f'classifier_{classifier_type}.pickle'
+    classifier_path = os.path.join(classifier_dir, classifier_filename)
+
+    print(f"Training {classifier_type}, saving to {classifier_path}")
+
+    # Train and evaluate the classifier
+    trained_classifier, best_params, report = optimally_fit_classifier(classifier_class, grid, train, val)
+    print("Best Parameters:", best_params)
+    print("Evaluation Report:\n", report)
+
+    # Save the trained model
+    with open(classifier_path, 'wb') as file:
+        pickle.dump(trained_classifier, file)
 
 grids = \
     { 'RF':  {
@@ -114,30 +215,34 @@ grids = \
             'min_samples_split': [2, 5, 10]
         },
     'BRF':  {
-            'n_estimators': [100, 150],
+            'n_estimators': [100], #, 150
             'max_depth': [None, 20],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4],
+            'min_samples_split': [2, 10], #5,
+            'min_samples_leaf': [1, 4], #2,
             'sampling_strategy': [0.1, 0.5],
             'bootstrap': [False],
             'replacement': [False]
 
         },
-    'MLP': {
-            'hidden_layer_sizes': [(50,), (100,), (50, 50)],
-            'activation': ['tanh', 'relu'],
-            'solver': ['adam', 'sgd'],
-            'alpha': [0.0001, 0.001, 0.01],
-            'learning_rate': ['constant', 'adaptive']
+    'DNN': {
+            'hidden_layer_sizes': [(50,)], #, (100,), (50, 50)
+            'activation': ['tanh'], #, 'relu'
+            'solver': ['adam', ], #'sgd'
+            'alpha': [0.0001,], # 0.001, 0.01
+            'learning_rate': ['constant'] #, 'adaptive'
         }
 }
 
+def fit_and_store_all_classifiers():
+    classifier_classes = {'RF': RandomForestClassifier, 'DNN': MLPClassifier}  # , 'BRF': BalancedRandomForestClassifier 'dnn': MLPClassifier, ,
+    classifier_types = ['RF', 'DNN'] #, 'BRF'
 
-classifier_classes = {'RF': RandomForestClassifier}  # , 'BRF': BalancedRandomForestClassifier 'dnn': MLPClassifier, ,
-classifier_types = ['RF'] #, 'BRF'
+    fraud_fractions = [0.1, 0.5] #0.002,
+    fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'SkLearn',
+                              normalize=True)
+    fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Generator',
+                              normalize=True)
+    fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Kaggle',
+                              normalize=True)
 
-fraud_fractions = [ 0.1, 0.5] #0.002,
-datasets_ = ['Kaggle', 'SkLearn']
-fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Generator',
-                          normalize=True)
 

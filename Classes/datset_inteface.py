@@ -24,7 +24,6 @@ class Dataset:
         self.train_y = pl.Series(train['label'])
         self._test_y = pl.Series(test['label'])
 
-
     def save(self, path: str):
         transactions = self._all_transactions.with_columns(self._all_labels)
         os.makedirs(path, exist_ok=True)
@@ -44,9 +43,8 @@ class Dataset:
 
     @classmethod
     def from_kaggle(cls, balancenes: float, classifier:str): # We need more features
-        current_dir = os.getcwd()  # Get the current directory
-        parent_dir = os.path.join(current_dir, os.pardir)  # Move to the parent directory
-        dir_path = os.path.join(parent_dir, "Classifiers", "creditcard.csv", str(balancenes))
+        parent_dir = os.path.abspath('.')   # Move to the parent directory
+        dir_path = os.path.join(parent_dir, "Classifiers", "Kaggle", str(balancenes))
         train = pd.read_csv(os.path.join(dir_path, 'train_val.csv'))
         test = pd.read_csv(os.path.join(dir_path, 'test.csv'))
         return cls(train, test)
@@ -54,9 +52,7 @@ class Dataset:
     @classmethod
     def from_SkLearn(cls, balancenes: float, classifier:str, n_features: int, n_clusters: int,  class_sep: float):
         # Construct the directory path
-        # Start from the current directory and move to the parent directory
-        current_dir = os.getcwd()  # Get the current directory
-        parent_dir = os.path.join(current_dir, os.pardir)  # Move to the parent directory
+        parent_dir = os.path.abspath('.')  # Move to the parent directory
 
         # Construct the directory path relative to the parent directory
         dir_path = os.path.join(parent_dir, "Classifiers", "SkLearn",
@@ -68,9 +64,9 @@ class Dataset:
 
     @classmethod
     def from_Generator(cls, balancenes: float, classifier:str): # We need more features
-        current_dir = os.getcwd()  # Get the current directory
-        parent_dir = os.path.join(current_dir, os.pardir)  # Move to the parent directory
-        dir_path = os.path.join(parent_dir, "Classifiers","Generator" , "dataset", str(balancenes))
+        #current_dir = os.getcwd()  # Get the current directory
+        parent_dir = os.path.abspath('.') # Move to the parent directory
+        dir_path = os.path.join(parent_dir, "Classifiers","Generator" ,  str(balancenes))
         train = pd.read_csv(os.path.join(dir_path, 'train_val.csv'))
         test = pd.read_csv(os.path.join(dir_path, 'test.csv'))
         return cls(train, test)
@@ -137,7 +133,7 @@ class DatasetLoader:
         self.balance_list = balance_list or []
         self.datasets = {}
         self.classifiers = {}
-        self.parent_dir = os.path.join(os.getcwd(), os.pardir)  # Parent directory
+        self.parent_dir = os.path.abspath('.')  # Parent directory
 
     def load(self):
         """Main method to load datasets based on the dataset type."""
@@ -167,7 +163,7 @@ class DatasetLoader:
         for balance in self.balance_list:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_kaggle(balance, self.classifier)
-            dir_path = os.path.join(self.parent_dir, "Classifiers", 'creditcard.csv', str(balance),
+            dir_path = os.path.join(self.parent_dir, "Classifiers", 'Kaggle', str(balance),
                                     str(self.classifier))
             self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 
@@ -175,7 +171,7 @@ class DatasetLoader:
         for balance in self.balance_list:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_Generator(balance, self.classifier)
-            dir_path = os.path.join(self.parent_dir, "Classifiers", "Generator", 'dataset', str(balance),
+            dir_path = os.path.join(self.parent_dir, "Classifiers", "Generator",  str(balance),
                                     str(self.classifier))
             self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 

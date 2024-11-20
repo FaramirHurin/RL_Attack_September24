@@ -9,7 +9,6 @@ class FraudEnv(MARLEnv):
     """
     Environment where the agent has to create fraudulent transactions that are not detected as such by the classifier.
     """
-
     def __init__(
         self,
         transactions: pl.DataFrame,
@@ -39,6 +38,7 @@ class FraudEnv(MARLEnv):
         self.max_values = max_values
         self.state = 0
         self.classifier = classifier
+        # print(self.classifier.feature_importances_)
         super().__init__(
             action_space=ContinuousActionSpace(n_agents=1, low=[-1] * len(self.actions),
                                                high=[1] * len(self.actions), action_names=self.actions),

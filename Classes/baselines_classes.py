@@ -3,48 +3,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from abc import ABC, abstractmethod
-from time import time
-import logging
 import polars as pl
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import util
 from sklearn.mixture import GaussianMixture
-
-
-# Define the generator model
-class Generator(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(Generator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, output_dim),
-        )
-
-    def forward(self, x) -> torch.Tensor:
-        return self.model(x)
-
-
-# Define the discriminator model
-class Discriminator(nn.Module):
-    def __init__(self, input_dim):
-        super(Discriminator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x) -> torch.Tensor:
-        return self.model(x)
-
 
 class DataGenerator(ABC):
     @abstractmethod
@@ -93,7 +53,6 @@ class UniformGenerator(DataGenerator):
         self.min_vals = np.quantile(x, lower_quantile, axis=0)
         self.max_vals = np.quantile(x, upper_quantile, axis=0)
 
-
     def generate_batch(self, batch_size):
         to_return = np.random.uniform(self.min_vals, self.max_vals, (batch_size, self.shape[1]))
         return to_return
@@ -110,9 +69,42 @@ class GaussianMixtureGenerator(DataGenerator):
         return to_return
 
 
-# class BaselineAgent:
+class BaselineAgent:
+    def __init__(
+        self,
+        train_X: pl.DataFrame,
+        generation_method: Literal["uniform", "multivariate", "univariate", "mixture", "gan"],
+        quantile=0.01,
+    ):
+        self.train_X = train_X
+        print(generation_method, train_X.shape)
+        match generation_method:
+            case "uniform":
+                self.generator = UniformGenerator(train_X.to_numpy(), quantile=quantile)
+            case "multivariate":
+                self.generator = MultivariateNormalGenerator(train_X.to_numpy())
+            case "univariate":
+                self.generator = UnivariateNormalGenerator(train_X.to_numpy())
+            case "mixture":
+                self.generator = GaussianMixtureGenerator(train_X.to_numpy())
+            case _:
+                raise ValueError("Invalid generation method")
+
+    def select_actions_batch(self, batch_size: int) -> np.ndarray:
+        to_return = self.generator.generate_batch(batch_size)
+        to_return = pl.DataFrame(pd.DataFrame(to_return, columns=self.train_X.columns))
+        return to_return
+
+    """
+    def save(self, checkpoint_path):
+        return
+
+    def load(self, checkpoint_path):
+        return
+    """
 
 
+"""
 # GAN-based DataGenerator
 class GANDataGenerator(DataGenerator):
     def __init__(self, x: np.ndarray, num_epochs=1000, batch_size=1024, z_dim=100, learning_rate=2e-6):
@@ -183,46 +175,39 @@ class GANDataGenerator(DataGenerator):
         z = torch.randn(batch_size, self.z_dim, device=self.device)
         generated_data = self.generator.forward(z)
         return generated_data.detach().numpy(force=True)
+"""
+
+"""
+# Define the generator model
+class Generator(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(Generator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_dim),
+        )
+
+    def forward(self, x) -> torch.Tensor:
+        return self.model(x)
 
 
-class BaselineAgent:
-    def __init__(
-        self,
-        train_X: pl.DataFrame,
-        generation_method: Literal["uniform", "multivariate", "univariate", "mixture", "gan"],
-        action_min,
-        action_max,
-        quantile=0.01,
-    ):
-        # Note: test_x should only be made of known and controllable features.
-        # Unknown features should not be present in test_x (c.f. Dataset.mimicry_transactions()).
-        self.train_X = train_X
-        print(generation_method, train_X.shape)
-        match generation_method:
-            case "uniform":
-                self.generator = UniformGenerator(train_X.to_numpy(), quantile=quantile)
-            case "multivariate":
-                self.generator = MultivariateNormalGenerator(train_X.to_numpy())
-            case "univariate":
-                self.generator = UnivariateNormalGenerator(train_X.to_numpy())
-            case "gan":
-                self.generator = GANDataGenerator(train_X.to_numpy())
-            case "mixture":
-                self.generator = GaussianMixtureGenerator(train_X.to_numpy())
-            case _:
-                raise ValueError("Invalid generation method")
+# Define the discriminator model
+class Discriminator(nn.Module):
+    def __init__(self, input_dim):
+        super(Discriminator, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid(),
+        )
 
-    def save(self, checkpoint_path):
-        return
+    def forward(self, x) -> torch.Tensor:
+        return self.model(x)
 
-    def load(self, checkpoint_path):
-        return
-
-    def select_actions_batch(self, batch_size: int) -> np.ndarray:
-        to_return = self.generator.generate_batch(batch_size)
-        to_return = pl.DataFrame(pd.DataFrame(to_return, columns=self.train_X.columns))
-        return to_return
-
-
-# I need to handle dropping the y before writing self.x
-# Idea: use self.data and self.x and differentiate between the two
+"""
