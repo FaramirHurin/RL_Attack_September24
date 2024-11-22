@@ -5,8 +5,8 @@ from Classifiers.train_classifiers import fit_and_store_all_classifiers
 from Classes import main_class
 from Classes.main_class import run_all_experiments
 
-GENERATE_DATASETS = False
-TRAIN_CLASSIFIERS = False
+GENERATE_DATASETS = True
+TRAIN_CLASSIFIERS = True
 
 if GENERATE_DATASETS:
     generate_SKLearn_Data(n_samples=50000, dimensions_list=[16, 32, 64],
