@@ -44,7 +44,7 @@ def average_csv_files(main_folder, out_path):
     # Calculate averages and save the averaged CSVs
     for relative_path, data in cumulative_data.items():
         avg_values = data["sum"] / data["count"]
-        output_folder = os.path.join(out_path, main_folder[8:], relative_path)
+        output_folder = os.path.join(out_path, main_folder[-24:], relative_path)
         os.makedirs(output_folder, exist_ok=True)
         #output_file = os.path.join(output_folder, "file.csv")
         result = pd.DataFrame(avg_values, columns=columns_name)
@@ -71,8 +71,9 @@ def average_csv_files(main_folder, out_path):
 
 def average_over_allDatasets(root_folder, out_path):
     #        main_folder_path = "../logs/2024-11-18-20-00-24/RF/Generator/balance=0.1"
-    classifiers = [ 'RF','DNN' ] #'DNN', 'RF
-    dataset_types = [ 'Generator', 'SkLearn', 'Kaggle' ] #, 'SkLearn' 'Generator', 'Kaggle'
+    print(root_folder, out_path)
+    classifiers = [ 'RF' ] #'DNN', 'RF
+    dataset_types = [ 'Generator' ] #, 'SkLearn' 'Generator', 'Kaggle'
     folder_paths = [os.path.join(root_folder, classifier, dataset_type)
                     for classifier in classifiers
                     for dataset_type in dataset_types]

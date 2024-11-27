@@ -125,20 +125,20 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
     pd.DataFrame(logs).to_csv(filename, index=False)
 
     print('Controllable are' + str(args.c) + ' Fixed are' + str(args.k) + ' Unknown are' + str(args.u))
-    print(args.directory)
-    print(pd.DataFrame(logs).describe())
+    #print(args.directory)
+    #print(pd.DataFrame(logs).describe())
 
     #return filename
 
 
-def run_all_experiments(dataset_types, n_features_list, clusters_list, class_sep_list, balance_list,
+def run_all_experiments(date_time, dataset_types, n_features_list, clusters_list, class_sep_list, balance_list,
                     classifier_names, min_max_quantile, N_REPETITIONS, N_STEPS,
                     PROCESS_PER_GPU, N_GPUS):
     LOGDIR_OUTERS = {}
     for classifier_name in classifier_names:
         # UNDERSAMPLE = util.is_debugging()
         LOGDIR_OUTERS[classifier_name]  = \
-            os.path.join("logs", datetime.now().strftime("%Y-%m-%d-%H-%M-%S"),
+            os.path.join("logs", date_time,
                          classifier_name)
         os.makedirs(LOGDIR_OUTERS[classifier_name], exist_ok=False)
         print(LOGDIR_OUTERS[classifier_name])

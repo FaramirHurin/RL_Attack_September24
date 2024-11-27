@@ -210,22 +210,22 @@ def train_and_save_classifier(classifier_type, classifier_class, grid, train, va
 
 grids = \
     { 'RF':  {
-            'n_estimators': [ 100, 150],
-            'max_depth': [None, 20],
-            'min_samples_split': [2, 5, 10]
+            'n_estimators': [20],  #100, 150
+            'max_depth': [None], #, 20
+            'min_samples_split': [2] #, 5, 10
         },
     'BRF':  {
-            'n_estimators': [100], #, 150
-            'max_depth': [None, 20],
-            'min_samples_split': [2, 10], #5,
-            'min_samples_leaf': [1, 4], #2,
-            'sampling_strategy': [0.1, 0.5],
+            'n_estimators': [20], #, 150
+            'max_depth': [None], #, 20
+            'min_samples_split': [2], # , 10 5,
+            'min_samples_leaf': [1], # , 4 2,
+            'sampling_strategy': [ 0.5], #0.1,
             'bootstrap': [False],
             'replacement': [False]
 
         },
     'DNN': {
-            'hidden_layer_sizes': [(50,)], #, (100,), (50, 50)
+            'hidden_layer_sizes': [(20,)], #, (100,), (50, 50)
             'activation': ['tanh'], #, 'relu'
             'solver': ['adam', ], #'sgd'
             'alpha': [0.0001,], # 0.001, 0.01
@@ -237,7 +237,7 @@ def fit_and_store_all_classifiers():
     classifier_classes = {'RF': RandomForestClassifier, 'DNN': MLPClassifier}  # , 'BRF': BalancedRandomForestClassifier 'dnn': MLPClassifier, ,
     classifier_types = ['RF', 'DNN'] #, 'BRF'
 
-    fraud_fractions = [0.1, 0.5] #0.002,
+    fraud_fractions = [0.5] #0.002, 0.1,
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'SkLearn',
                               normalize=True)
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Generator',

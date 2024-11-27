@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
+"""
 folder = os.path.join(os.getcwd(), 'averaged_results', '2024-11-18-20-00-24')
 classifier_type =  'DNN' #DNN, RF
 dataset_type = 'SkLearn' #SkLearn, Kaggle, Generator
@@ -10,9 +12,10 @@ balance = 'balance=0.5'
 n_features = 'n_features=64'
 n_clusters = '_n_clusters=16'
 class_sep = '_class_sep=2_'
-
+"""
 
 def reorganize_results(folder, classifier_type, dataset_type, balance, n_features, n_clusters, class_sep):
+    print('Folder is'+str(folder))
     ppo_result ={}
     best_other = {}
     if dataset_type == 'SkLearn':
@@ -34,7 +37,7 @@ def reorganize_results(folder, classifier_type, dataset_type, balance, n_feature
             df = pd.read_csv(file)
             best_other[k_name][u_name] = max(df.mean().round(2))
 
-            BEGIN_COUNT = 200
+            BEGIN_COUNT = 0
             for i in [300, 2000, df.shape[0]]:
                 first_k = df.iloc[BEGIN_COUNT:i, :].mean()
                 ppo_result[k_name][u_name][i]= first_k['PPO'].round(2)
