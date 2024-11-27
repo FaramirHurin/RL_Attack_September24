@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def average_csv_files(main_folder):
+def average_csv_files(main_folder, out_path):
     # List all the subfolders starting with "_" in the main folder
     subfolders = [os.path.join(main_folder, f) for f in os.listdir(main_folder) if os.path.isdir(os.path.join(main_folder, f))]
 
@@ -44,14 +44,15 @@ def average_csv_files(main_folder):
     # Calculate averages and save the averaged CSVs
     for relative_path, data in cumulative_data.items():
         avg_values = data["sum"] / data["count"]
-        output_folder = os.path.join(main_folder, "averaged", relative_path)
+        output_folder = os.path.join(out_path, main_folder[8:], relative_path)
         os.makedirs(output_folder, exist_ok=True)
-        output_file = os.path.join(output_folder, "file.csv")
+        #output_file = os.path.join(output_folder, "file.csv")
         result = pd.DataFrame(avg_values, columns=columns_name)
 
         window_size = 50
         df_ma = result.rolling(window=window_size).mean()
 
+        """
         # Plot original and moving averages
         plt.figure(figsize=(12, 6))
         for col in result.columns:
@@ -64,13 +65,14 @@ def average_csv_files(main_folder):
         plt.legend()
         plt.grid()
         plt.show()
-        #result.to_csv(os.path.join(path, "averaged_file.csv"))
+        """
+        result.to_csv(os.path.join(output_folder, "averaged_file.csv"), index=False)
 
 
-def average_over_allDatasets(root_folder):
+def average_over_allDatasets(root_folder, out_path):
     #        main_folder_path = "../logs/2024-11-18-20-00-24/RF/Generator/balance=0.1"
-    classifiers = [ 'RF' ] #'DNN', 'RF
-    dataset_types = [ 'Generator' ] #, 'SkLearn' 'Generator', 'Kaggle'
+    classifiers = [ 'RF','DNN' ] #'DNN', 'RF
+    dataset_types = [ 'Generator', 'SkLearn', 'Kaggle' ] #, 'SkLearn' 'Generator', 'Kaggle'
     folder_paths = [os.path.join(root_folder, classifier, dataset_type)
                     for classifier in classifiers
                     for dataset_type in dataset_types]
@@ -85,12 +87,6 @@ def average_over_allDatasets(root_folder):
 
     for outer_path in subpaths.values():
         for path in outer_path:
-            average_csv_files(path)
+            average_csv_files(path, out_path)
 
 
-
-
-root_folder = "../logs/2024-11-18-20-00-24"
-average_over_allDatasets(root_folder)
-
-#TODO Check files where the algorithm name is the first row and not the column name
