@@ -70,7 +70,7 @@ def average_csv_files(main_folder, out_path):
 
 
 def average_over_allDatasets(root_folder, out_path):
-    #        main_folder_path = "../logs/2024-11-18-20-00-24/RF/Generator/balance=0.1"
+    #
     print(root_folder, out_path)
     classifiers = [ 'RF' ] #'DNN', 'RF
     dataset_types = [ 'Generator' ] #, 'SkLearn' 'Generator', 'Kaggle'
@@ -91,3 +91,7 @@ def average_over_allDatasets(root_folder, out_path):
             average_csv_files(path, out_path)
 
 
+main_folder_path = "../loggs/2024-11-27-18-15-50/RF/Generator/balance=0.5"
+out_path = "averaged_results/from_web"
+
+average_over_allDatasets(main_folder_path, out_path)

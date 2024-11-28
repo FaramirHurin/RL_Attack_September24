@@ -147,7 +147,7 @@ def run_all_experiments(date_time, dataset_types, n_features_list, clusters_list
             LOGS_DATASET = os.path.join(LOGDIR_OUTERS[classifier_name], dataset_type)
             os.makedirs(LOGS_DATASET, exist_ok=False)
 
-            n_processes = N_GPUS * PROCESS_PER_GPU
+            n_processes = N_GPUS * PROCESS_PER_GPU #TODO Uncomment
             # pool = mp.Pool(n_processes)
 
             dataset_loader = DatasetLoader( dataset_type=dataset_type, classifier=classifier_name,
@@ -160,7 +160,6 @@ def run_all_experiments(date_time, dataset_types, n_features_list, clusters_list
                 classifier = classifiers[key]
                 for experiment_number in range(N_REPETITIONS):
 
-                    #LOGDIR = os.path.join(LOGS_DATASET, "_" + str(experiment_number))
                     match dataset_type:
                         case 'SkLearn':
                             folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"

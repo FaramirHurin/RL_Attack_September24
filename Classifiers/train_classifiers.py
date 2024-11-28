@@ -18,7 +18,8 @@ def optimally_fit_classifier(classifier_class, grid, train, test):
     y_test = test['label']
 
     classifier = classifier_class()
-    grid_search = GridSearchCV(estimator=classifier, param_grid=grid, cv=5, scoring='f1', n_jobs=-1, verbose=2)
+    grid_search = GridSearchCV(estimator=classifier, param_grid=grid,
+                               cv=5, scoring='f1', n_jobs=-1, verbose=2)
     grid_search.fit(X_train, y_train)
 
     best_clf = grid_search.best_estimator_
@@ -200,7 +201,8 @@ def train_and_save_classifier(classifier_type, classifier_class, grid, train, va
     print(f"Training {classifier_type}, saving to {classifier_path}")
 
     # Train and evaluate the classifier
-    trained_classifier, best_params, report = optimally_fit_classifier(classifier_class, grid, train, val)
+    trained_classifier, best_params, report = \
+        optimally_fit_classifier(classifier_class, grid, train, val)
     print("Best Parameters:", best_params)
     print("Evaluation Report:\n", report)
 
@@ -208,41 +210,44 @@ def train_and_save_classifier(classifier_type, classifier_class, grid, train, va
     with open(classifier_path, 'wb') as file:
         pickle.dump(trained_classifier, file)
 
-grids = \
-    { 'RF':  {
-            'n_estimators': [20],  #100, 150
-            'max_depth': [None], #, 20
-            'min_samples_split': [2] #, 5, 10
+def _set_grids():
+    grids = \
+        {'RF': {
+            'n_estimators': [50, 100, 150],
+            'max_depth': [None, 20],
+            'min_samples_split': [2, 5, 10]
         },
-    'BRF':  {
-            'n_estimators': [20], #, 150
-            'max_depth': [None], #, 20
-            'min_samples_split': [2], # , 10 5,
-            'min_samples_leaf': [1], # , 4 2,
-            'sampling_strategy': [ 0.5], #0.1,
-            'bootstrap': [False],
-            'replacement': [False]
+            'BRF': {
+                'n_estimators': [100, 150],  # , 150
+                'max_depth': [None],  # , 20
+                'min_samples_split': [2],  # , 10 5,
+                'min_samples_leaf': [1],  # , 4 2,
+                'sampling_strategy': [0.5],  # 0.1,
+                'bootstrap': [False],
+                'replacement': [False]
 
-        },
-    'DNN': {
-            'hidden_layer_sizes': [(20,)], #, (100,), (50, 50)
-            'activation': ['tanh'], #, 'relu'
-            'solver': ['adam', ], #'sgd'
-            'alpha': [0.0001,], # 0.001, 0.01
-            'learning_rate': ['constant'] #, 'adaptive'
+            },
+            'DNN': {
+                'hidden_layer_sizes': [(20,), (100,), (50, 50)],
+                'activation': ['tanh', 'relu'],
+                'solver': ['adam', 'sgd'],
+                'alpha': [0.0001, 0.001, 0.01],
+                'learning_rate': ['constant', 'adaptive']
+            }
         }
-}
+    return grids
+
 
 def fit_and_store_all_classifiers():
+    grids = _set_grids()
     classifier_classes = {'RF': RandomForestClassifier, 'DNN': MLPClassifier}  # , 'BRF': BalancedRandomForestClassifier 'dnn': MLPClassifier, ,
     classifier_types = ['RF', 'DNN'] #, 'BRF'
 
-    fraud_fractions = [0.5] #0.002, 0.1,
+    fraud_fractions = [0.1, 0.5] #0.002, 0.1,
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'SkLearn',
                               normalize=True)
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Generator',
                               normalize=True)
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, 'Kaggle',
                               normalize=True)
-
 
