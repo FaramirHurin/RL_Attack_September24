@@ -8,6 +8,7 @@ import pickle
 
 NOT_FEATURES_COLUMNS = ["Time", "Class", "label"]
 
+
 class Label(IntEnum):
     GENUINE = 0
     FRAUDULENT = 1
@@ -19,10 +20,10 @@ class Dataset:
         This constructor should not be called directly.
         Use `from_real` or `from_synthetic` instead.
         """
-        self.train_x = pl.DataFrame(train.drop('label', axis=1))
-        self._test_x = pl.DataFrame(test.drop('label', axis=1))
-        self.train_y = pl.Series(train['label'])
-        self._test_y = pl.Series(test['label'])
+        self.train_x = pl.DataFrame(train.drop("label", axis=1))
+        self._test_x = pl.DataFrame(test.drop("label", axis=1))
+        self.train_y = pl.Series(train["label"])
+        self._test_y = pl.Series(test["label"])
 
     def save(self, path: str):
         transactions = self._all_transactions.with_columns(self._all_labels)
@@ -40,35 +41,34 @@ class Dataset:
             metadata = json.load(f)
         return cls(transactions, labels, metadata["test_ratio"])
 
-
     @classmethod
-    def from_kaggle(cls, balancenes: float, classifier:str): # We need more features
-        parent_dir = os.path.abspath('.')   # Move to the parent directory
+    def from_kaggle(cls, balancenes: float, classifier: str):  # We need more features
+        parent_dir = os.path.abspath(".")  # Move to the parent directory
         dir_path = os.path.join(parent_dir, "Classifiers", "Kaggle", str(balancenes))
-        train = pd.read_csv(os.path.join(dir_path, 'train_val.csv'))
-        test = pd.read_csv(os.path.join(dir_path, 'test.csv'))
+        train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
+        test = pd.read_csv(os.path.join(dir_path, "test.csv"))
         return cls(train, test)
 
     @classmethod
-    def from_SkLearn(cls, balancenes: float, classifier:str, n_features: int, n_clusters: int,  class_sep: float):
+    def from_SkLearn(cls, balancenes: float, classifier: str, n_features: int, n_clusters: int, class_sep: float):
         # Construct the directory path
-        parent_dir = os.path.abspath('.')  # Move to the parent directory
+        parent_dir = os.path.abspath(".")  # Move to the parent directory
 
         # Construct the directory path relative to the parent directory
-        dir_path = os.path.join(parent_dir, "Classifiers", "SkLearn",
-                                         f"features_{n_features}_clusters_{n_clusters}_classsep_{class_sep}",
-                                         str(balancenes)) #, classifier
-        train = pd.read_csv(os.path.join(dir_path, 'train_val.csv'))
-        test = pd.read_csv(os.path.join(dir_path, 'test.csv'))
+        dir_path = os.path.join(
+            parent_dir, "Classifiers", "SkLearn", f"features_{n_features}_clusters_{n_clusters}_classsep_{class_sep}", str(balancenes)
+        )  # , classifier
+        train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
+        test = pd.read_csv(os.path.join(dir_path, "test.csv"))
         return cls(train, test)
 
     @classmethod
-    def from_Generator(cls, balancenes: float, classifier:str): # We need more features
-        #current_dir = os.getcwd()  # Get the current directory
-        parent_dir = os.path.abspath('.') # Move to the parent directory
-        dir_path = os.path.join(parent_dir, "Classifiers","Generator" ,  str(balancenes))
-        train = pd.read_csv(os.path.join(dir_path, 'train_val.csv'))
-        test = pd.read_csv(os.path.join(dir_path, 'test.csv'))
+    def from_Generator(cls, balancenes: float, classifier: str):  # We need more features
+        # current_dir = os.getcwd()  # Get the current directory
+        parent_dir = os.path.abspath(".")  # Move to the parent directory
+        dir_path = os.path.join(parent_dir, "Classifiers", "Generator", "dataset", str(balancenes))
+        train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
+        test = pd.read_csv(os.path.join(dir_path, "test.csv"))
         return cls(train, test)
 
     def env_transactions(self, challenge: Literal["fraudulent", "genuine", "all"]):
@@ -85,10 +85,7 @@ class Dataset:
         DEBUG = 0
 
     def mimicry_TR(
-        self,
-        transaction_type: Literal["fraudulent", "genuine", "all"],
-        sample_size: Literal["1k", "2.5%", "5%", "100%"],
-        c: list
+        self, transaction_type: Literal["fraudulent", "genuine", "all"], sample_size: Literal["1k", "2.5%", "5%", "100%"], c: list
     ):
         match transaction_type:
             case "all":
@@ -123,8 +120,7 @@ class Dataset:
 
 
 class DatasetLoader:
-    def __init__(self, dataset_type, classifier, n_features_list=None, clusters_list=None,
-                 class_sep_list=None, balance_list=None):
+    def __init__(self, dataset_type, classifier, n_features_list=None, clusters_list=None, class_sep_list=None, balance_list=None):
         self.dataset_type = dataset_type
         self.classifier = classifier
         self.n_features_list = n_features_list or []
@@ -133,7 +129,7 @@ class DatasetLoader:
         self.balance_list = balance_list or []
         self.datasets = {}
         self.classifiers = {}
-        self.parent_dir = os.path.abspath('.')  # Parent directory
+        self.parent_dir = os.path.abspath(".")  # Parent directory
 
     def load(self):
         """Main method to load datasets based on the dataset type."""
@@ -154,8 +150,7 @@ class DatasetLoader:
                 for class_sep in self.class_sep_list:
                     for balance in self.balance_list:
                         key = self._create_key(n_features, n_clusters, class_sep, balance)
-                        self.datasets[key] = Dataset.from_SkLearn(balance, self.classifier, n_features, n_clusters,
-                                                                  class_sep)
+                        self.datasets[key] = Dataset.from_SkLearn(balance, self.classifier, n_features, n_clusters, class_sep)
                         dir_path = self._build_directory_path("SkLearn", n_features, n_clusters, class_sep, balance)
                         self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 
@@ -163,32 +158,35 @@ class DatasetLoader:
         for balance in self.balance_list:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_kaggle(balance, self.classifier)
-            dir_path = os.path.join(self.parent_dir, "Classifiers", 'Kaggle', str(balance),
-                                    str(self.classifier))
+            dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", "dataset", str(balance), str(self.classifier))
             self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 
     def _load_generator_datasets(self):
         for balance in self.balance_list:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_Generator(balance, self.classifier)
-            dir_path = os.path.join(self.parent_dir, "Classifiers", "Generator",  str(balance),
-                                    str(self.classifier))
+            dir_path = os.path.join(self.parent_dir, "Classifiers", "Generator", "dataset", str(balance), str(self.classifier))
             self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 
     def _load_classifier_from_directory(self, dir_path):
         files = os.listdir(dir_path)
-        pickle_files = [file for file in files if file.endswith('.pickle') or file.endswith('.pkl')]
+        pickle_files = [file for file in files if file.endswith(".pickle") or file.endswith(".pkl")]
         if not pickle_files:
             raise FileNotFoundError(f"No pickle files found in directory: {dir_path}")
 
         pickle_file_path = os.path.join(dir_path, pickle_files[0])
-        with open(pickle_file_path, 'rb') as file:
+        with open(pickle_file_path, "rb") as file:
             return pickle.load(file)
 
     def _create_key(self, *args):
         return (self.dataset_type, self.classifier) + args
 
     def _build_directory_path(self, dataset_subtype, n_features, n_clusters, class_sep, balance):
-        return os.path.join(self.parent_dir, "Classifiers", dataset_subtype,
-                            f"features_{n_features}_clusters_{n_clusters}_classsep_{class_sep}",
-                            str(balance), str(self.classifier))
+        return os.path.join(
+            self.parent_dir,
+            "Classifiers",
+            dataset_subtype,
+            f"features_{n_features}_clusters_{n_clusters}_classsep_{class_sep}",
+            str(balance),
+            str(self.classifier),
+        )

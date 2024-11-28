@@ -3,8 +3,9 @@ from datetime import datetime
 from typing import Literal
 from sklearn.neural_network import MLPClassifier
 import rl
-from Classes import util
 import warnings
+import multiprocessing as mp
+from multiprocessing.pool import AsyncResult
 import numpy as np
 import typed_argparse as tap
 from sklearn.ensemble import RandomForestClassifier
@@ -19,7 +20,7 @@ from Classes.fraud_env import FraudEnv
 from Classes.datset_inteface import DatasetLoader
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
-pd.set_option('display.max_columns', None)
+pd.set_option("display.max_columns", None)
 
 
 class Args(tap.TypedArgs):
@@ -33,38 +34,39 @@ class Args(tap.TypedArgs):
     challenge: Literal["fraudulent", "genuine", "all"] = tap.arg(help="Only use frauds in the environment observations")
     reward_type: Literal["probability", "label"] = tap.arg(help="Type of reward to use")
     run_num: int = tap.arg(help="Run number")
-    min_values: np.array  = tap.arg(help="Min values features can have")
-    max_values: np.array  =tap.arg(help="Max values features can have")
+    min_values: np.ndarray = tap.arg(help="Min values features can have")
+    max_values: np.ndarray = tap.arg(help="Max values features can have")
+
     @property
     def directory(self):
         # Tricky, it depends on the database type too
-        if self.dataset_type == 'Generator':
+        if self.dataset_type == "Generator":
             u_to_print = self.print_generator_uk(self.u)
             k_to_print = self.print_generator_uk(self.k)
         else:
             u_to_print = len(self.u)
             k_to_print = len(self.k)
-        to_return =  os.path.join(self.logdir,  f"k-{k_to_print}", f"u-{u_to_print}",
-                                  f"reward-{self.reward_type}") #self.dataset, self.challenge,
+        to_return = os.path.join(
+            self.logdir, f"k-{k_to_print}", f"u-{u_to_print}", f"reward-{self.reward_type}"
+        )  # self.dataset, self.challenge,
         return to_return
 
     def print_generator_uk(self, columns):
         c = False
         t = False
         for column in columns:
-            if column.startswith('CUSTOMER'):
+            if column.startswith("CUSTOMER"):
                 c = True
-            if column.startswith('TERMINAL'):
+            if column.startswith("TERMINAL"):
                 t = True
-        if c == True and  t == True:
-            return 'Cust_Term'
-        elif c == False and  t == True:
-            return 'Term'
+        if c == True and t == True:
+            return "Cust_Term"
+        elif c == False and t == True:
+            return "Term"
         elif c == True and t == False:
-            return 'Cust'
+            return "Cust"
         else:
             return 0
-
 
 
 def test_agent(
@@ -93,53 +95,62 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
         transactions=dataset.env_transactions(args.challenge),
         k=args.k,
         u=args.u,
-        c = args.c,
+        c=args.c,
         classifier=clf,
         reward_type=args.reward_type,
         min_values=args.min_values,
-        max_values=args.max_values
+        max_values=args.max_values,
     )
     ppo = PPO(
         env.observation_shape[0],
         env.n_actions,
-        lr_actor=6e-4, # 5e-4
+        lr_actor=6e-4,  # 5e-4
         gamma=0.9,
         lr_critic=6e-4,
-        k_epochs=20, #20
-        eps_clip=0.15, #15
+        k_epochs=20,  # 20
+        eps_clip=0.15,  # 15
     )
     logs = dict[str, np.ndarray]()
     logs["PPO"] = rl.train.train_agent(ppo, env, args.n_steps)
 
     mimicry_transactions = "genuine"
     for sampling in ("multivariate", "univariate", "uniform", "mixture"):
-        for dataset_size in ("1k",  "100%"): # "5%",
-            train_X = dataset.mimicry_TR(mimicry_transactions, dataset_size, args.c) # Controllable features
+        for dataset_size in ("1k", "100%"):  # "5%",
+            train_X = dataset.mimicry_TR(mimicry_transactions, dataset_size, args.c)  # Controllable features
             agent = BaselineAgent(train_X=train_X, generation_method=sampling)
             key = f"{sampling}-{mimicry_transactions}-{dataset_size}"
             logs[key] = test_agent(env, clf, agent, args.n_steps, args.reward_type)
             del agent
 
     os.makedirs(str(args.directory), exist_ok=True)
-    filename = str(args.directory)+"/file.csv"
+    filename = str(args.directory) + "/file.csv"
     pd.DataFrame(logs).to_csv(filename, index=False)
 
-    print('Controllable are' + str(args.c) + ' Fixed are' + str(args.k) + ' Unknown are' + str(args.u))
-    #print(args.directory)
-    #print(pd.DataFrame(logs).describe())
+    print("Controllable are" + str(args.c) + " Fixed are" + str(args.k) + " Unknown are" + str(args.u))
+    # print(args.directory)
+    # print(pd.DataFrame(logs).describe())
 
-    #return filename
+    # return filename
 
 
-def run_all_experiments(date_time, dataset_types, n_features_list, clusters_list, class_sep_list, balance_list,
-                    classifier_names, min_max_quantile, N_REPETITIONS, N_STEPS,
-                    PROCESS_PER_GPU, N_GPUS):
+def run_all_experiments(
+    date_time,
+    dataset_types,
+    n_features_list,
+    clusters_list,
+    class_sep_list,
+    balance_list,
+    classifier_names,
+    min_max_quantile,
+    N_REPETITIONS,
+    N_STEPS,
+    PROCESS_PER_GPU,
+    N_GPUS,
+):
     LOGDIR_OUTERS = {}
     for classifier_name in classifier_names:
         # UNDERSAMPLE = util.is_debugging()
-        LOGDIR_OUTERS[classifier_name]  = \
-            os.path.join("logs", date_time,
-                         classifier_name)
+        LOGDIR_OUTERS[classifier_name] = os.path.join("logs", date_time, classifier_name)
         os.makedirs(LOGDIR_OUTERS[classifier_name], exist_ok=False)
         print(LOGDIR_OUTERS[classifier_name])
     for classifier_name in classifier_names:
@@ -147,53 +158,74 @@ def run_all_experiments(date_time, dataset_types, n_features_list, clusters_list
             LOGS_DATASET = os.path.join(LOGDIR_OUTERS[classifier_name], dataset_type)
             os.makedirs(LOGS_DATASET, exist_ok=False)
 
-            n_processes = N_GPUS * PROCESS_PER_GPU #TODO Uncomment
-            # pool = mp.Pool(n_processes)
+            n_processes = N_GPUS * PROCESS_PER_GPU
+            with mp.Pool(n_processes) as pool:
+                handles = list[AsyncResult]()
+                dataset_loader = DatasetLoader(
+                    dataset_type=dataset_type,
+                    classifier=classifier_name,
+                    n_features_list=n_features_list,
+                    clusters_list=clusters_list,
+                    class_sep_list=class_sep_list,
+                    balance_list=balance_list,
+                )
+                datasets, classifiers = dataset_loader.load()
 
-            dataset_loader = DatasetLoader( dataset_type=dataset_type, classifier=classifier_name,
-                                             n_features_list=n_features_list, clusters_list=clusters_list,
-                                             class_sep_list=class_sep_list,balance_list=balance_list, )
-            datasets, classifiers = dataset_loader.load()
+                for key in datasets.keys():
+                    dataset = datasets[key]
+                    classifier = classifiers[key]
+                    for experiment_number in range(N_REPETITIONS):
+                        match dataset_type:
+                            case "SkLearn":
+                                folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
+                            case "Kaggle":
+                                folder_name = f"balance={key[2]}"
+                            case "Generator":
+                                folder_name = f"balance={key[2]}"
+                            case _:
+                                raise Exception("Not a valid dataset type")
 
-            for key in datasets.keys():
-                dataset = datasets[key]
-                classifier = classifiers[key]
-                for experiment_number in range(N_REPETITIONS):
+                        save_path = f"{LOGS_DATASET}/{folder_name}/{experiment_number}"
+                        os.makedirs(save_path, exist_ok=False)  # ?d
 
-                    match dataset_type:
-                        case 'SkLearn':
-                            folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
-                        case 'Kaggle':
-                            folder_name = f"balance={key[2]}"
-                        case 'Generator':
-                            folder_name = f"balance={key[2]}"
-                        case _:
-                            raise('Not a valid dataset type')
+                        df_negative = dataset.env_transactions("genuine")
+                        min_values = df_negative.quantile(min_max_quantile)
+                        max_values = df_negative.quantile(1 - min_max_quantile)
+                        if "Unnamed_0" in df_negative.columns:
+                            df_negative = df_negative.drop("Unnamed_0")
+                        columns_combination = get_column_combinations(dataset_type=dataset_type, df=df_negative)
+                        print(
+                            "These keys are "
+                            + str(datasets.keys())
+                            + "EXPERIMENT NUMBER "
+                            + str(experiment_number)
+                            + " We are doing these combinations "
+                            + str(len(columns_combination))
+                        )
 
-                    handles = [] #?
-                    save_path = f"{LOGS_DATASET}/{folder_name}/{experiment_number}"
-                    os.makedirs(save_path, exist_ok=False)  # ?d
-
-                    df_negative = dataset.env_transactions("genuine")
-                    min_values = df_negative.quantile(min_max_quantile)
-                    max_values = df_negative.quantile(1 - min_max_quantile)
-                    if 'Unnamed_0' in df_negative.columns:
-                        df_negative = df_negative.drop('Unnamed_0')
-                    columns_combination = get_column_combinations(dataset_type=dataset_type, df=df_negative)
-                    print('These keys are ' + str(datasets.keys()) +'EXPERIMENT NUMBER '
-                          + str(experiment_number) + ' We are doing these combinations ' + str(len(columns_combination)))
-
-                    for index in range(len(columns_combination)):
-                        K_COLUMNS = columns_combination[index]['K_columns']
-                        U_COLUMNS = columns_combination[index]['U_columns']
-                        C_COLUMNS = columns_combination[index]['C_columns']
-                        for reward_type in (["label"]): # "probability",
-                            args = Args(dataset_type=dataset_type,logdir=save_path, k=K_COLUMNS, c =C_COLUMNS, u = U_COLUMNS, n_steps=N_STEPS,
-                            challenge="fraudulent", reward_type=reward_type, run_num=experiment_number,
-                                        min_values=min_values, max_values=max_values)
-                            experiment(args, dataset, classifier)
-                            # handles.append((args, datetime.now(), handle))
-
+                        for index in range(len(columns_combination)):
+                            K_COLUMNS = columns_combination[index]["K_columns"]
+                            U_COLUMNS = columns_combination[index]["U_columns"]
+                            C_COLUMNS = columns_combination[index]["C_columns"]
+                            for reward_type in ["label"]:  # "probability",
+                                args = Args(
+                                    dataset_type=dataset_type,
+                                    logdir=save_path,
+                                    k=K_COLUMNS,
+                                    c=C_COLUMNS,
+                                    u=U_COLUMNS,
+                                    n_steps=N_STEPS,
+                                    challenge="fraudulent",
+                                    reward_type=reward_type,
+                                    run_num=experiment_number,
+                                    min_values=min_values,
+                                    max_values=max_values,
+                                )
+                                handle = pool.apply_async(experiment, args=(args, dataset, classifier))
+                                handles.append(handle)
+                                # experiment(args, dataset, classifier)
+                for handle in handles:
+                    handle.get()
 
 
 """

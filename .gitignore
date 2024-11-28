@@ -2,3 +2,8 @@
 *.csv
 *.pkl
 *.pickle
+
+__pycache__/
+data.zip
+nohup.out
+uv.lock
