@@ -158,9 +158,12 @@ class DatasetLoader:
         for balance in self.balance_list:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_kaggle(balance, self.classifier)
-            dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", "dataset", str(balance), str(self.classifier))
-            self.classifiers[key] = self._load_classifier_from_directory(dir_path)
-
+            try:
+                dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", "dataset", str(balance), str(self.classifier))
+                self.classifiers[key] = self._load_classifier_from_directory(dir_path)
+            except:
+                dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", str(balance), str(self.classifier))
+                self.classifiers[key] = self._load_classifier_from_directory(dir_path)
     def _load_generator_datasets(self):
         for balance in self.balance_list:
             key = self._create_key(balance)

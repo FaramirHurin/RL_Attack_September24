@@ -94,7 +94,7 @@ class PPO(Agent):
 
         # Normalizing the rewards
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)  # 1e-7 originally
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)  # 1e-7 originally
 
         # convert list to tensor
         old_states = torch.squeeze(torch.from_numpy(np.stack(self.buffer.states))).to(self.device)

@@ -140,7 +140,7 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
 
     print("Controllable are" + str(args.c) + " Fixed are" + str(args.k) + " Unknown are" + str(args.u))
     # print(args.directory)
-    # print(pd.DataFrame(logs).describe())
+    print(pd.DataFrame(logs).describe())
 
     # return filename
 
@@ -158,86 +158,101 @@ def run_all_experiments(
     N_STEPS,
     PROCESS_PER_GPU,
     N_GPUS,
+    multithread=False
 ):
-    LOGDIR_OUTERS = {}
-    for classifier_name in classifier_names:
-        # UNDERSAMPLE = util.is_debugging()
-        LOGDIR_OUTERS[classifier_name] = os.path.join("logs", date_time, classifier_name)
-        os.makedirs(LOGDIR_OUTERS[classifier_name], exist_ok=False)
-        print(LOGDIR_OUTERS[classifier_name])
-    for classifier_name in classifier_names:
-        for dataset_type in dataset_types:
-            LOGS_DATASET = os.path.join(LOGDIR_OUTERS[classifier_name], dataset_type)
-            os.makedirs(LOGS_DATASET, exist_ok=False)
+    for experiment_number in range(N_REPETITIONS):
+        # Create a directory for each experiment_number at the outermost level
+        LOGDIR_EXPERIMENT = os.path.join("logs", date_time, str(experiment_number))
+        os.makedirs(LOGDIR_EXPERIMENT, exist_ok=False)
+        print(LOGDIR_EXPERIMENT)
 
-            n_processes = N_GPUS * PROCESS_PER_GPU
-            with mp.Pool(n_processes) as pool:
-                handles = list[AsyncResult]()
-                dataset_loader = DatasetLoader(
-                    dataset_type=dataset_type,
-                    classifier=classifier_name,
-                    n_features_list=n_features_list,
-                    clusters_list=clusters_list,
-                    class_sep_list=class_sep_list,
-                    balance_list=balance_list,
-                )
-                datasets, classifiers = dataset_loader.load()
+        for classifier_name in classifier_names:
+            # Create a subdirectory for each classifier under the experiment_number folder
+            LOGDIR_CLASSIFIER = os.path.join(LOGDIR_EXPERIMENT, classifier_name)
+            os.makedirs(LOGDIR_CLASSIFIER, exist_ok=False)
+            print(LOGDIR_CLASSIFIER)
 
-                for experiment_number in range(N_REPETITIONS):
-                    for key in datasets.keys():
-                        dataset = datasets[key]
-                        classifier = classifiers[key]
-                        match dataset_type:
-                            case "SkLearn":
-                                folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
-                            case "Kaggle":
-                                folder_name = f"balance={key[2]}"
-                            case "Generator":
-                                folder_name = f"balance={key[2]}"
-                            case _:
-                                raise Exception("Not a valid dataset type")
+            for dataset_type in dataset_types:
+                # Create a subdirectory for each dataset_type under the classifier folder
+                LOGS_DATASET = os.path.join(LOGDIR_CLASSIFIER, dataset_type)
+                os.makedirs(LOGS_DATASET, exist_ok=False)
+                print(LOGS_DATASET)
 
-                        save_path = f"{LOGS_DATASET}/{folder_name}/{experiment_number}"
-                        os.makedirs(save_path, exist_ok=False)  # ?d
-
-                        df_negative = dataset.env_transactions("genuine")
-                        min_values = df_negative.quantile(min_max_quantile)
-                        max_values = df_negative.quantile(1 - min_max_quantile)
-                        if "Unnamed_0" in df_negative.columns:
-                            df_negative = df_negative.drop("Unnamed_0")
-                        columns_combination = get_column_combinations(dataset_type=dataset_type, df=df_negative)
-                        print(
-                            "These keys are "
-                            + str(datasets.keys())
-                            + "EXPERIMENT NUMBER "
-                            + str(experiment_number)
-                            + " We are doing these combinations "
-                            + str(len(columns_combination))
+                n_processes = N_GPUS * PROCESS_PER_GPU
+                if multithread:
+                    with mp.Pool(n_processes) as pool:
+                        handles = list[AsyncResult]()
+                        dataset_loader = DatasetLoader(
+                            dataset_type=dataset_type,
+                            classifier=classifier_name,
+                            n_features_list=n_features_list,
+                            clusters_list=clusters_list,
+                            class_sep_list=class_sep_list,
+                            balance_list=balance_list,
                         )
+                        datasets, classifiers = dataset_loader.load()
+                else:
+                    datasets, classifiers = DatasetLoader(
+                        dataset_type=dataset_type,
+                        classifier=classifier_name,
+                        n_features_list=n_features_list,
+                        clusters_list=clusters_list,
+                        class_sep_list=class_sep_list,
+                        balance_list=balance_list,
+                    ).load()
 
-                        for index in range(len(columns_combination)):
-                            K_COLUMNS = columns_combination[index]["K_columns"]
-                            U_COLUMNS = columns_combination[index]["U_columns"]
-                            C_COLUMNS = columns_combination[index]["C_columns"]
-                            args = Args(
-                                dataset_type=dataset_type,
-                                logdir=save_path,
-                                k=K_COLUMNS,
-                                c=C_COLUMNS,
-                                u=U_COLUMNS,
-                                n_steps=N_STEPS,
-                                challenge="fraudulent",
-                                reward_type="label",
-                                run_num=experiment_number,
-                                min_values=min_values,
-                                max_values=max_values,
-                            )
+                for key in datasets.keys():
+                    dataset = datasets[key]
+                    classifier = classifiers[key]
+                    match dataset_type:
+                        case "SkLearn":
+                            folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
+                        case "Kaggle":
+                            folder_name = f"balance={key[2]}"
+                        case "Generator":
+                            folder_name = f"balance={key[2]}"
+                        case _:
+                            raise Exception("Not a valid dataset type")
+
+                    save_path = os.path.join(LOGS_DATASET, folder_name)
+                    os.makedirs(save_path, exist_ok=False)  # Ensure folder creation
+
+                    df_negative = dataset.env_transactions("genuine")
+                    min_values = df_negative.quantile(min_max_quantile)
+                    max_values = df_negative.quantile(1 - min_max_quantile)
+                    if "Unnamed_0" in df_negative.columns:
+                        df_negative = df_negative.drop("Unnamed_0")
+                    columns_combination = get_column_combinations(dataset_type=dataset_type, df=df_negative)
+                    print(
+                        f"These keys are {datasets.keys()} EXPERIMENT NUMBER {experiment_number} "
+                        f"We are doing these combinations {len(columns_combination)}"
+                    )
+
+                    for index in range(len(columns_combination)):
+                        K_COLUMNS = columns_combination[index]["K_columns"]
+                        U_COLUMNS = columns_combination[index]["U_columns"]
+                        C_COLUMNS = columns_combination[index]["C_columns"]
+                        args = Args(
+                            dataset_type=dataset_type,
+                            logdir=save_path,
+                            k=K_COLUMNS,
+                            c=C_COLUMNS,
+                            u=U_COLUMNS,
+                            n_steps=N_STEPS,
+                            challenge="fraudulent",
+                            reward_type="label",
+                            run_num=experiment_number,
+                            min_values=min_values,
+                            max_values=max_values,
+                        )
+                        if multithread:
                             handle = pool.apply_async(experiment, args=(args, dataset, classifier))
                             handles.append(handle)
-                            # experiment(args, dataset, classifier)
-                for handle in handles:
-                    handle.get()
-
+                        else:
+                            experiment(args, dataset, classifier)
+                if multithread:
+                    for handle in handles:
+                        handle.get()
 
 """
 UNDERSAMPLE = util.is_debugging()

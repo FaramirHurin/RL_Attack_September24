@@ -27,7 +27,8 @@ def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
                 obs_, reward, done, truncated, _ = env.step(action)
 
                 # saving reward and is_terminals
-                agent.store(Transition(obs, action, reward, done, {}, obs_, truncated, action_probs=action_logprob)) #, probs=action_logprob
+                agent.store(Transition(obs, action, reward, done, {}, obs_, truncated,
+                                       action_probs=action_logprob)) #, probs=action_logprob
                 agent.update()
                 obs = obs_
                 score += reward
