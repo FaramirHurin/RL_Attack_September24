@@ -26,7 +26,6 @@ pd.set_option("display.max_columns", None)
 class Args(tap.TypedArgs):
     dataset_type: str = tap.arg(help="Dataset type")
     logdir: str = tap.arg(help="Directory to save logs")
-    fraud_balance: Literal["very-imbalanced", "imbalanced", "balanced"] = tap.arg(help="Fraud balance in synthetic datasets")
     k: int = tap.arg(help="Number of known features")
     u: int = tap.arg(help="Number of unknown features")
     c: int = tap.arg(help="Number of controllable features")
@@ -59,11 +58,11 @@ class Args(tap.TypedArgs):
                 c = True
             if column.startswith("TERMINAL"):
                 t = True
-        if c == True and t == True:
+        if c and t:
             return "Cust_Term"
-        elif c == False and t == True:
+        elif not c and t:
             return "Term"
-        elif c == True and t == False:
+        elif c and not t:
             return "Cust"
         else:
             return 0
@@ -207,23 +206,22 @@ def run_all_experiments(
                             K_COLUMNS = columns_combination[index]["K_columns"]
                             U_COLUMNS = columns_combination[index]["U_columns"]
                             C_COLUMNS = columns_combination[index]["C_columns"]
-                            for reward_type in ["label"]:  # "probability",
-                                args = Args(
-                                    dataset_type=dataset_type,
-                                    logdir=save_path,
-                                    k=K_COLUMNS,
-                                    c=C_COLUMNS,
-                                    u=U_COLUMNS,
-                                    n_steps=N_STEPS,
-                                    challenge="fraudulent",
-                                    reward_type=reward_type,
-                                    run_num=experiment_number,
-                                    min_values=min_values,
-                                    max_values=max_values,
-                                )
-                                handle = pool.apply_async(experiment, args=(args, dataset, classifier))
-                                handles.append(handle)
-                                # experiment(args, dataset, classifier)
+                            args = Args(
+                                dataset_type=dataset_type,
+                                logdir=save_path,
+                                k=K_COLUMNS,
+                                c=C_COLUMNS,
+                                u=U_COLUMNS,
+                                n_steps=N_STEPS,
+                                challenge="fraudulent",
+                                reward_type="label",
+                                run_num=experiment_number,
+                                min_values=min_values,
+                                max_values=max_values,
+                            )
+                            handle = pool.apply_async(experiment, args=(args, dataset, classifier))
+                            handles.append(handle)
+                            # experiment(args, dataset, classifier)
                 for handle in handles:
                     handle.get()
 

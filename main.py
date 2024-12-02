@@ -11,7 +11,7 @@ import torch
 import datetime
 
 GENERATE_DATASETS = False
-TRAIN_CLASSIFIERS = True
+TRAIN_CLASSIFIERS = False
 
 dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
 n_features_list = [16, 32, 64]
@@ -40,9 +40,6 @@ if GENERATE_DATASETS:
 if TRAIN_CLASSIFIERS:
     fit_and_store_all_classifiers()
 
-
-print("All trainings are done")
-exit(0)
 
 run_all_experiments(
     copy.copy(date_time),
