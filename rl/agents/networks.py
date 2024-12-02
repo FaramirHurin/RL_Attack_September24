@@ -1,8 +1,6 @@
 import torch
 from torch import distributions
-import numpy as np
-
-import torch
+from datetime import datetime
 
 import torch.nn as nn
 
@@ -10,40 +8,26 @@ import torch.nn as nn
 class PositiveDefiniteMatrixGenerator(nn.Module):
     def __init__(self, input_size, matrix_size):
         super(PositiveDefiniteMatrixGenerator, self).__init__()
-
         # Output size is for the lower triangular part of the matrix
-
         self.fc = nn.Linear(input_size, matrix_size * (matrix_size + 1) // 2)
 
     def forward(self, x):
         # Get the output from the linear layer
-
         chol_params = self.fc(x)  # Cholesky parameters
-
         # Initialize a lower triangular matrix
-
         L = torch.zeros((x.size(0), chol_params.size(1), chol_params.size(1)), device=x.device)
-
         # Fill the lower triangular part
-
         idx = 0
-
         for i in range(L.size(1)):
             for j in range(i + 1):
                 if i == j:
                     # Diagonal entries should be positive
-
                     L[:, i, j] = torch.relu(chol_params[:, idx])  # Use ReLU to ensure positivity
-
                 else:
                     L[:, i, j] = chol_params[:, idx]
-
                 idx += 1
-
         # Generate the positive definite matrix
-
         positive_definite_matrix = torch.bmm(L, L.transpose(1, 2))  # L * L^T
-
         return positive_definite_matrix
 
 
@@ -97,10 +81,16 @@ class ActorCritic(torch.nn.Module):
         normalized_cov_mat = result_normalized * norm
 
         if torch.any(normalized_cov_mat.isnan()):
-            print("NaN in std = " + str(torch.any(std.isnan())))
-            print("NaN in std_normalized_local = " + str(torch.any(std_normalized_local.isnan())))
-            print("Norm is " + str(norm))
+            print(f"[{datetime.now()}]Nan encountered for input: {state}")
+            print(f"\tmeans: {means}")
+            print(f"\tstd: {std}")
+            print(f"\tnorm: {norm}")
+            print(f"\tstd_normalized_local: {std_normalized_local}")
+            print(f"\tresult_normalized: {result_normalized}")
+            print(f"\tnormalized_cov_mat: {normalized_cov_mat}")
+            # normalized_cov_mat = torch.ones_like(normalized_cov_mat)
             raise Exception("Nan encountered")
+
         """
         cov_mat = std @ std.mT
         cov_mat = cov_mat +  torch.eye(self.n_actions).unsqueeze(0)
@@ -111,9 +101,6 @@ class ActorCritic(torch.nn.Module):
         #    Normalize by dividing each matrix by its determinant, with epsilon to avoid division by zero
         epsilon = 1e-8
         normalized_cov_mat = cov_mat / (det.unsqueeze(-1).unsqueeze(-1) + epsilon)
-        
-        
-        
         """
 
         # print(torch.linalg.eigvals(cov_mat))

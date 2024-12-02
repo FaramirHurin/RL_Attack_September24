@@ -90,6 +90,7 @@ def test_agent(
 
 
 def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPClassifier):
+    print(args)
     env = FraudEnv(
         transactions=dataset.env_transactions(args.challenge),
         k=args.k,
@@ -110,7 +111,16 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
         eps_clip=0.15,  # 15
     )
     logs = dict[str, np.ndarray]()
-    logs["PPO"] = rl.train.train_agent(ppo, env, args.n_steps)
+    try:
+        logs["PPO"] = rl.train.train_agent(ppo, env, args.n_steps)
+    except ValueError as e:
+        print(f"Exception: {e}")
+        print(f"Skipping: {args}")
+        filename = os.path.join(args.directory, "error.txt")
+        with open(filename, "w") as f:
+            f.write(str(e))
+            f.write(str(args))
+        return
 
     mimicry_transactions = "genuine"
     for sampling in ("multivariate", "univariate", "uniform", "mixture"):
@@ -170,10 +180,10 @@ def run_all_experiments(
                 )
                 datasets, classifiers = dataset_loader.load()
 
-                for key in datasets.keys():
-                    dataset = datasets[key]
-                    classifier = classifiers[key]
-                    for experiment_number in range(N_REPETITIONS):
+                for experiment_number in range(N_REPETITIONS):
+                    for key in datasets.keys():
+                        dataset = datasets[key]
+                        classifier = classifiers[key]
                         match dataset_type:
                             case "SkLearn":
                                 folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"

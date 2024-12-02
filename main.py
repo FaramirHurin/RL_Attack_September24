@@ -1,4 +1,3 @@
-import copy
 from Dataset.SkLearn_Dataset.DataSet import generate_SKLearn_Data
 from Dataset.Kaggle_Dataset.generateKaggle import generate_kaggle_dataset
 from Dataset.Generator_Dataset.generate_Generator_dataset import generate_generator_dataset
@@ -42,7 +41,7 @@ if TRAIN_CLASSIFIERS:
 
 
 run_all_experiments(
-    copy.copy(date_time),
+    date_time,
     dataset_types,
     n_features_list,
     clusters_list,
