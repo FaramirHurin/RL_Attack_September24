@@ -1,6 +1,7 @@
 import torch
 from torch import distributions
 from datetime import datetime
+from nn_exception import NNException
 
 import torch.nn as nn
 
@@ -48,6 +49,8 @@ class ActorCritic(torch.nn.Module):
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
         ).to(self.device)
+        x = torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL)
+        x.w
 
         self.critic = torch.nn.Sequential(
             torch.nn.LayerNorm(state_size),
@@ -89,7 +92,7 @@ class ActorCritic(torch.nn.Module):
             print(f"\tresult_normalized: {result_normalized}")
             print(f"\tnormalized_cov_mat: {normalized_cov_mat}")
             # normalized_cov_mat = torch.ones_like(normalized_cov_mat)
-            raise Exception("Nan encountered")
+            raise NNException(self.actions_mean_std, "Nan encountered")
 
         """
         cov_mat = std @ std.mT

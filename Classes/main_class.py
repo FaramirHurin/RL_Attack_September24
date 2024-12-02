@@ -1,8 +1,9 @@
 import pandas as pd
-from datetime import datetime
 from typing import Literal
+import torch
 from sklearn.neural_network import MLPClassifier
 import rl
+from nn_exception import NNException
 import warnings
 import multiprocessing as mp
 from multiprocessing.pool import AsyncResult
@@ -113,11 +114,13 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
     logs = dict[str, np.ndarray]()
     try:
         logs["PPO"] = rl.train.train_agent(ppo, env, args.n_steps)
-    except Exception as e:
+    except NNException as e:
         print(f"Exception: {e}")
         print(f"Skipping: {args}")
-        filename = os.path.join(args.directory, "error.txt")
-        with open(filename, "w") as f:
+        os.makedirs(args.directory, exist_ok=True)
+        # save the weights
+        torch.save(e.nn.state_dict(), os.path.join(args.directory, "weights.pth"))
+        with open(os.path.join(args.directory, "error.txt"), "w") as f:
             f.write(str(e))
             f.write(str(args))
         return
