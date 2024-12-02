@@ -44,7 +44,7 @@ class PPO(Agent):
         self.k_epochs = k_epochs
         self.buffer = RolloutBuffer()
         self.policy = ActorCritic(obs_size, n_actions)
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             [
                 {"params": self.policy.actions_mean_std.parameters(), "lr": lr_actor},
                 {"params": self.policy.critic.parameters(), "lr": lr_critic},
@@ -91,7 +91,6 @@ class PPO(Agent):
             discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
         """
-
 
         # Normalizing the rewards
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)

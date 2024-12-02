@@ -113,7 +113,7 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
     logs = dict[str, np.ndarray]()
     try:
         logs["PPO"] = rl.train.train_agent(ppo, env, args.n_steps)
-    except ValueError as e:
+    except Exception as e:
         print(f"Exception: {e}")
         print(f"Skipping: {args}")
         filename = os.path.join(args.directory, "error.txt")

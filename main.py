@@ -20,7 +20,7 @@ balance_list = [0.1, 0.5]  # [ 0.1, 0.5]
 classifier_names = ["RF", "DNN"]  # [ 'DNN', 'RF']
 min_max_quantile = 0.05
 N_REPETITIONS = 50  # 20
-N_STEPS = 5_000  # 0
+N_STEPS = 3_000  # 0
 PROCESS_PER_GPU = 2
 N_GPUS = torch.cuda.device_count()
 

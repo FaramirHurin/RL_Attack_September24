@@ -41,20 +41,20 @@ class ActorCritic(torch.nn.Module):
         INNER_SIZE_ACTIONS = 32
         INNER_SIZE_SEQUNTIAL = 32
         self.actions_mean_std = torch.nn.Sequential(
-            # torch.nn.LayerNorm(state_size),
+            # torch.nn.BatchNorm1d(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
         ).to(self.device)
 
         self.critic = torch.nn.Sequential(
             torch.nn.LayerNorm(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, 1),
         ).to(self.device)
 
