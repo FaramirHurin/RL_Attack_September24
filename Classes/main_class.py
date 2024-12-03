@@ -160,47 +160,65 @@ def run_all_experiments(
     N_GPUS,
     multithread=False
 ):
+    # Pre-create all directories sequentially
     for experiment_number in range(N_REPETITIONS):
-        # Create a directory for each experiment_number at the outermost level
         LOGDIR_EXPERIMENT = os.path.join("logs", date_time, str(experiment_number))
-        os.makedirs(LOGDIR_EXPERIMENT, exist_ok=False)
-        print(LOGDIR_EXPERIMENT)
+        os.makedirs(LOGDIR_EXPERIMENT, exist_ok=True)
 
         for classifier_name in classifier_names:
-            # Create a subdirectory for each classifier under the experiment_number folder
             LOGDIR_CLASSIFIER = os.path.join(LOGDIR_EXPERIMENT, classifier_name)
-            os.makedirs(LOGDIR_CLASSIFIER, exist_ok=False)
-            print(LOGDIR_CLASSIFIER)
+            os.makedirs(LOGDIR_CLASSIFIER, exist_ok=True)
 
             for dataset_type in dataset_types:
-                # Create a subdirectory for each dataset_type under the classifier folder
                 LOGS_DATASET = os.path.join(LOGDIR_CLASSIFIER, dataset_type)
-                os.makedirs(LOGS_DATASET, exist_ok=False)
-                print(LOGS_DATASET)
+                os.makedirs(LOGS_DATASET, exist_ok=True)
 
-                n_processes = N_GPUS * PROCESS_PER_GPU
-                if multithread:
-                    with mp.Pool(n_processes) as pool:
-                        handles = list[AsyncResult]()
-                        dataset_loader = DatasetLoader(
-                            dataset_type=dataset_type,
-                            classifier=classifier_name,
-                            n_features_list=n_features_list,
-                            clusters_list=clusters_list,
-                            class_sep_list=class_sep_list,
-                            balance_list=balance_list,
-                        )
-                        datasets, classifiers = dataset_loader.load()
-                else:
-                    datasets, classifiers = DatasetLoader(
-                        dataset_type=dataset_type,
-                        classifier=classifier_name,
-                        n_features_list=n_features_list,
-                        clusters_list=clusters_list,
-                        class_sep_list=class_sep_list,
-                        balance_list=balance_list,
-                    ).load()
+                # Pre-create directories for specific dataset configurations
+                dataset_loader = DatasetLoader(
+                    dataset_type=dataset_type,
+                    classifier=classifier_name,
+                    n_features_list=n_features_list,
+                    clusters_list=clusters_list,
+                    class_sep_list=class_sep_list,
+                    balance_list=balance_list,
+                )
+                datasets, classifiers = dataset_loader.load()
 
+                for key in datasets.keys():
+                    match dataset_type:
+                        case "SkLearn":
+                            folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
+                        case "Kaggle":
+                            folder_name = f"balance={key[2]}"
+                        case "Generator":
+                            folder_name = f"balance={key[2]}"
+                        case _:
+                            raise Exception("Not a valid dataset type")
+
+                    save_path = os.path.join(LOGS_DATASET, folder_name)
+                    os.makedirs(save_path, exist_ok=True)
+
+    # Parallelize task execution after directory creation
+    for experiment_number in range(N_REPETITIONS):
+        LOGDIR_EXPERIMENT = os.path.join("logs", date_time, str(experiment_number))
+
+        for classifier_name in classifier_names:
+            LOGDIR_CLASSIFIER = os.path.join(LOGDIR_EXPERIMENT, classifier_name)
+
+            for dataset_type in dataset_types:
+                LOGS_DATASET = os.path.join(LOGDIR_CLASSIFIER, dataset_type)
+
+                dataset_loader = DatasetLoader(
+                    dataset_type=dataset_type,
+                    classifier=classifier_name,
+                    n_features_list=n_features_list,
+                    clusters_list=clusters_list,
+                    class_sep_list=class_sep_list,
+                    balance_list=balance_list,
+                )
+                datasets, classifiers = dataset_loader.load()
+
+                tasks = []
                 for key in datasets.keys():
                     dataset = datasets[key]
                     classifier = classifiers[key]
@@ -215,18 +233,12 @@ def run_all_experiments(
                             raise Exception("Not a valid dataset type")
 
                     save_path = os.path.join(LOGS_DATASET, folder_name)
-                    os.makedirs(save_path, exist_ok=False)  # Ensure folder creation
-
                     df_negative = dataset.env_transactions("genuine")
                     min_values = df_negative.quantile(min_max_quantile)
                     max_values = df_negative.quantile(1 - min_max_quantile)
                     if "Unnamed_0" in df_negative.columns:
                         df_negative = df_negative.drop("Unnamed_0")
                     columns_combination = get_column_combinations(dataset_type=dataset_type, df=df_negative)
-                    print(
-                        f"These keys are {datasets.keys()} EXPERIMENT NUMBER {experiment_number} "
-                        f"We are doing these combinations {len(columns_combination)}"
-                    )
 
                     for index in range(len(columns_combination)):
                         K_COLUMNS = columns_combination[index]["K_columns"]
@@ -246,13 +258,16 @@ def run_all_experiments(
                             max_values=max_values,
                         )
                         if multithread:
-                            handle = pool.apply_async(experiment, args=(args, dataset, classifier))
-                            handles.append(handle)
+                            tasks.append((args, dataset, classifier))
                         else:
                             experiment(args, dataset, classifier)
+
                 if multithread:
-                    for handle in handles:
-                        handle.get()
+                    n_processes = N_GPUS * PROCESS_PER_GPU
+                    with mp.Pool(n_processes) as pool:
+                        results = [pool.apply_async(experiment, task) for task in tasks]
+                        for result in results:
+                            result.get()
 
 """
 UNDERSAMPLE = util.is_debugging()

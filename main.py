@@ -20,8 +20,8 @@ balance_list = [0.1, 0.5]  # [ 0.1, 0.5]
 classifier_names = ["RF", "DNN"]  # [ 'DNN', 'RF']
 min_max_quantile = 0.05
 N_REPETITIONS = 2  # 20
-N_STEPS = 4_000  # 0
-MULTI_THREAD = False
+N_STEPS = 20  # 0
+MULTI_THREAD = True
 PROCESS_PER_GPU = 2
 N_GPUS = max( torch.cuda.device_count(), 1)
 print('N GPUS ' + str(N_GPUS))
@@ -45,23 +45,24 @@ if GENERATE_DATASETS:
 if TRAIN_CLASSIFIERS:
     fit_and_store_all_classifiers()
 
+if __name__ == '__main__':
+    run_all_experiments(
+        date_time,
+        dataset_types,
+        n_features_list,
+        clusters_list,
+        class_sep_list,
+        balance_list,
+        classifier_names,
+        min_max_quantile,
+        N_REPETITIONS,
+        N_STEPS,
+        PROCESS_PER_GPU,
+        N_GPUS,
+        MULTI_THREAD
+    )
 
-run_all_experiments(
-    date_time,
-    dataset_types,
-    n_features_list,
-    clusters_list,
-    class_sep_list,
-    balance_list,
-    classifier_names,
-    min_max_quantile,
-    N_REPETITIONS,
-    N_STEPS,
-    PROCESS_PER_GPU,
-    N_GPUS,
-    MULTI_THREAD
-)
-
+"""
 avg.average_over_allDatasets(os.path.join("logs", date_time), os.path.join("Visualization", "averaged_results", date_time))
 
 folder = os.path.join(os.getcwd(), "Visualization", "averaged_results", date_time)
@@ -75,3 +76,4 @@ ppo_results, best_other, all_baselines = plot_results.reorganize_results(folder,
                                        '_class_sep=2_')
 plot_results.plot_baselines(all_baselines)
 #plot_results.plot(ppo_results, best_other)
+"""
