@@ -5,13 +5,11 @@ from sklearn.neural_network import MLPClassifier
 import rl
 from nn_exception import NNException
 import warnings
-import multiprocessing as mp
-from multiprocessing.pool import AsyncResult
+import torch.multiprocessing as mp
 import numpy as np
 import typed_argparse as tap
 from sklearn.ensemble import RandomForestClassifier
 import os
-import polars as pl
 
 from Classes.column_preprocess import get_column_combinations
 from Classes.datset_inteface import Dataset
@@ -19,6 +17,7 @@ from rl.agents import PPO
 from Classes.baselines_classes import BaselineAgent
 from Classes.fraud_env import FraudEnv
 from Classes.datset_inteface import DatasetLoader
+
 
 warnings.filterwarnings("ignore", message="X does not have valid feature names")
 pd.set_option("display.max_columns", None)
@@ -76,7 +75,7 @@ def test_agent(
     n_steps: int,
     reward_type: Literal["probability", "label"],
 ):
-    actions = pl.DataFrame(agent.select_actions_batch(n_steps), env.actions)
+    actions = pd.DataFrame(agent.select_actions_batch(n_steps), env.actions)
     transactions = env.get_batch(n_steps)
     modified_transactions = transactions.with_columns([actions[col] for col in env.actions])
     if reward_type == "probability":
@@ -91,7 +90,6 @@ def test_agent(
 
 
 def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPClassifier):
-    print(args)
     env = FraudEnv(
         transactions=dataset.env_transactions(args.challenge),
         k=args.k,
@@ -158,46 +156,8 @@ def run_all_experiments(
     N_STEPS,
     PROCESS_PER_GPU,
     N_GPUS,
-    multithread=False
+    multithread=False,
 ):
-    # Pre-create all directories sequentially
-    for experiment_number in range(N_REPETITIONS):
-        LOGDIR_EXPERIMENT = os.path.join("logs", date_time, str(experiment_number))
-        os.makedirs(LOGDIR_EXPERIMENT, exist_ok=True)
-
-        for classifier_name in classifier_names:
-            LOGDIR_CLASSIFIER = os.path.join(LOGDIR_EXPERIMENT, classifier_name)
-            os.makedirs(LOGDIR_CLASSIFIER, exist_ok=True)
-
-            for dataset_type in dataset_types:
-                LOGS_DATASET = os.path.join(LOGDIR_CLASSIFIER, dataset_type)
-                os.makedirs(LOGS_DATASET, exist_ok=True)
-
-                # Pre-create directories for specific dataset configurations
-                dataset_loader = DatasetLoader(
-                    dataset_type=dataset_type,
-                    classifier=classifier_name,
-                    n_features_list=n_features_list,
-                    clusters_list=clusters_list,
-                    class_sep_list=class_sep_list,
-                    balance_list=balance_list,
-                )
-                datasets, classifiers = dataset_loader.load()
-
-                for key in datasets.keys():
-                    match dataset_type:
-                        case "SkLearn":
-                            folder_name = f"n_features={key[2]}_n_clusters={key[3]}_class_sep={key[4]}_balance={key[5]}"
-                        case "Kaggle":
-                            folder_name = f"balance={key[2]}"
-                        case "Generator":
-                            folder_name = f"balance={key[2]}"
-                        case _:
-                            raise Exception("Not a valid dataset type")
-
-                    save_path = os.path.join(LOGS_DATASET, folder_name)
-                    os.makedirs(save_path, exist_ok=True)
-
     # Parallelize task execution after directory creation
     for experiment_number in range(N_REPETITIONS):
         LOGDIR_EXPERIMENT = os.path.join("logs", date_time, str(experiment_number))
@@ -231,6 +191,8 @@ def run_all_experiments(
                             folder_name = f"balance={key[2]}"
                         case _:
                             raise Exception("Not a valid dataset type")
+                    save_path = os.path.join(LOGS_DATASET, folder_name)
+                    os.makedirs(save_path, exist_ok=True)
 
                     save_path = os.path.join(LOGS_DATASET, folder_name)
                     df_negative = dataset.env_transactions("genuine")
@@ -268,6 +230,7 @@ def run_all_experiments(
                         results = [pool.apply_async(experiment, task) for task in tasks]
                         for result in results:
                             result.get()
+
 
 """
 UNDERSAMPLE = util.is_debugging()

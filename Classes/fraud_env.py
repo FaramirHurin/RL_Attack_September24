@@ -5,20 +5,22 @@ from marlenv import MARLEnv, ContinuousActionSpace, Observation
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 
+
 class FraudEnv(MARLEnv):
     """
     Environment where the agent has to create fraudulent transactions that are not detected as such by the classifier.
     """
+
     def __init__(
         self,
         transactions: pl.DataFrame,
         k: list,
         u: list,
-        c:list,
+        c: list,
         classifier: RandomForestClassifier | MLPClassifier,
         reward_type: Literal["probability", "label"],
         min_values: np.array,
-        max_values: np.array
+        max_values: np.array,
     ):
         """
         Args:
@@ -40,8 +42,9 @@ class FraudEnv(MARLEnv):
         self.classifier = classifier
         # print(self.classifier.feature_importances_)
         super().__init__(
-            action_space=ContinuousActionSpace(n_agents=1, low=[-1] * len(self.actions),
-                                               high=[1] * len(self.actions), action_names=self.actions),
+            action_space=ContinuousActionSpace(
+                n_agents=1, low=[-1] * len(self.actions), high=[1] * len(self.actions), action_names=self.actions
+            ),
             observation_shape=(max(1, len(self.known_features)),),
             state_shape=(1,),
         )
@@ -60,7 +63,7 @@ class FraudEnv(MARLEnv):
     def step(self, actions):
         transaction = self.transactions[self.state]
         for col, value in zip(self.actions, actions):
-            transaction[0, col] = value #.to('cpu').numpy()
+            transaction[0, col] = value  # .to('cpu').numpy()
         transaction = transaction.to_numpy()
         if self.class_reward:
             label = self.classifier.predict(transaction)[0]
@@ -70,7 +73,7 @@ class FraudEnv(MARLEnv):
             reward = legit_proba
         if np.any(transaction < self.min_values) or np.any(transaction > self.max_values):
             self.max_values_reward = 0
-        self.state +=1
+        self.state += 1
         if self.state == self.transactions.shape[0]:
             self.state = 0
         return self.get_observation(), reward, True, False, {}

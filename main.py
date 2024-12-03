@@ -6,25 +6,26 @@ from Classes.main_class import run_all_experiments
 import Visualization.average_results as avg
 import Visualization.plot_results as plot_results
 import os
+import torch.multiprocessing as mp
 import torch
 import datetime
 
 GENERATE_DATASETS = False
 TRAIN_CLASSIFIERS = False
 
-dataset_types = ["Generator", "Kaggle", 'SkLearn']  # Kaggle  Generator SkLearn
+dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
 n_features_list = [16, 32, 64]
 clusters_list = [1, 8, 16]  # [1, 8, 16]
 class_sep_list = [0.5, 2, 8]  # [0.5, 1, 2, 8]
 balance_list = [0.1, 0.5]  # [ 0.1, 0.5]
 classifier_names = ["RF", "DNN"]  # [ 'DNN', 'RF']
 min_max_quantile = 0.05
-N_REPETITIONS = 2  # 20
-N_STEPS = 20  # 0
+N_REPETITIONS = 30  # 20
+N_STEPS = 4_000  # 0
 MULTI_THREAD = True
 PROCESS_PER_GPU = 2
-N_GPUS = max( torch.cuda.device_count(), 1)
-print('N GPUS ' + str(N_GPUS))
+N_GPUS = max(torch.cuda.device_count(), 1)
+print("N GPUS " + str(N_GPUS))
 print(torch.cuda.is_available())
 
 
@@ -35,8 +36,6 @@ out_path = "averaged_results/averaged_results"
 print(date_time)
 
 
-
-
 if GENERATE_DATASETS:
     generate_SKLearn_Data(n_samples=50000, dimensions_list=[16, 32, 64], clusters_list=[1, 8, 16], sep_classes_list=[0.5, 1, 2, 8])
     generate_kaggle_dataset()
@@ -45,7 +44,8 @@ if GENERATE_DATASETS:
 if TRAIN_CLASSIFIERS:
     fit_and_store_all_classifiers()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    mp.set_start_method("spawn")
     run_all_experiments(
         date_time,
         dataset_types,
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         N_STEPS,
         PROCESS_PER_GPU,
         N_GPUS,
-        MULTI_THREAD
+        MULTI_THREAD,
     )
 
 """

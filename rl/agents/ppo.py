@@ -44,7 +44,7 @@ class PPO(Agent):
         self.k_epochs = k_epochs
         self.buffer = RolloutBuffer()
         self.policy = ActorCritic(obs_size, n_actions)
-        self.optimizer = torch.optim.AdamW(
+        self.optimizer = torch.optim.Adam(
             [
                 {"params": self.policy.actions_mean_std.parameters(), "lr": lr_actor},
                 {"params": self.policy.critic.parameters(), "lr": lr_critic},

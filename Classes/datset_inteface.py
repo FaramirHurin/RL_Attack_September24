@@ -44,10 +44,16 @@ class Dataset:
     @classmethod
     def from_kaggle(cls, balancenes: float, classifier: str):  # We need more features
         parent_dir = os.path.abspath(".")  # Move to the parent directory
-        dir_path = os.path.join(parent_dir, "Classifiers", "Kaggle", str(balancenes))
-        train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
-        test = pd.read_csv(os.path.join(dir_path, "test.csv"))
-        return cls(train, test)
+        try:
+            dir_path = os.path.join(parent_dir, "Classifiers", "Kaggle", "creditcard", str(balancenes))
+            train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
+            test = pd.read_csv(os.path.join(dir_path, "test.csv"))
+            return cls(train, test)
+        except FileNotFoundError:
+            dir_path = os.path.join(parent_dir, "Classifiers", "Kaggle", str(balancenes))
+            train = pd.read_csv(os.path.join(dir_path, "train_val.csv"))
+            test = pd.read_csv(os.path.join(dir_path, "test.csv"))
+            return cls(train, test)
 
     @classmethod
     def from_SkLearn(cls, balancenes: float, classifier: str, n_features: int, n_clusters: int, class_sep: float):
@@ -159,11 +165,12 @@ class DatasetLoader:
             key = self._create_key(balance)
             self.datasets[key] = Dataset.from_kaggle(balance, self.classifier)
             try:
-                dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", "dataset", str(balance), str(self.classifier))
+                dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", "creditcard", str(balance), str(self.classifier))
                 self.classifiers[key] = self._load_classifier_from_directory(dir_path)
             except:
                 dir_path = os.path.join(self.parent_dir, "Classifiers", "Kaggle", str(balance), str(self.classifier))
                 self.classifiers[key] = self._load_classifier_from_directory(dir_path)
+
     def _load_generator_datasets(self):
         for balance in self.balance_list:
             key = self._create_key(balance)

@@ -49,8 +49,6 @@ class ActorCritic(torch.nn.Module):
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
         ).to(self.device)
-        x = torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL)
-        #x.w
 
         self.critic = torch.nn.Sequential(
             torch.nn.LayerNorm(state_size),
