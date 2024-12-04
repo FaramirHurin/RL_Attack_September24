@@ -37,13 +37,14 @@ class PPO(Agent):
         k_epochs: int,
         eps_clip: float,
         update_interval=16,
+        gpu_index: int = 0,
     ):
-        self.device = torch.device("cuda")
+        self.device = torch.device(f"cuda:{gpu_index}")
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.k_epochs = k_epochs
         self.buffer = RolloutBuffer()
-        self.policy = ActorCritic(obs_size, n_actions)
+        self.policy = ActorCritic(obs_size, n_actions).to(self.device)
         self.optimizer = torch.optim.Adam(
             [
                 {"params": self.policy.actions_mean_std.parameters(), "lr": lr_actor},
@@ -51,7 +52,7 @@ class PPO(Agent):
             ]
         )
 
-        self.policy_old = ActorCritic(obs_size, n_actions)
+        self.policy_old = ActorCritic(obs_size, n_actions).to(self.device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.mse_loss = torch.nn.MSELoss()
         self.time_step = 0

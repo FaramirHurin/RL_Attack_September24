@@ -7,6 +7,7 @@ from nn_exception import NNException
 import warnings
 import torch.multiprocessing as mp
 import numpy as np
+import polars as pl
 import typed_argparse as tap
 from sklearn.ensemble import RandomForestClassifier
 import os
@@ -75,7 +76,7 @@ def test_agent(
     n_steps: int,
     reward_type: Literal["probability", "label"],
 ):
-    actions = pd.DataFrame(agent.select_actions_batch(n_steps), env.actions)
+    actions = pl.DataFrame(agent.select_actions_batch(n_steps), env.actions)
     transactions = env.get_batch(n_steps)
     modified_transactions = transactions.with_columns([actions[col] for col in env.actions])
     if reward_type == "probability":
@@ -89,7 +90,7 @@ def test_agent(
     return rewards
 
 
-def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPClassifier):
+def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPClassifier, gpu_index: int):
     env = FraudEnv(
         transactions=dataset.env_transactions(args.challenge),
         k=args.k,
@@ -108,6 +109,7 @@ def experiment(args: Args, dataset: Dataset, clf: RandomForestClassifier | MLPCl
         lr_critic=6e-4,
         k_epochs=20,  # 20
         eps_clip=0.15,  # 15
+        gpu_index=gpu_index,
     )
     logs = dict[str, np.ndarray]()
     try:
@@ -220,9 +222,9 @@ def run_all_experiments(
                             max_values=max_values,
                         )
                         if multithread:
-                            tasks.append((args, dataset, classifier))
+                            tasks.append((args, dataset, classifier, index % N_GPUS))
                         else:
-                            experiment(args, dataset, classifier)
+                            experiment(args, dataset, classifier, 0)
 
                 if multithread:
                     n_processes = N_GPUS * PROCESS_PER_GPU
