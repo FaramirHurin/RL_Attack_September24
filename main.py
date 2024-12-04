@@ -10,10 +10,12 @@ GENERATE_DATASETS = False
 TRAIN_CLASSIFIERS = False
 
 dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
-n_features_list = [16, 32, 64]
-clusters_list = [1, 8, 16]
-class_sep_list = [0.5, 1, 2, 8]
+n_features_list = [16,  64] #32,
+clusters_list = [1, 16]  # 8,
+class_sep_list = [ 1, 8]  #0.5, # 2,
 balance_list = [0.1, 0.5]
+use_sklearn_precombinations=True
+
 classifier_names = ["DNN", "RF"]
 min_max_quantile = 0.05
 N_REPETITIONS = 2  # Number of repetitions per individual worker
@@ -68,6 +70,7 @@ def main(args: Args):
         n_experiments=N_REPETITIONS,
         n_steps=N_STEPS,
         device_name=args.device_name,
+        use_sklearn_precombinations=use_sklearn_precombinations
     )
 
 

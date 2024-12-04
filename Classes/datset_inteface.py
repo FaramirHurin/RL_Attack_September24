@@ -137,10 +137,10 @@ class DatasetLoader:
         self.classifiers = {}
         self.parent_dir = os.path.abspath(".")  # Parent directory
 
-    def load(self):
+    def load(self, use_sklearn_precombinations=False):
         """Main method to load datasets based on the dataset type."""
         if self.dataset_type == "SkLearn":
-            self._load_sklearn_datasets()
+            self._load_sklearn_datasets(use_sklearn_precombinations)
         elif self.dataset_type == "Kaggle":
             self._load_kaggle_datasets()
         elif self.dataset_type == "Generator":
@@ -150,15 +150,33 @@ class DatasetLoader:
 
         return self.datasets, self.classifiers
 
-    def _load_sklearn_datasets(self):
-        for n_features in self.n_features_list:
-            for n_clusters in self.clusters_list:
-                for class_sep in self.class_sep_list:
-                    for balance in self.balance_list:
-                        key = self._create_key(n_features, n_clusters, class_sep, balance)
-                        self.datasets[key] = Dataset.from_SkLearn(balance, self.classifier, n_features, n_clusters, class_sep)
-                        dir_path = self._build_directory_path("SkLearn", n_features, n_clusters, class_sep, balance)
-                        self.classifiers[key] = self._load_classifier_from_directory(dir_path)
+    def _load_sklearn_datasets(self, use_sklearn_precombinations):
+        if use_sklearn_precombinations:
+            combinations_sklearn = [
+                {'n_features': 16, 'clusters': 1, 'class_sep': 8},
+                {'n_features': 64, 'clusters': 8, 'class_sep': 8},
+                {'n_features': 64, 'clusters': 16, 'class_sep': 8},
+                {'n_features': 64, 'clusters': 16, 'class_sep': 1}
+            ]
+            for combination in combinations_sklearn:
+                n_features = combination['n_features']
+                n_clusters = combination['clusters']
+                class_sep = combination['class_sep']
+                for balance in self.balance_list:
+                    key = self._create_key(n_features, n_clusters, class_sep, balance)
+                    self.datasets[key] = Dataset.from_SkLearn(balance, self.classifier, n_features, n_clusters,
+                                                              class_sep)
+                    dir_path = self._build_directory_path("SkLearn", n_features, n_clusters, class_sep, balance)
+                    self.classifiers[key] = self._load_classifier_from_directory(dir_path)
+        else:
+            for n_features in self.n_features_list:
+                for n_clusters in self.clusters_list:
+                    for class_sep in self.class_sep_list:
+                        for balance in self.balance_list:
+                            key = self._create_key(n_features, n_clusters, class_sep, balance)
+                            self.datasets[key] = Dataset.from_SkLearn(balance, self.classifier, n_features, n_clusters, class_sep)
+                            dir_path = self._build_directory_path("SkLearn", n_features, n_clusters, class_sep, balance)
+                            self.classifiers[key] = self._load_classifier_from_directory(dir_path)
 
     def _load_kaggle_datasets(self):
         for balance in self.balance_list:

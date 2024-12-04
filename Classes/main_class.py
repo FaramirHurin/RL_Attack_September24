@@ -152,7 +152,10 @@ def run_experiments(
     n_experiments: int,
     n_steps: int,
     device_name: str,
+    use_sklearn_precombinations: bool = False,
+
 ):
+
     for experiment_number in range(first_experiment_num, first_experiment_num + n_experiments):
         print(f"Starting experiments number {experiment_number}")
         for classifier_name in classifier_names:
@@ -165,7 +168,7 @@ def run_experiments(
                     class_sep_list=class_sep_list,
                     balance_list=balance_list,
                 )
-                datasets, classifiers = dataset_loader.load()
+                datasets, classifiers = dataset_loader.load(use_sklearn_precombinations=use_sklearn_precombinations)
 
                 for key in datasets.keys():
                     dataset = datasets[key]
