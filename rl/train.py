@@ -1,16 +1,11 @@
 from marlenv import Transition
-from Classes import util
 from Classes.fraud_env import FraudEnv
-# from.agents.continuous_bandit import ContinuousBandit
-# from Classes.Eventually_to_drop.quantile_forest import QuantileForest_Bandit
-from rl.agents import  PPO
+from rl.agents import PPO
 import numpy as np
 import logging
 
+
 def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
-    print('N steps are ' + str(n_steps))
-    logging.debug('We have this number of feasible features ' + str(agent.policy.n_actions))
-    agent = agent.to(util.get_device())
     episode_num = 0
     scores = []
     time_step = 0
@@ -27,8 +22,9 @@ def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
                 obs_, reward, done, truncated, _ = env.step(action)
 
                 # saving reward and is_terminals
-                agent.store(Transition(obs, action, reward, done, {}, obs_, truncated,
-                                       action_probs=action_logprob)) #, probs=action_logprob
+                agent.store(
+                    Transition(obs, action, reward, done, {}, obs_, truncated, action_probs=action_logprob)
+                )  # , probs=action_logprob
                 agent.update()
                 obs = obs_
                 score += reward
@@ -50,6 +46,7 @@ def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
         # In that case, we just pad the scores with 0s to match the DataFrame shape
         scores = scores + [0] * (n_steps - len(scores))
     return np.array(scores)
+
 
 """
 def train_bandit(agent: QuantileForest_Bandit, env: FraudEnv, n_steps: int):

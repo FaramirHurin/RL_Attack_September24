@@ -33,10 +33,10 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
 
 
 class ActorCritic(torch.nn.Module):
-    def __init__(self, state_size: int, n_actions: int):
+    def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super(ActorCritic, self).__init__()
         self.n_actions = n_actions
-        self.device = torch.device("cuda")
+        self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
         n_action_outputs = n_actions + n_actions**2
         INNER_SIZE_ACTIONS = 32

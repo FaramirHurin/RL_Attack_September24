@@ -55,8 +55,3 @@ def generate_SKLearn_Data(n_samples, dimensions_list, clusters_list, sep_classes
             parent_dir = os.path.abspath(".")
             path_to_save = os.path.join(parent_dir, "Dataset", "SkLearn_Dataset", filename)
             df.to_csv(path_to_save, index=False)
-
-
-print("Starting")
-# generate_SKLearn_Data(n_samples=20000, dimensions_list=[16, 32, 64], clusters_list=[1, 8, 16], sep_classes_list=[0.5, 1, 2, 8])
-DEBUG = 0

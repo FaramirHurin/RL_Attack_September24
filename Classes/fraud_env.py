@@ -19,8 +19,8 @@ class FraudEnv(MARLEnv):
         c: list,
         classifier: RandomForestClassifier | MLPClassifier,
         reward_type: Literal["probability", "label"],
-        min_values: np.array,
-        max_values: np.array,
+        min_values: np.ndarray,
+        max_values: np.ndarray,
     ):
         """
         Args:
@@ -31,7 +31,6 @@ class FraudEnv(MARLEnv):
             - reward_type: The type of reward to use. Either "probability" or "label".
         """
         self.transactions = transactions
-        features = self.transactions.columns
         self.known_features = k
         self.unknown_features = u
         self.actions = c

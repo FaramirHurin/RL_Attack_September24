@@ -1,79 +1,75 @@
+import typed_argparse as tap
 from Dataset.SkLearn_Dataset.DataSet import generate_SKLearn_Data
 from Dataset.Kaggle_Dataset.generateKaggle import generate_kaggle_dataset
 from Dataset.Generator_Dataset.generate_Generator_dataset import generate_generator_dataset
 from Classifiers.train_classifiers import fit_and_store_all_classifiers
-from Classes.main_class import run_all_experiments
-import Visualization.average_results as avg
-import Visualization.plot_results as plot_results
+from Classes.main_class import run_experiments
 import os
-import torch.multiprocessing as mp
-import torch
-import datetime
 
 GENERATE_DATASETS = False
 TRAIN_CLASSIFIERS = False
 
 dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
-n_features_list = [16, 32] #64,
-clusters_list = [1, 16]  # [1, 8, 16]
-class_sep_list = [0.5, 8]  # [0.5, 1, 2, 8]
-balance_list = [0.1, 0.5]  # [ 0.1, 0.5]
-classifier_names = ["RF"]  # [ 'DNN', 'RF']
+n_features_list = [16, 32, 64]
+clusters_list = [1, 8, 16]
+class_sep_list = [0.5, 1, 2, 8]
+balance_list = [0.1, 0.5]
+classifier_names = ["DNN", "RF"]
 min_max_quantile = 0.05
-N_REPETITIONS = 30  # 20
+N_REPETITIONS = 2  # Number of repetitions per individual worker
 N_STEPS = 4_000  # 0
-MULTI_THREAD = True
-PROCESS_PER_GPU = 2
-N_GPUS = max(torch.cuda.device_count(), 1)
-print("N GPUS " + str(N_GPUS))
-print(torch.cuda.is_available())
 
 
-date_time = str(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
-print(date_time)
-root_folder = date_time  # /logs/date_time  ../logs/2024-11-18-20-00-24
-out_path = "averaged_results/averaged_results"
-print(date_time)
+class Args(tap.TypedArgs):
+    run_num: int = tap.arg(help="Number of the run")
+    logdir: str = tap.arg(help="Directory to store the logs")
+
+    @property
+    def device_name(self) -> str:
+        import torch
+
+        n_gpus = torch.cuda.device_count()
+        if n_gpus == 0:
+            return "cpu"
+        return f"cuda:{self.run_num % n_gpus}"
+
+    @property
+    def seed(self) -> int:
+        return self.run_num
 
 
-if GENERATE_DATASETS:
-    generate_SKLearn_Data(n_samples=50000, dimensions_list=[16, 32, 64], clusters_list=[1, 8, 16], sep_classes_list=[0.5, 1, 2, 8])
-    generate_kaggle_dataset()
-    generate_generator_dataset()
+def main(args: Args):
+    if GENERATE_DATASETS:
+        generate_SKLearn_Data(
+            n_samples=50000,
+            dimensions_list=n_features_list,
+            clusters_list=clusters_list,
+            sep_classes_list=class_sep_list,
+        )
+        generate_kaggle_dataset()
+        generate_generator_dataset()
 
-if TRAIN_CLASSIFIERS:
-    fit_and_store_all_classifiers()
+    if TRAIN_CLASSIFIERS:
+        fit_and_store_all_classifiers()
 
-if __name__ == "__main__":
-    mp.set_start_method("spawn")
-    run_all_experiments(
-        date_time,
-        dataset_types,
-        n_features_list,
-        clusters_list,
-        class_sep_list,
-        balance_list,
-        classifier_names,
-        min_max_quantile,
-        N_REPETITIONS,
-        N_STEPS,
-        PROCESS_PER_GPU,
-        N_GPUS,
-        MULTI_THREAD,
+    if not args.logdir.startswith("logs"):
+        args.logdir = os.path.join("logs", args.logdir)
+    os.makedirs(args.logdir, exist_ok=True)
+    run_experiments(
+        logdir=args.logdir,
+        dataset_types=dataset_types,
+        n_features_list=n_features_list,
+        clusters_list=clusters_list,
+        class_sep_list=class_sep_list,
+        balance_list=balance_list,
+        classifier_names=classifier_names,
+        min_max_quantile=min_max_quantile,
+        first_experiment_num=args.run_num * N_REPETITIONS,
+        n_experiments=N_REPETITIONS,
+        n_steps=N_STEPS,
+        device_name=args.device_name,
     )
 
-"""
-avg.average_over_allDatasets(os.path.join("logs", date_time), os.path.join("Visualization", "averaged_results", date_time))
 
-folder = os.path.join(os.getcwd(), "Visualization", "averaged_results", date_time)
-ppo_results, best_other = plot_results.reorganize_results(
-    folder, "RF", "Generator", "balance=0.5", "n_features=64", "_n_clusters=16", "_class_sep=2_"
-)
-plot_results.plot(ppo_results, best_other)
-folder = os.path.join(os.getcwd(), 'Visualization', 'averaged_results', date_time)
-ppo_results, best_other, all_baselines = plot_results.reorganize_results(folder, 'RF', 'Generator',
-                                       'balance=0.1', 'n_features=64', '_n_clusters=16',
-                                       '_class_sep=2_')
-plot_results.plot_baselines(all_baselines)
-#plot_results.plot(ppo_results, best_other)
-"""
+if __name__ == "__main__":
+    tap.Parser(Args).bind(main).run()
