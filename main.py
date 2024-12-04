@@ -14,9 +14,9 @@ GENERATE_DATASETS = False
 TRAIN_CLASSIFIERS = False
 
 dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
-n_features_list = [16, 32, 64]
-clusters_list = [1, 8, 16]  # [1, 8, 16]
-class_sep_list = [0.5, 2, 8]  # [0.5, 1, 2, 8]
+n_features_list = [16, 64] #32,
+clusters_list = [1, 16]  # [1, 8, 16]
+class_sep_list = [0.5, 8]  # [0.5, 1, 2, 8]
 balance_list = [0.1, 0.5]  # [ 0.1, 0.5]
 classifier_names = ["RF", "DNN"]  # [ 'DNN', 'RF']
 min_max_quantile = 0.05

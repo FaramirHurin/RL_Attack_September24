@@ -33,7 +33,7 @@ def train_agent(agent: PPO, env: FraudEnv, n_steps: int):
                 obs = obs_
                 score += reward
             scores.append(score)
-            if episode_num % 50 == 0:
+            if episode_num % 100 == 0:
                 logging.debug(f"Episode {episode_num} - AVG score: {np.mean(scores[-100:]):.3f}")
                 print(f"Episode {episode_num} - AVG score: {np.mean(scores[-100:]):.3f}")
 
