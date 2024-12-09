@@ -35,19 +35,19 @@ def process_generator_columns(df):
     return combinations
 
 
-def sample_columns(df, seed):
-    random.seed(seed)
+def sample_columns(df): #, seed=42
+    #random.seed(seed)
     all_columns = df.columns
 
     columns_number = len(df.columns)
-    eighth =  math.floor(columns_number / 8)
-    u_values =  np.array(range(7))  * eighth
-    k_values =  np.array(range(7)) * eighth
+    forth =  math.floor(columns_number / 4)
+    u_values =  np.array(range(3))  * forth
+    k_values =  np.array(range(3)) * forth
     results = []
     combinations = []
     for u in u_values:
         for k in k_values:
-            if u + k <  8 * eighth and u + k > 3 * eighth:
+            if u + k <  4 * forth:
                 combination = {'k_size': k, 'u_size': u}
                 combinations.append(combination)
 
@@ -72,12 +72,12 @@ def sample_columns(df, seed):
     return results
 
 
-def get_column_combinations(dataset_type: str, df: pl.DataFrame, seed=42):
+def get_column_combinations(dataset_type: str, df: pl.DataFrame): #, seed=42
     match dataset_type:
         case 'SkLearn':
-            return sample_columns(df, seed)
+            return sample_columns(df)
         case 'Kaggle':
-            return sample_columns(df, seed)
+            return sample_columns(df)
         case 'Generator':
             return process_generator_columns(df)
         case _:

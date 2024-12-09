@@ -9,11 +9,11 @@ import os
 GENERATE_DATASETS = False
 TRAIN_CLASSIFIERS = False
 
-dataset_types = ["Generator", "Kaggle", "SkLearn"]  # Kaggle  Generator SkLearn
+dataset_types = ["Kaggle"]  # Kaggle  Generator SkLearn
 n_features_list = [16,  64] #32,
 clusters_list = [1, 16]  # 8,
 class_sep_list = [ 1, 8]  #0.5, # 2,
-balance_list = [0.1, 0.5]
+balance_list = [0.5] #0.1,
 use_sklearn_precombinations=True
 
 classifier_names = ["DNN", "RF"]
@@ -76,3 +76,7 @@ def main(args: Args):
 
 if __name__ == "__main__":
     tap.Parser(Args).bind(main).run()
+"""
+if __name__ == "__main__":
+    main(Args(run_num=1, logdir="logs/local_run2"))
+"""

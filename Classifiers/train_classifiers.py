@@ -4,7 +4,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import Normalizer
 from typing import Literal
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import classification_report
 import pickle
 import os
@@ -19,7 +19,8 @@ def optimally_fit_classifier(classifier_class, grid, train, test):
     y_test = test["label"]
 
     classifier = classifier_class()
-    grid_search = GridSearchCV(estimator=classifier, param_grid=grid, cv=5, scoring="f1", n_jobs=-1, verbose=2)
+    grid_search = RandomizedSearchCV (estimator=classifier, param_distributions=grid, n_iter=6,
+                               cv=5, scoring="f1", n_jobs=-1, verbose=2)
     grid_search.fit(X_train, y_train)
 
     best_clf = grid_search.best_estimator_
@@ -233,7 +234,7 @@ def fit_and_store_all_classifiers():
     }  # , 'BRF': BalancedRandomForestClassifier 'dnn': MLPClassifier, ,
     classifier_types = ["RF", "DNN"]  # , 'BRF'
 
-    fraud_fractions = [0.1, 0.5]  # 0.002, 0.1,
-    fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, "SkLearn", normalize=True)
+    fraud_fractions = [0.5]  # 0.002, 0.1,
+    # fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, "SkLearn", normalize=True)
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, "Generator", normalize=True)
     fit_and_store_classifiers(fraud_fractions, classifier_types, classifier_classes, grids, "Kaggle", normalize=True)
