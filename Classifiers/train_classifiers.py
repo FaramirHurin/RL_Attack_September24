@@ -8,6 +8,7 @@ from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import classification_report
 import pickle
 import os
+from Defenses.robustClassifiers import EnsembleAlgorithm
 
 print(os.getcwd())
 

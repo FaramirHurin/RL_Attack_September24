@@ -73,10 +73,9 @@ def main(args: Args):
         use_sklearn_precombinations=use_sklearn_precombinations
     )
 
-
+"""
 if __name__ == "__main__":
     tap.Parser(Args).bind(main).run()
 """
 if __name__ == "__main__":
     main(Args(run_num=1, logdir="logs/local_run2"))
-"""

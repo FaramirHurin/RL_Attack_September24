@@ -58,6 +58,7 @@ class PPO(Agent):
         self.time_step = 0
         self.update_interval = update_interval
         self.parameters = self.policy.parameters()
+        DEBUG = 0
 
     def select_action(self, obs_data: np.ndarray):
         with torch.no_grad():

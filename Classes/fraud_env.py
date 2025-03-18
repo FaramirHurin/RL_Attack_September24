@@ -1,10 +1,11 @@
+import copy
 from typing import Literal
 import numpy as np
 import polars as pl
 from marlenv import MARLEnv, ContinuousActionSpace, Observation
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
-
+from Defenses.robustClassifiers import EnsembleAlgorithm
 
 class FraudEnv(MARLEnv):
     """
@@ -63,9 +64,14 @@ class FraudEnv(MARLEnv):
         transaction = self.transactions[self.state]
         for col, value in zip(self.actions, actions):
             transaction[0, col] = value  # .to('cpu').numpy()
+        original_transaction = copy.copy(transaction)
         transaction = transaction.to_numpy()
         if self.class_reward:
-            label = self.classifier.predict(transaction)[0]
+            if type(self.classifier) == EnsembleAlgorithm:
+                cleanX = original_transaction.drop(self.actions)
+                label = self.classifier.predict(cleanX.to_numpy(), transaction)[0]
+            else:
+                label = self.classifier.predict(transaction)[0]
             reward = 1.0 - label  # 1 if the transaction is classified as legit, 0 otherwise
         else:
             legit_proba = self.classifier.predict_proba(transaction)[0, 0]
