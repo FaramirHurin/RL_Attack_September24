@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import polars as pl
 from sklearn.mixture import GaussianMixture
 
+
 class DataGenerator(ABC):
     @abstractmethod
     def generate_batch(self, batch_size) -> NDArray[np.float64]:
@@ -90,7 +91,7 @@ class BaselineAgent:
             case _:
                 raise ValueError("Invalid generation method")
 
-    def select_actions_batch(self, batch_size: int) -> np.ndarray:
+    def select_actions_batch(self, batch_size: int):
         to_return = self.generator.generate_batch(batch_size)
         to_return = pl.DataFrame(pd.DataFrame(to_return, columns=self.train_X.columns))
         return to_return
