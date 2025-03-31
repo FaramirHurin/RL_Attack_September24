@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from pandas import Series
+
 from .transaction import Transaction
 from .terminal import Terminal
 from .card_info import CardInfo
@@ -49,8 +51,8 @@ class Banksys:
     def classify(self, step: StepData) -> bool:
         terminal = self.get_closest_terminal(step.terminal_x, step.terminal_y)
         card = self.cards[step.card_id]
-        agg_terminal = self.compute_terminal_aggregated_features(terminal, step.timestamp)
-        agg_card = self.compute_card_aggregated_features(step, step.timestamp)
+        agg_terminal: pd.Series = self.compute_terminal_aggregated_features(terminal, step.timestamp)
+        agg_card: pd.Series = self.compute_card_aggregated_features(step, step.timestamp)
 
         day = self.compute_day(step.timestamp)
         hour = self.compute_hour(step.timestamp)
@@ -82,7 +84,7 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.DataFrame:
+    def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:
 
         columns_names_avg = {}
         columns_names_count = {}
@@ -106,8 +108,7 @@ class Banksys:
         return trx
 
 
-
-    def compute_card_aggregated_features(self, step: StepData, current_time: float) -> pd.DataFrame:
+    def compute_card_aggregated_features(self, step: StepData, current_time: float) -> pd.Series:
         columns_names_avg = {}
         columns_names_count = {}
 
@@ -122,17 +123,21 @@ class Banksys:
             columns_names_avg[days] = card_transactions_days.mean()
             columns_names_count[days] = card_transactions_days.count()
 
-        return pd.concat(columns_names_avg, columns_names_count)
+        trx = pd.Series()
+        for day in columns_names_avg.keys():
+            # TODO Correct naming of columns
+            trx['AVG_'+str(day)] = columns_names_avg[day]
+            trx['COUNT_'+str(day)] = columns_names_count[day]
+        return trx
 
 
     def add_transaction(self, transaction: Transaction):
-        """
-        Add the transaction to the list of transactions.
-        """
         self.cards_transactions[transaction.card.id] = \
             self.cards_transactions[transaction.card.id].append(transaction)
         self.terminals_transactions[transaction.terminal.id] = \
             self.terminals_transactions[transaction.terminal.id].append(transaction)
+        # This allows for possible retraining of the classifier
+        self.transactions_df = self.transactions_df.append(transaction)
 
     #TODO Check if this works correctly
     def compute_day(self, timestamp: float) -> int:
