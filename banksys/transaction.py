@@ -12,6 +12,9 @@ class Transaction:
     terminal: Terminal
     is_online: bool
     card: CardInfo
+    day: int
+    hour: int
+
 
     def to_list(self):
         return list(astuple(self))

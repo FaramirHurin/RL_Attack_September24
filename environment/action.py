@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
 
-
 @dataclass
 class Action:
     amount: float
