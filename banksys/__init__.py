@@ -1,12 +1,14 @@
-from .card_info import CardInfo
+from .card import Card
 from .terminal import Terminal
 from .transaction import Transaction
 from .banksys import Banksys
+from .classification import ClassificationSystem
 
 
 __all__ = [
-    "CardInfo",
+    "Card",
     "Terminal",
     "Transaction",
     "Banksys",
+    "ClassificationSystem",
 ]

@@ -1,49 +1,43 @@
-import numpy as np
-from dataclasses import dataclass, astuple
-from .card_info import CardInfo
-from .terminal import Terminal
-from environment import StepData
+from dataclasses import dataclass
+from datetime import datetime
+
+
+N_MINUTES_IN_DAY = 24 * 60
 
 
 @dataclass
 class Transaction:
+    FEATURE_NAMES = ["amount", "hour_ratio", "is_online"] + [f"day_of_week_{i}" for i in range(7)]
+
     amount: float
-    timestamp: float
-    terminal: Terminal
+    timestamp: datetime
+    terminal_id: int
     is_online: bool
-    card: CardInfo
-    day: int
-    hour: int
-
-
-    def to_list(self):
-        return list(astuple(self))
-
-    def to_numpy(self):
-        return np.array(astuple(self), dtype=np.float32)
+    card_id: int
 
     @property
-    def terminal_x(self):
-        return self.terminal.x
+    def features(self):
+        return [self.amount, self.hour_ratio, float(self.is_online), *self.one_hot_day_of_week]
+
+    def time_ratio(self, start: datetime, end: datetime):
+        """
+        Calculate the ratio of the transaction time to the time interval.
+        """
+        total_seconds = (end - start).total_seconds()
+        if total_seconds == 0:
+            return 0
+        return (self.timestamp - start).total_seconds() / total_seconds
 
     @property
-    def terminal_y(self):
-        return self.terminal.y
+    def day_of_week(self):
+        return self.timestamp.weekday()
 
     @property
-    def customer_x(self):
-        return self.card.customer_x
+    def one_hot_day_of_week(self):
+        one_hot = [0.0] * 7
+        one_hot[self.day_of_week] = 1.0
+        return one_hot
 
     @property
-    def customer_y(self):
-        return self.card.customer_y
-
-    @staticmethod
-    def from_step(step: StepData, terminal: Terminal):
-        return Transaction(
-            amount=step.amount,
-            timestamp=step.timestamp,
-            terminal=terminal,
-            is_online=step.action.is_online,
-            card=CardInfo.from_array(step.card_id),
-        )
+    def hour_ratio(self):
+        return (self.timestamp.hour * 60 + self.timestamp.minute) / N_MINUTES_IN_DAY

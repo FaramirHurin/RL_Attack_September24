@@ -1,4 +1,4 @@
-from banksys import Terminal, Transaction, CardInfo, Banksys
+from banksys import Terminal, Card
 from .action import Action
 import random
 import numpy as np
@@ -7,15 +7,18 @@ import numpy.typing as npt
 
 
 class CardSimEnv:
-    def __init__(self, system: Banksys, t_max: float = 60 * 24 * 7, customer_location_is_known: bool = False):
+    def __init__(self, system, t_max: float = 60 * 24 * 7, customer_location_is_known: bool = False):
         self.terminals = dict[tuple[float, float], Terminal]()
         """Dictionary of terminals indexed by (x, y) coordinates"""
-        self.cards = list[CardInfo]()
+        self.cards = list[Card]()
         """List of all possible cards. One is randomly taken as current card at each reset."""
+        from banksys import Transaction, Banksys
+
         self.transaction_queue = list[tuple[Transaction, Terminal]]()
         """List of transactions (ordered by timestamp) that will take place over the cours of an episode."""
         self.transaction_index = 0
         """Index of the next transaction to be processed."""
+        assert isinstance(system, Banksys), "System must be an instance of Banksys"
         self.system = system
         self.t = 0.0
         """Time in minutes"""

@@ -5,10 +5,12 @@
 
 import os
 import logging
+from banksys import Card, Terminal, Transaction
 import sys
 import time
 from pathlib import Path
 from typing import Optional, Union
+from datetime import datetime
 
 import pandas as pd
 import numpy as np
@@ -80,6 +82,7 @@ class Cardsim:
         fraud_rate: float = 0.01,
         lr_cap: Union[float, int] = 5,
         fraud_flag_threshold: float = 0.01,
+        n_payers: int = 10_000,
     ):
         """
         Create a payment transaction simulator.
@@ -253,7 +256,7 @@ class Cardsim:
         self.avalue_distributions = None
         self.payers = None
         self.payees = None
-        self.n_payers = None
+        self.n_payers = n_payers
         self.n_payees = None
         self.distances = None
         self.n_days = None
@@ -584,54 +587,35 @@ class Cardsim:
         else:
             return np.sqrt(np.log(1 + (sd**2 / mean**2)))
 
-    def generate_payer_profiles(self, n_payers: int):
-        """Generate payer profiles.
-
-        Parameters
-        ----------
-        n_payers : int
-            The number of payers to generate.
-        """
-        self.logger.info(f"Generating payer profiles for {n_payers} payers")
+    def generate_payer_profiles(self):
+        assert self.avalue_distributions is not None
+        self.logger.info(f"Generating payer profiles for {self.n_payers} payers")
         df = pd.DataFrame(
             {
-                "payer_id": range(n_payers),
-                "payer_x": self.payer_rng.integers(0, self.grid_size, n_payers),
-                "payer_y": self.payer_rng.integers(0, self.grid_size, n_payers),
-                "mean_frequency": self.payer_rng.choice(self.atxns_distributions, size=n_payers),  # type: ignore
+                "payer_id": range(self.n_payers),
+                "payer_x": self.payer_rng.integers(0, self.grid_size, self.n_payers),
+                "payer_y": self.payer_rng.integers(0, self.grid_size, self.n_payers),
+                "mean_frequency": self.payer_rng.choice(self.atxns_distributions, size=self.n_payers),  # type: ignore
             }
         )
-        assert self.avalue_distributions is not None
         sampled_indices = self.payer_rng.choice(self.avalue_distributions.index, size=len(df), replace=True)
 
         df["debit_mean"] = self.avalue_distributions.loc[sampled_indices, "dc_medians"].values
-
         df["debit_sd"] = self.avalue_distributions.loc[sampled_indices, "dc_mad"].values
-
         df["credit_mean"] = self.avalue_distributions.loc[sampled_indices, "cc_medians"].values
-
         df["credit_sd"] = self.avalue_distributions.loc[sampled_indices, "cc_mad"].values
-
         df["debit_mean_fraud"] = df["debit_mean"] * self.debit_fraud_mult
-
         df["credit_mean_fraud"] = df["credit_mean"] * self.credit_fraud_mult
 
         # Prep vars for lognormal distribution
         df["debit_ln_mu"] = Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=True)
-
         df["credit_ln_mu"] = Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=True)
-
         df["debit_ln_sd"] = Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=False)
-
         df["credit_ln_sd"] = Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=False)
-
         df["debit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["debit_mean_fraud"], df["debit_sd"], mu=True)
-
         df["credit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["credit_mean_fraud"], df["credit_sd"], mu=True)
 
-        self.n_payers = n_payers  # Store in class
-
-        self.payers = df
+        return df
 
     def generate_payee_profiles(self):
         """
@@ -743,7 +727,7 @@ class Cardsim:
 
         fields = ["day_index", "date", "payer_id"]
 
-        return exploded_df[fields].copy().reset_index(drop=True)
+        return exploded_df[fields].copy().reset_index(drop=True)  # type: ignore
 
     def calculate_cp_complement(self, p_x: np.ndarray, p_x_given_fraud: np.ndarray) -> np.ndarray:
         """Calculate the complement of the conditional probability for a given
@@ -1113,7 +1097,12 @@ class Cardsim:
 
         return fraud_flag
 
-    def simulate(self, n_payers: int = 10000, n_days: int = 365, start_date: str = "2023-01-01") -> pd.DataFrame | None:
+    def simulate(
+        self,
+        n_payers: int = 10000,
+        n_days: int = 365,
+        start_date: str = "2023-01-01",
+    ) -> tuple[list[Card], list[Terminal], list[Transaction], pd.Series]:
         """Run the payment transaction simulator.
 
         Parameters
@@ -1131,104 +1120,54 @@ class Cardsim:
         pd.DataFrame
             A data frame of payment transactions, features, and a fraud flag.
         """
-
         world_start = time.time()
 
         self.logger.info("Starting phase one: generating simulator world\n")
 
-        try:
-            self.generate_pmnt_distributions()
-            self.logger.info("\nGenerated payment distributions\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate payment distributions with error: {e}")
-            return
+        self.generate_pmnt_distributions()
+        self.logger.info("\nGenerated payment distributions\n")
 
-        try:
-            self.generate_payer_profiles(n_payers=n_payers)
-            self.logger.info("Generated payer profiles\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate payer profiles with error: {e}")
-            return
+        self.payers = self.generate_payer_profiles()
+        self.logger.info("Generated payer profiles\n")
 
-        try:
-            self.generate_payee_profiles()
-            self.logger.info("Generated payee profiles\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate payee profiles with error: {e}")
-            return
+        self.generate_payee_profiles()
+        self.logger.info("Generated payee profiles\n")
 
-        try:
-            self.calculate_distances()
-            self.logger.info("Calculated distance matrix\n")
-        except Exception as e:
-            self.logger.info(f"Failed to calculate distance matrix with error: {e}")
-            return
+        self.calculate_distances()
+        self.logger.info("Calculated distance matrix\n")
 
         world_end = time.time()
-
         self.world_runtime = world_end - world_start
-
         self.logger.info(f"Generated world in {round(self.world_runtime)} seconds\n")
-
         self.logger.info("Starting phase two: generating transactions within world\n")
-
         tx_start = time.time()
 
-        try:
-            df = self.generate_baseline_transactions(n_days=n_days, start_date=start_date)
-            self.logger.info("Generated baseline transactions\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate baseline transactions with error: {e}")
-            return
+        df = self.generate_baseline_transactions(n_days=n_days, start_date=start_date)
+        self.logger.info("Generated baseline transactions\n")
 
-        try:
-            df["credit_card"] = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
-            self.logger.info("Generated card type attribute\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate card type attribute with error: {e}")
-            return
+        df["credit_card"] = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
+        self.logger.info("Generated card type attribute\n")
 
-        try:
-            df["remote"] = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-            self.logger.info("Generated location type attribute\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate location type attribute with error: {e}")
-            return
+        df["remote"] = self.generate_payment_attribute(n_samples=len(df), atype="remote")
+        self.logger.info("Generated location type attribute\n")
 
-        try:
-            df["amount"] = self.generate_transaction_value(df)
-            self.logger.info("Generated transaction amount\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate transaction amount with error: {e}")
-            return
+        df["amount"] = self.generate_transaction_value(df)
+        self.logger.info("Generated transaction amount\n")
 
-        try:
-            df = self.generate_add_payee_distance(df)
-            self.logger.info("Generated and added payee distance")
-        except Exception as e:
-            self.logger.info(f"Failed to generate payee distance with error: {e}")
-            return
+        df = self.generate_add_payee_distance(df)
+        self.logger.info("Generated and added payee distance")
 
-        try:
-            self.generate_hourly_probabilities()
-            df["time_seconds"] = self.generate_transaction_time(n_samples=len(df))
-            df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
-            df["hour"] = df["date_time"].dt.hour
-            self.calculate_tod_likelihood_ratio(df)
-            self.logger.info("Generated transaction time\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate transaction time with error: {e}")
-            return
+        self.generate_hourly_probabilities()
+        df["time_seconds"] = self.generate_transaction_time(n_samples=len(df))
+        df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
+        df["hour"] = df["date_time"].dt.hour
+        self.calculate_tod_likelihood_ratio(df)
+        self.logger.info("Generated transaction time\n")
 
-        try:
-            df["fraud"] = self.generate_fraud()
-            self.logger.info("Generated fraud flag\n")
-        except Exception as e:
-            self.logger.info(f"Failed to generate fraud flag with error: {e}")
-            return
+        df["fraud"] = self.generate_fraud()
+        self.logger.info("Generated fraud flag\n")
 
         self.run_id = f"S{self.base_seed}P{n_payers}D{n_days}"
-
         df["run_id"] = self.run_id
 
         tx_end = time.time()
@@ -1238,23 +1177,21 @@ class Cardsim:
         self.simulator_runtime = self.world_runtime + self.transactions_runtime
         self.logger.info(f"Simulator completed in {round(self.simulator_runtime)} seconds\n")
 
-        vars = [
-            "run_id",
-            "day_index",
-            "date",
-            "time_seconds",
-            "hour",
-            "date_time",
-            "payer_id",
-            "payee_id",
-            "credit_card",
-            "remote",
-            "distance",
-            "amount",
-            "fraud",
-        ]
-
-        return df[vars]
+        transactions = list[Transaction]()
+        is_fraud = df["fraud"]
+        for _, row in df.iterrows():
+            dt = row["date_time"]
+            assert isinstance(dt, pd.Timestamp)
+            transactions.append(
+                Transaction(
+                    round(row["amount"], 2),
+                    dt.to_pydatetime(),
+                    row["payee_id"],
+                    row["remote"],
+                    row["payer_id"],
+                )
+            )
+        return self.get_cards(), self.get_terminals(), transactions, is_fraud
 
     # Convenience -------------------------------------------------------------
 
@@ -1334,3 +1271,17 @@ class Cardsim:
 
         if return_params:
             return df
+
+    def get_cards(self):
+        assert self.payers is not None, "Payer profiles not generated"
+        cards = list[Card]()
+        for _, (payer_id, payer_x, payer_y) in self.payers[["payer_id", "payer_x", "payer_y"]].iterrows():
+            cards.append(Card(payer_id, False, payer_x, payer_y))
+        return cards
+
+    def get_terminals(self):
+        assert self.payees is not None, "Terminal profiles not generated"
+        terminals = list[Terminal]()
+        for _, (payee_id, payee_x, payee_y) in self.payees[["payee_id", "payee_x", "payee_y"]].iterrows():
+            terminals.append(Terminal(payee_id, payee_x, payee_y))
+        return terminals
