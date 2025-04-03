@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 import numpy as np
 from datetime import datetime
-from .transaction import Transaction
-
+from transaction import Transaction
+from datetime import timedelta
 
 @dataclass
 class Terminal:
@@ -12,11 +12,11 @@ class Terminal:
     days_aggregation: tuple[int, ...]
     transactions: list[Transaction]
 
-    def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[int, ...] = (1, 7, 30)):
+    def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (1, 7)): #, 30
         self.id = id
         self.x = x
         self.y = y
-        self.days_aggregation = days_aggregation
+        self.days_aggregation:list[timedelta, ...] = [timedelta(days=day) for day in days_aggregation]
         self.transactions = []
 
     def add_transaction(self, transaction: Transaction):
@@ -24,28 +24,39 @@ class Terminal:
 
     @property
     def feature_names(self):
-        return ["x", "y"] + [f"terminal_agg_{days}" for days in self.days_aggregation]
+        prefix = 'TERMINAL_ID_'
+        nb = "NB_TX_"
+        risk = "RISK_"
+        suffix = "DAY_WINDOW"
+
+        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.days_aggregation]
+        AGGREGATE_RISK = [prefix + risk + str(days) + suffix for days in self.days_aggregation]
+
+        to_return = ["x", "y"] + AGGREGATE_NB + AGGREGATE_RISK
+
+        return to_return
+
+        #return ["x", "y"] + [f"terminal_agg_{days}" for days in self.days_aggregation]
 
     def features(self, current_time: datetime):
-        aggregated_features = [0.0 for _ in self.days_aggregation]
-        return np.array([self.x, self.y, *aggregated_features], dtype=np.float32)
-        # TODO: compute the aggregated features for the terminal from the past transactions
-        # columns_names_avg = {}
-        # columns_names_count = {}
+        nb:[float] = []
+        risk:[float] = []
 
-        # terminal_transactions = self.terminals_transactions[terminal.id]
-        # terminal_transactions = terminal_transactions[terminal_transactions["timestamp"] < current_time]
+        transactions = [transaction for transaction in self.transactions if transaction.timestamp < current_time]
 
-        # # Compute aggregated features for the terminal
-        # for days in self.days_aggregation:
-        #     # Select transactions from the last days
-        #     terminal_transactions_days = terminal_transactions[terminal_transactions["timestamp"] > current_time - days]
-        #     # Compute mean and count
-        #     columns_names_avg[days] = terminal_transactions_days.mean()
-        #     columns_names_count[days] = terminal_transactions_days.count()
+        for days in self.days_aggregation:
+            # Select transactions from the last days
+            trx_days = [transaction for transaction in transactions if transaction.timestamp >
+                                          current_time - days]
+            # Compute count
+            nb.append(len(trx_days))
 
-        # trx = pd.Series()
-        # for day in columns_names_avg.keys():
-        #     # TODO Correct naming of columns
-        #     trx["AVG_" + str(day)] = columns_names_avg[day]
-        #     trx["COUNT_" + str(day)] = columns_names_count[day]
+            # Compute risk
+            positive_transactions = [transaction for transaction in trx_days if transaction.label == 1]
+            if len(positive_transactions) == 0:
+                risk.append(0)
+            else:
+                # Compute the average amount of the transactions
+                risk.append(len(positive_transactions) / len(trx_days))
+
+        return np.array([self.x, self.y] + nb + risk, dtype=np.float32)

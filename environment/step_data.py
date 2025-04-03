@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from datetime import datetime
 from .action import Action
 
 
@@ -20,3 +20,8 @@ class StepData:
     @property
     def terminal_y(self):
         return self.action.terminal_y
+
+    def to_stamp(self) -> datetime:
+        # Uses timestamp to convert it to a timestamp
+        raise NotImplementedError("This method is not implemented yet.")
+        # return datetime.fromtimestamp(self.timestamp)

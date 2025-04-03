@@ -1,7 +1,8 @@
-from .transaction import Transaction
+from transaction import Transaction
 from dataclasses import dataclass
 import numpy as np
 from datetime import datetime
+from datetime import timedelta
 
 
 @dataclass
@@ -13,30 +14,55 @@ class Card:
     transactions: list[Transaction]
     days_aggregation: tuple[int, ...]
 
-    def __init__(self, id: int, is_credit: bool, customer_x: float, customer_y: float, days_aggregation: tuple[int, ...] = (1, 7, 30)):
+    def __init__(self, id: int, is_credit: bool, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (1, 7)): #, 30
         self.id = id
         self.is_credit = is_credit
-        self.customer_x = customer_x
-        self.customer_y = customer_y
+        self.x = x
+        self.y = y
+        self.days_aggregation: list[timedelta, ...] = [timedelta(days=day) for day in days_aggregation]
         self.transactions = []
-        self.days_aggregation = days_aggregation
 
-    def to_list(self):
-        return [self.is_credit, self.customer_x, self.customer_y]
-
-    def to_numpy(self):
-        return np.array(self.to_list(), dtype=np.float32)
 
     def add_transaction(self, transaction: Transaction):
         self.transactions.append(transaction)
 
-    def features(self, current_time: datetime):
-        """
-        # TODO: compute the aggregated features for the card from the past transactions"
-        """
-        aggregated_features = [0.0 for _ in self.days_aggregation]
-        return [float(self.is_credit), self.customer_x, self.customer_y] + aggregated_features
-
     @property
     def feature_names(self):
-        return ["is_credit", "customer_x", "customer_y"] + [f"card_agg_{days}" for days in self.days_aggregation]
+        prefix = 'CUSTOMER_ID_'
+        nb = "NB_TX_"
+        avg = "AVG_AMOUNT_"
+        suffix = "DAY_WINDOW"
+
+        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.days_aggregation]
+        AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in self.days_aggregation]
+
+        to_return = ["x", "y"] + AGGREGATE_NB + AGGREGATE_RISK
+
+        return to_return
+
+
+    def features(self, current_time: datetime):
+        nb:[float] = []
+        avg:[float] = []
+
+        transactions = [transaction for transaction in self.transactions if  transaction.timestamp < current_time]
+
+        for days in self.days_aggregation:
+            # Select transactions from the last days
+            trx_days = [transaction for transaction in transactions if transaction.timestamp >
+                                          current_time - days]
+            # Compute count
+            nb.append(len(trx_days))
+
+            # Compute mean
+            if len(trx_days) == 0:
+                avg.append(0)
+            else:
+                # Compute the average amount of the transactions
+                avg.append(np.mean([transaction.amount for transaction in trx_days]))
+        # Make an array of self.x, self.y, nb and avg
+        # Concatenate the arrays
+        to_return = [self.x, self.y] + nb + avg
+
+        return np.array([self.x, self.y] + nb + avg, dtype=np.float32)
+

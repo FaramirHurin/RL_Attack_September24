@@ -1120,6 +1120,7 @@ class Cardsim:
         pd.DataFrame
             A data frame of payment transactions, features, and a fraud flag.
         """
+        self.n_payers = n_payers
         world_start = time.time()
 
         self.logger.info("Starting phase one: generating simulator world\n")
@@ -1189,9 +1190,10 @@ class Cardsim:
                     row["payee_id"],
                     row["remote"],
                     row["payer_id"],
+                    row["fraud"]
                 )
             )
-        return self.get_cards(), self.get_terminals(), transactions, is_fraud
+        return self.get_cards(), self.get_terminals(), transactions # , is_fraud
 
     # Convenience -------------------------------------------------------------
 

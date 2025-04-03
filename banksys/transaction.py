@@ -1,19 +1,28 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-
 N_MINUTES_IN_DAY = 24 * 60
 
 
 @dataclass
 class Transaction:
-    FEATURE_NAMES = ["amount", "hour_ratio", "is_online"] + [f"day_of_week_{i}" for i in range(7)]
+    # FEATURE_NAMES = ["amount", "hour_ratio", "is_online"] + [f"day_of_week_{i}" for i in range(7)]
 
     amount: float
     timestamp: datetime
     terminal_id: int
     is_online: bool
     card_id: int
+    label: bool
+
+    def __init__(self, amount: float, timestamp: datetime, terminal_id: int, card_id: int,
+                 is_online: bool,  label: bool=False):
+        self.amount = amount
+        self.timestamp = timestamp
+        self.terminal_id = terminal_id
+        self.is_online = is_online
+        self.card_id = card_id
+        self.label = label
 
     @property
     def features(self):
