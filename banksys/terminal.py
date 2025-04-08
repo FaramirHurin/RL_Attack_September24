@@ -4,25 +4,24 @@ from datetime import datetime
 from datetime import timedelta
 
 from .transaction import Transaction
+from .has_ordered_transactions import HasOrderedTransactions
 
 
 @dataclass
-class Terminal:
+class Terminal(HasOrderedTransactions):
     id: int
     x: float
     y: float
     days_aggregation: tuple[timedelta, ...]
     transactions: list[Transaction]
+    """Transactions, ordered by timestamp"""
 
     def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))):
         self.id = id
         self.x = x
         self.y = y
         self.days_aggregation = days_aggregation
-        self.transactions = []
-
-    def add_transaction(self, transaction: Transaction):
-        self.transactions.append(transaction)
+        super().__init__()
 
     @property
     def feature_names(self):
@@ -35,21 +34,17 @@ class Terminal:
         AGGREGATE_RISK = [prefix + risk + str(days) + suffix for days in self.days_aggregation]
 
         to_return = ["terminal_x", "terminal_y"] + AGGREGATE_NB + AGGREGATE_RISK
-
         return to_return
-
-        # return ["x", "y"] + [f"terminal_agg_{days}" for days in self.days_aggregation]
 
     def features(self, current_time: datetime):
         nb = list[float]()
         risk = list[float]()
 
-        transactions = [transaction for transaction in self.transactions if transaction.timestamp < current_time]
-
-        for days in self.days_aggregation:
-            # Select transactions from the last days
-            trx_days = [transaction for transaction in transactions if transaction.timestamp > current_time - days]
-            # Compute count
+        for n_days in self.days_aggregation:
+            start_index = self._find_index(current_time - n_days)
+            stop_index = self._find_index(current_time)
+            # Select transactions from the last n_days
+            trx_days = self.transactions[start_index:stop_index]
             nb.append(len(trx_days))
 
             # Compute risk
@@ -59,5 +54,4 @@ class Terminal:
             else:
                 # Compute the average amount of the transactions
                 risk.append(len(positive_transactions) / len(trx_days))
-
         return np.array([self.x, self.y] + nb + risk, dtype=np.float32)

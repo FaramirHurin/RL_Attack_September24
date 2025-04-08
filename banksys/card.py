@@ -4,15 +4,17 @@ from datetime import datetime
 from datetime import timedelta
 
 from .transaction import Transaction
+from .has_ordered_transactions import HasOrderedTransactions
 
 
 @dataclass
-class Card:
+class Card(HasOrderedTransactions):
     id: int
     is_credit: bool
     customer_x: float
     customer_y: float
     transactions: list[Transaction]
+    """Transactions, ordered by timestamp"""
     days_aggregation: tuple[timedelta, ...]
 
     def __init__(
@@ -23,10 +25,7 @@ class Card:
         self.x = x
         self.y = y
         self.days_aggregation = days_aggregation
-        self.transactions = []
-
-    def add_transaction(self, transaction: Transaction):
-        self.transactions.append(transaction)
+        super().__init__()
 
     @property
     def feature_names(self):
@@ -45,12 +44,11 @@ class Card:
     def features(self, current_time: datetime):
         nb = list[float]()
         avg = list[float]()
-
-        transactions = [transaction for transaction in self.transactions if transaction.timestamp < current_time]
-
-        for days in self.days_aggregation:
-            # Select transactions from the last days
-            trx_days = [transaction for transaction in transactions if transaction.timestamp > current_time - days]
+        for n_days in self.days_aggregation:
+            start_index = self._find_index(current_time - n_days)
+            stop_index = self._find_index(current_time)
+            # Select transactions from the last n_days
+            trx_days = self.transactions[start_index:stop_index]
             # Compute count
             nb.append(len(trx_days))
 

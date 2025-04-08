@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, Optional, Union
 
 import pandas as pd
+import polars as pl
 import numpy as np
 from scipy.stats import lognorm, triang
 
@@ -325,7 +326,7 @@ class Cardsim:
             df["year"] = year
             dfs.append(df)
 
-        return pd.concat(dfs, ignore_index=True)
+        return pd.concat(dfs)
 
     def source_format_dcpc_data(self):
         """
@@ -561,7 +562,6 @@ class Cardsim:
             }
         )
         sampled_indices = self.payer_rng.choice(avalue_distributions.index, size=len(df), replace=True)
-
         df["debit_mean"] = avalue_distributions.loc[sampled_indices, "dc_medians"].values
         df["debit_sd"] = avalue_distributions.loc[sampled_indices, "dc_mad"].values
         df["credit_mean"] = avalue_distributions.loc[sampled_indices, "cc_medians"].values
@@ -745,6 +745,7 @@ class Cardsim:
         df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
         df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
         transaction_value = self.transaction_rng.lognormal(df["mu"], df["sigma"])
+        transaction_value = transaction_value.round(2)
 
         # Likelihood ratio calculations. Approximating probability with densities using PDF.
         p_x = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["mu"]))
@@ -1022,12 +1023,20 @@ class Cardsim:
         simulator_runtime = world_runtime + transactions_runtime
         self.logger.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
 
+        # Polars is (much) faster for this (≃20x)
+        df = pl.from_pandas(df)
         transactions = list[Transaction]()
         start = time.time()
-        for _, row in df.iterrows():
-            dt: pd.Timestamp = row["date_time"]
+        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in df.iter_rows():
             transactions.append(
-                Transaction(round(row["amount"], 2), dt.to_pydatetime(), row["payee_id"], row["remote"], row["payer_id"], row["fraud"])
+                Transaction(
+                    amount=amount,
+                    timestamp=date,
+                    terminal_id=payee_id,
+                    card_id=payer_id,
+                    is_online=is_remote,
+                    label=is_fraud,
+                )
             )
         self.logger.info(f"Created transaction objects in {time.time() - start} seconds")
         return self.get_cards(payers), self.get_terminals(payees), transactions
