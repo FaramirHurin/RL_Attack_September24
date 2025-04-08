@@ -97,7 +97,7 @@ class Banksys:
 
         terminal.add_transaction(transaction)
         card.add_transaction(transaction)
-        self.add_transaction(transaction)
+        self._add_transaction(transaction)
 
         return label
 
@@ -112,8 +112,9 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def add_transaction(self, transaction: Transaction):
-        self.transactions_df = self.transactions_df.append(transaction)
+    def _add_transaction(self, transaction: Transaction):
+        # Add the transaction to the dataframe self.transactions_df without using append
+        self.transactions_df.loc[len(self.transactions_df)] = transaction.features
 
     """
     def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:
