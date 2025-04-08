@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 # from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -23,7 +23,7 @@ def train(env: CardSimEnv, n_episodes: int = 1000):
 
 def main():
     simulator = Cardsim()
-    cards, terminals, transactions = simulator.simulate(n_days=50, n_payers=1000)
+    cards, terminals, transactions = simulator.simulate(n_days=50)
 
     # Sort and separate the last 100 transactions for testing
     transactions = sorted(transactions, key=lambda x: x.timestamp)
@@ -36,7 +36,6 @@ def main():
     system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], [])
     print("Transactions generated: ", len(transactions))
     banksys = Banksys(system, cards, terminals, transactions_train)
-    env = CardSimEnv(banksys, banksys.earliest_attackable_moment(), timedelta(days=7))
 
     # Test the add_transaction method
     current_size = len(banksys.transactions_df)

@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.15.2",
     "seaborn>=0.13.2",
     "torch>=2.5.1",
+    "tqdm>=4.67.1",
     "typed-argparse>=0.3.1",
 ]
 

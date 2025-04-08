@@ -2,6 +2,7 @@ import datetime
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from .card import Card
 from .classification import ClassificationSystem
@@ -28,7 +29,7 @@ class Banksys:
         self.feature_names = (
             ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
-        self._create_df_and_aggregate(transactions)
+        self.transactions_df = self._create_df_and_aggregate(transactions)
         self._setup(train_split)
 
     def earliest_attackable_moment(self) -> datetime.datetime:
@@ -40,22 +41,13 @@ class Banksys:
     def _create_df_and_aggregate(self, transactions: list[Transaction]):
         start = transactions[0].timestamp
         ndays_warmup = max(*self.cards[0].days_aggregation, *self.terminals[0].days_aggregation)
-
         rows = []
-        agg_count = 0
-        for t in transactions:
-            self.terminals[t.terminal_id].add_transaction(t)
-            self.cards[t.card_id].add_transaction(t)
+        for t in tqdm(transactions):
+            self._add_transaction(t)
             if t.timestamp - start > ndays_warmup:
-                agg_count += 1
-                if agg_count % 1000 == 0:
-                    print(f"Aggregated {agg_count} transactions" + str(datetime.datetime.now()))
-                card_features = self.cards[t.card_id].features(t.timestamp)
-                terminal_features = self.terminals[t.terminal_id].features(t.timestamp)
-                assert t.label is not None, "Label must be set for the transaction used in the agredated features"
-                features = np.concatenate([t.features, card_features, terminal_features, [t.label]])
+                features = self._make_features(t, with_label=True)
                 rows.append(features)
-        self.transactions_df = pd.DataFrame(rows, columns=self.feature_names + ["label"])
+        return pd.DataFrame(rows, columns=self.feature_names + ["label"])
 
     def _setup(self, train_split: float):
         # Split the data into training and testing sets
@@ -115,8 +107,8 @@ class Banksys:
 
     def _add_transaction(self, transaction: Transaction):
         # Add the transaction to the dataframe self.transactions_df without using append
-        features = self._make_features(transaction, with_label=True)
-        self.transactions_df.loc[len(self.transactions_df)] = features
+        # features = self._make_features(transaction, with_label=True)
+        # self.transactions_df.loc[len(self.transactions_df)] = features
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 
