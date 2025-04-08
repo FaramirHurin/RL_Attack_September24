@@ -81,7 +81,6 @@ class Cardsim:
         fraud_rate: float = 0.01,
         lr_cap: Union[float, int] = 5,
         fraud_flag_threshold: float = 0.01,
-        n_payers: int = 10_000,
     ):
         """
         Create a payment transaction simulator.
@@ -197,10 +196,6 @@ class Cardsim:
             The percent threshold to use for the fraud flag odds. Threshold
             labels the top n% of transactions in terms of fraud odds. The
             default is 0.01.
-        Returns
-        -------
-            A `Cardsim` object.
-
         """
         # Configures logging level for the class
         self.logger = logging.getLogger(__name__ + ".Cardsim")
@@ -249,17 +244,6 @@ class Cardsim:
         self.lr_cap = lr_cap
         self.fraud_flag_threshold = fraud_flag_threshold
         # Allocate storage for key components
-        self.card_txns = None
-        self.card_txns_daily = None
-        self.atxns_distributions = None
-        self.avalue_distributions = None
-        self.payers = None
-        self.payees = None
-        self.n_payers = n_payers
-        self.n_payees = None
-        self.distances = None
-        self.n_days = None
-        self.transactions = None
         self.tod_pmf = None
         self.card_likelihood_ratio = None
         self.location_likelihood_ratio = None
@@ -268,12 +252,6 @@ class Cardsim:
         self.tod_likelihood_ratio = None
         self.fraud_posterior_odds = None
         self.run_id = None
-        # Run the DCPC process once per instantiation
-        self.source_format_dcpc_data()
-        # Performance testing
-        self.world_runtime = None
-        self.transactions_runtime = None
-        self.simulator_runtime = None
 
     def derive_seed(self, seed_modifier: int):
         """
@@ -360,31 +338,31 @@ class Cardsim:
     def source_format_dcpc_data(self):
         """
         Source and format the Diary of Consumer Payment Choice (DCPC) data.
-
-        Returns
-        -------
-        None. Populates self.card_txns and self.card_txns_daily.
         """
 
         # Import data ------------------
         self.logger.info("Sourcing DCPC data")
-        try:
-            indivs = Cardsim.import_dcpc_data(
-                collection="ind", start_year=self.dcpc_start_year, end_year=self.dcpc_end_year, folder=self.dcpc_folder
-            )
+        indivs = Cardsim.import_dcpc_data(
+            collection="ind",
+            start_year=self.dcpc_start_year,
+            end_year=self.dcpc_end_year,
+            folder=self.dcpc_folder,
+        )
 
-            daily = Cardsim.import_dcpc_data(
-                collection="day", start_year=self.dcpc_start_year, end_year=self.dcpc_end_year, folder=self.dcpc_folder
-            )
+        daily = Cardsim.import_dcpc_data(
+            collection="day",
+            start_year=self.dcpc_start_year,
+            end_year=self.dcpc_end_year,
+            folder=self.dcpc_folder,
+        )
 
-            transactions = Cardsim.import_dcpc_data(
-                collection="tran", start_year=self.dcpc_start_year, end_year=self.dcpc_end_year, folder=self.dcpc_folder
-            )
-            self.logger.info("Sourcing successful; formatting data")
-        except Exception as e:
-            self.logger.info(f"Failed to get DCPC data with error: {e}")
-            self.logger.info("Simulation ending")
-            return
+        transactions = Cardsim.import_dcpc_data(
+            collection="tran",
+            start_year=self.dcpc_start_year,
+            end_year=self.dcpc_end_year,
+            folder=self.dcpc_folder,
+        )
+        self.logger.info("Sourcing successful; formatting data")
 
         # Format individual data ------------------
         """
@@ -450,11 +428,8 @@ class Cardsim:
 
         card_txns_daily["txns_w"] = card_txns_daily["txns"] * card_txns_daily["dow_weight"]
 
-        # Finally, store data
-        self.card_txns = card_txns
-        self.card_txns_daily = card_txns_daily
-
         self.logger.info("DCPC data sourcing and formatting complete")
+        return card_txns, card_txns_daily
 
     def sample_payments(self, pmnt_series, m, n):
         """
@@ -509,7 +484,7 @@ class Cardsim:
         else:
             return mad
 
-    def generate_pmnt_distributions(self):
+    def generate_pmnt_distributions(self, card_txns: pd.DataFrame, card_txns_daily: pd.DataFrame):
         """
         Generate distributions of representative values for number of daily
         payment transactions and value of payments. Uses the mean for number
@@ -519,29 +494,25 @@ class Cardsim:
         value because we eventually draw payment values from a Lognormal
         distribution. We use the median and scaled median absolute deviation
         for representative payment values.
-
-        Returns
-        -------
-        None. Populates self.atxns_distributions and self.avalue_distributions
         """
-
         # Average number of cards transactions
-        assert self.card_txns_daily is not None, "DCPC data not sourced"
-        txns_samples = self.sample_payments(self.card_txns_daily["txns_w"], m=self.txns_samples_m, n=self.txns_samples_n)
-
-        self.atxns_distributions = np.mean(txns_samples, axis=1)
+        txns_samples = self.sample_payments(card_txns_daily["txns_w"], m=self.txns_samples_m, n=self.txns_samples_n)
+        atxns_distributions = np.mean(txns_samples, axis=1)
 
         # Average value of payments
-        assert self.card_txns is not None, "DCPC data not sourced"
         dc_value_samples = self.sample_payments(
-            self.card_txns["amnt_w"][self.card_txns["card_type"] == "Debit"], m=self.value_samples_m, n=self.value_samples_n
+            card_txns["amnt_w"][card_txns["card_type"] == "Debit"],
+            m=self.value_samples_m,
+            n=self.value_samples_n,
         )
 
         cc_value_samples = self.sample_payments(
-            self.card_txns["amnt_w"][self.card_txns["card_type"] == "Credit"], m=self.value_samples_m, n=self.value_samples_n
+            card_txns["amnt_w"][card_txns["card_type"] == "Credit"],
+            m=self.value_samples_m,
+            n=self.value_samples_n,
         )
 
-        self.avalue_distributions = pd.DataFrame(
+        avalue_distributions = pd.DataFrame(
             {
                 "dc_means": np.mean(dc_value_samples, axis=1),
                 "dc_stds": np.std(dc_value_samples, axis=1),
@@ -553,6 +524,7 @@ class Cardsim:
                 "cc_mad": Cardsim.calculate_mad(cc_value_samples),
             }
         )
+        return atxns_distributions, avalue_distributions
 
     @staticmethod
     def calculate_tvalue_params(mean, sd, mu=True):
@@ -586,23 +558,22 @@ class Cardsim:
         else:
             return np.sqrt(np.log(1 + (sd**2 / mean**2)))
 
-    def generate_payer_profiles(self):
-        assert self.avalue_distributions is not None
-        self.logger.info(f"Generating payer profiles for {self.n_payers} payers")
+    def generate_payer_profiles(self, n_payers: int, atxns_distributions: np.ndarray, avalue_distributions: pd.DataFrame):
+        self.logger.info(f"Generating payer profiles for {n_payers} payers")
         df = pd.DataFrame(
             {
-                "payer_id": range(self.n_payers),
-                "payer_x": self.payer_rng.integers(0, self.grid_size, self.n_payers),
-                "payer_y": self.payer_rng.integers(0, self.grid_size, self.n_payers),
-                "mean_frequency": self.payer_rng.choice(self.atxns_distributions, size=self.n_payers),  # type: ignore
+                "payer_id": range(n_payers),
+                "payer_x": self.payer_rng.integers(0, self.grid_size, n_payers),
+                "payer_y": self.payer_rng.integers(0, self.grid_size, n_payers),
+                "mean_frequency": self.payer_rng.choice(atxns_distributions, size=n_payers),  # type: ignore
             }
         )
-        sampled_indices = self.payer_rng.choice(self.avalue_distributions.index, size=len(df), replace=True)
+        sampled_indices = self.payer_rng.choice(avalue_distributions.index, size=len(df), replace=True)
 
-        df["debit_mean"] = self.avalue_distributions.loc[sampled_indices, "dc_medians"].values
-        df["debit_sd"] = self.avalue_distributions.loc[sampled_indices, "dc_mad"].values
-        df["credit_mean"] = self.avalue_distributions.loc[sampled_indices, "cc_medians"].values
-        df["credit_sd"] = self.avalue_distributions.loc[sampled_indices, "cc_mad"].values
+        df["debit_mean"] = avalue_distributions.loc[sampled_indices, "dc_medians"].values
+        df["debit_sd"] = avalue_distributions.loc[sampled_indices, "dc_mad"].values
+        df["credit_mean"] = avalue_distributions.loc[sampled_indices, "cc_medians"].values
+        df["credit_sd"] = avalue_distributions.loc[sampled_indices, "cc_mad"].values
         df["debit_mean_fraud"] = df["debit_mean"] * self.debit_fraud_mult
         df["credit_mean_fraud"] = df["credit_mean"] * self.credit_fraud_mult
 
@@ -616,27 +587,22 @@ class Cardsim:
 
         return df
 
-    def generate_payee_profiles(self):
+    def generate_payee_profiles(self, payers: pd.DataFrame):
         """
         Generate payee profiles.
-
-        Returns
-        ----------
-        None. Populates self.payees and self.n_payees
         """
-        assert self.payers is not None, "Payer profiles not generated"
-        n_payees = int(self.payers.shape[0] / self.payer_payee_factor)
+        n_payees = int(payers.shape[0] / self.payer_payee_factor)
         self.logger.info(f"Generating payee profiles for {n_payees} payees")
-        self.payees = pd.DataFrame(
+        payees = pd.DataFrame(
             {
                 "payee_id": range(n_payees),
                 "payee_x": self.payee_rng.integers(0, self.grid_size, n_payees),
                 "payee_y": self.payee_rng.integers(0, self.grid_size, n_payees),
             }
         )
-        self.n_payees = n_payees
+        return payees, n_payees
 
-    def calculate_distances(self):
+    def calculate_distances(self, payers: pd.DataFrame, payees: pd.DataFrame):
         """
         Calculate the distance matrix between payers and payees and related
         components.
@@ -651,17 +617,7 @@ class Cardsim:
         - Finally, convert to a long data frame with fields:
         - payer, payee, distance, payee_order
         - Long data frame will be merged with transactions data frame
-
-        Returns
-        ----------
-        None. Populates self.distances
         """
-        assert self.payees is not None, "Payee profiles not generated"
-        assert self.payers is not None, "Payer profiles not generated"
-
-        payers = self.payers
-        payees = self.payees
-
         distance_matrix = np.sqrt(
             (payers["payer_x"].values[:, None] - payees["payee_x"].values) ** 2
             + (payers["payer_y"].values[:, None] - payees["payee_y"].values) ** 2
@@ -669,20 +625,15 @@ class Cardsim:
 
         df = pd.DataFrame(distance_matrix)
         df = df.reset_index().rename(columns={"index": "payer_id"})
-
         df_melted = df.melt(id_vars=["payer_id"], var_name="payee_id", value_name="distance")
-
         # Convert payee_id to integer (it was initially a column name)
         df_melted["payee_id"] = df_melted["payee_id"].astype(int)
-
         df_melted = df_melted.sort_values(["payer_id", "distance"]).reset_index(drop=True)
-
         # Add the order of payees by distance for each payer for later use
         df_melted["payee_order"] = df_melted.groupby("payer_id").cumcount()
+        return df_melted
 
-        self.distances = df_melted
-
-    def generate_baseline_transactions(self, n_days: int, start_date: str) -> pd.DataFrame:
+    def generate_baseline_transactions(self, payers: pd.DataFrame, n_days: int, start_date: str) -> pd.DataFrame:
         """
         Generate the baseline transactions for the simulator. Produces a
         dataframe with payer IDs and dates corresponding to each transaction.
@@ -701,31 +652,20 @@ class Cardsim:
             to the number of transactions.
         """
 
-        self.n_days = n_days  # Store number of days
-
         dates_df = pd.DataFrame({"day_index": np.arange(n_days), "date": pd.date_range(start_date, periods=n_days)})
-
         payer_fields = ["payer_id", "mean_frequency"]
-
         # Cross-join so that each payer is associated with each date
-        assert self.payers is not None, "Payer profiles not generated"
-        dates_payers = pd.merge(dates_df, self.payers[payer_fields], how="cross")
-
+        dates_payers = pd.merge(dates_df, payers[payer_fields], how="cross")
         # The number of transactions in a day, drawn from Poisson
         dates_payers["n_txn"] = self.transaction_rng.poisson(dates_payers["mean_frequency"])
-
         # Only retain observations that have transactions
         dates_payers = dates_payers[dates_payers["n_txn"] > 0].reset_index(drop=True)
 
-        """
-        Explode the dataframe based on the number of transactions. Resulting
-        number of (non-unique) payer-date combinations should correspond to 
-        n_txn.
-        """
+        # Explode the dataframe based on the number of transactions. Resulting
+        # number of (non-unique) payer-date combinations should correspond to
+        # n_txn.
         exploded_df = dates_payers.reindex(dates_payers.index.repeat(dates_payers["n_txn"]))
-
         fields = ["day_index", "date", "payer_id"]
-
         return exploded_df[fields].copy().reset_index(drop=True)  # type: ignore
 
     def calculate_cp_complement(self, p_x: np.ndarray, p_x_given_fraud: np.ndarray) -> np.ndarray:
@@ -800,7 +740,7 @@ class Cardsim:
 
         return pmnt_attribute
 
-    def generate_transaction_value(self, df: pd.DataFrame) -> np.ndarray:
+    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame) -> np.ndarray:
         """
         Generate transaction values and likelihood ratios.
 
@@ -824,8 +764,7 @@ class Cardsim:
         # Merge the payment amount details
         amount_vars = ["payer_id", "debit_ln_mu", "debit_ln_sd", "debit_ln_mu_fraud", "credit_ln_mu", "credit_ln_sd", "credit_ln_mu_fraud"]
 
-        assert self.payers is not None, "Payer profiles not generated"
-        df = pd.merge(df, self.payers[amount_vars], how="left", on="payer_id")
+        df = pd.merge(df, payers[amount_vars], how="left", on="payer_id")
 
         # Create a single column pulling debit and credit params, where relevant
         df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"])
@@ -852,7 +791,7 @@ class Cardsim:
 
         return transaction_value
 
-    def generate_add_payee_distance(self, df: pd.DataFrame) -> pd.DataFrame:
+    def generate_add_payee_distance(self, df: pd.DataFrame, n_payees: int, distances: pd.DataFrame) -> pd.DataFrame:
         """
         Generate the payee distances and add them to the transactions data
         frame.
@@ -875,8 +814,7 @@ class Cardsim:
 
         # Set up min, max, and mode indices for triangular distributions
         min_index = 0
-        assert self.n_payees is not None, "Payee profiles not generated"
-        max_index = self.n_payees - 1  # zero-based indexing
+        max_index = n_payees - 1  # zero-based indexing
         inperson_mode = self.distance_mode_quantile["in_person"] * max_index
         remote_mode = self.distance_mode_quantile["remote"] * max_index
         fraud_mode = self.distance_mode_quantile["fraud"] * max_index
@@ -894,8 +832,7 @@ class Cardsim:
         df["payee_order"] = np.clip(np.round(drawn_index).astype(int), min_index, max_index)
 
         # Merge the payee IDs and distances
-        assert self.distances is not None
-        df = df.merge(self.distances, how="left", on=["payer_id", "payee_order"])
+        df = df.merge(distances, how="left", on=["payer_id", "payee_order"])
 
         """
         Distance likelihood ratio
@@ -1119,72 +1056,53 @@ class Cardsim:
         pd.DataFrame
             A data frame of payment transactions, features, and a fraud flag.
         """
-        self.n_payers = n_payers
+        self.logger.debug("Starting world generation")
         world_start = time.time()
-
-        self.logger.info("Starting phase one: generating simulator world\n")
-
-        self.generate_pmnt_distributions()
-        self.logger.info("\nGenerated payment distributions\n")
-
-        self.payers = self.generate_payer_profiles()
-        self.logger.info("Generated payer profiles\n")
-
-        self.generate_payee_profiles()
-        self.logger.info("Generated payee profiles\n")
-
-        self.calculate_distances()
-        self.logger.info("Calculated distance matrix\n")
+        card_txns, card_txns_daily = self.source_format_dcpc_data()
+        txn_dist, value_dist = self.generate_pmnt_distributions(card_txns, card_txns_daily)
+        payers = self.generate_payer_profiles(n_payers, txn_dist, value_dist)
+        payees, n_payees = self.generate_payee_profiles(payers)
+        distances = self.calculate_distances(payers, payees)
 
         world_end = time.time()
-        self.world_runtime = world_end - world_start
-        self.logger.info(f"Generated world in {round(self.world_runtime)} seconds\n")
-        self.logger.info("Starting phase two: generating transactions within world\n")
+        world_runtime = world_end - world_start
+        self.logger.info(f"Generated world in {world_runtime} seconds")
+        self.logger.info("Starting phase two: generating transactions within world")
         tx_start = time.time()
 
-        df = self.generate_baseline_transactions(n_days=n_days, start_date=start_date)
-        self.logger.info("Generated baseline transactions\n")
-
+        df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
         df["credit_card"] = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
-        self.logger.info("Generated card type attribute\n")
-
         df["remote"] = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-        self.logger.info("Generated location type attribute\n")
-
-        df["amount"] = self.generate_transaction_value(df)
-        self.logger.info("Generated transaction amount\n")
-
-        df = self.generate_add_payee_distance(df)
-        self.logger.info("Generated and added payee distance")
-
+        df["amount"] = self.generate_transaction_value(df, payers)
+        df = self.generate_add_payee_distance(df, n_payees, distances)
         self.generate_hourly_probabilities()
+
         df["time_seconds"] = self.generate_transaction_time(n_samples=len(df))
         df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
         df["hour"] = df["date_time"].dt.hour
-        self.calculate_tod_likelihood_ratio(df)
-        self.logger.info("Generated transaction time\n")
 
+        self.calculate_tod_likelihood_ratio(df)
         df["fraud"] = self.generate_fraud()
-        self.logger.info("Generated fraud flag\n")
 
         self.run_id = f"S{self.base_seed}P{n_payers}D{n_days}"
         df["run_id"] = self.run_id
 
         tx_end = time.time()
-        self.transactions_runtime = tx_end - tx_start
-        self.logger.info(f"Generated transactions in {round(self.transactions_runtime)} seconds\n")
+        transactions_runtime = tx_end - tx_start
+        self.logger.debug(f"Generated transactions in {transactions_runtime:.2f} seconds")
 
-        self.simulator_runtime = self.world_runtime + self.transactions_runtime
-        self.logger.info(f"Simulator completed in {round(self.simulator_runtime)} seconds\n")
+        simulator_runtime = world_runtime + transactions_runtime
+        self.logger.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
 
         transactions = list[Transaction]()
+        start = time.time()
         for _, row in df.iterrows():
-            dt = row["date_time"]
-            assert isinstance(dt, pd.Timestamp)
+            dt: pd.Timestamp = row["date_time"]
             transactions.append(
                 Transaction(round(row["amount"], 2), dt.to_pydatetime(), row["payee_id"], row["remote"], row["payer_id"], row["fraud"])
             )
-        return self.get_cards(), self.get_terminals(), transactions
+        self.logger.info(f"Created transaction objects in {time.time() - start} seconds")
+        return self.get_cards(payers), self.get_terminals(payees), transactions
 
     # Convenience -------------------------------------------------------------
 
@@ -1221,60 +1139,14 @@ class Cardsim:
             path = path + ".pkl"
             df.to_pickle(path)
 
-    def export_run_parameters(self, df: pd.DataFrame, folder: str, file_name: str, return_params: bool = True) -> pd.DataFrame | None:
-        """Export relevant run parameters.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            The transaction data
-        folder : str
-            The destination folder
-        file_name : str
-            The name of the file
-        return_params : bool, optional
-            Whether to return the dataframe, by default True
-
-        Returns
-        -------
-        pd.DataFrame
-            A data frame of run parameters
-        """
-
-        df = pd.DataFrame(
-            {
-                "run_id": [self.run_id],
-                "n_payers": [self.n_payers],
-                "n_payees": [self.n_payees],
-                "n_days": [self.n_days],
-                "n_obs": [len(df)],
-                "fraud_rate": [self.fraud_rate],
-                "runtime": [self.simulator_runtime],
-            }
-        )
-
-        path = f"{folder}/{file_name}.csv"
-
-        if os.path.isfile(path):
-            params = pd.read_csv(path)
-            df = pd.concat([params, df], ignore_index=True)
-            df = df.drop_duplicates(subset="run_id", keep="first")
-
-        df.to_csv(path, index=False)
-
-        if return_params:
-            return df
-
-    def get_cards(self):
-        assert self.payers is not None, "Payer profiles not generated"
+    def get_cards(self, payers: pd.DataFrame):
         cards = list[Card]()
-        for _, (payer_id, payer_x, payer_y) in self.payers[["payer_id", "payer_x", "payer_y"]].iterrows():
+        for _, (payer_id, payer_x, payer_y) in payers[["payer_id", "payer_x", "payer_y"]].iterrows():
             cards.append(Card(payer_id, False, payer_x, payer_y))
         return cards
 
-    def get_terminals(self):
-        assert self.payees is not None, "Terminal profiles not generated"
+    def get_terminals(self, payees: pd.DataFrame):
         terminals = list[Terminal]()
-        for _, (payee_id, payee_x, payee_y) in self.payees[["payee_id", "payee_x", "payee_y"]].iterrows():
+        for _, (payee_id, payee_x, payee_y) in payees[["payee_id", "payee_x", "payee_y"]].iterrows():
             terminals.append(Terminal(payee_id, payee_x, payee_y))
         return terminals
