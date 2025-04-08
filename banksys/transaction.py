@@ -13,10 +13,9 @@ class Transaction:
     terminal_id: int
     is_online: bool
     card_id: int
-    label: bool
+    label: bool | None
 
-    def __init__(self, amount: float, timestamp: datetime, terminal_id: int, card_id: int,
-                 is_online: bool,  label: bool=False):
+    def __init__(self, amount: float, timestamp: datetime, terminal_id: int, card_id: int, is_online: bool, label: bool | None = None):
         self.amount = amount
         self.timestamp = timestamp
         self.terminal_id = terminal_id

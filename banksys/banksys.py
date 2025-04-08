@@ -19,7 +19,7 @@ class Banksys:
         train_split: float = 0.9,
     ):
         # Sort transactions by timestamp
-        transactions = sorted(transactions, key=lambda t: t.timestamp)
+        self.transactions = sorted(transactions, key=lambda t: t.timestamp)
         self.clf = clf
         self.cards = cards
         self.terminals = terminals
@@ -30,6 +30,12 @@ class Banksys:
         )
         self._create_df_and_aggregate(transactions)
         self._setup(train_split)
+
+    def earliest_attackable_moment(self) -> datetime.datetime:
+        trx0 = self.transactions[0]
+        start_date = trx0.timestamp
+        n_days_warmup = max(*self.cards[0].days_aggregation, *self.terminals[0].days_aggregation)
+        return start_date + n_days_warmup
 
     def _create_df_and_aggregate(self, transactions: list[Transaction]):
         start = transactions[0].timestamp
@@ -46,6 +52,7 @@ class Banksys:
                     print(f"Aggregated {agg_count} transactions" + str(datetime.datetime.now()))
                 card_features = self.cards[t.card_id].features(t.timestamp)
                 terminal_features = self.terminals[t.terminal_id].features(t.timestamp)
+                assert t.label is not None, "Label must be set for the transaction used in the agredated features"
                 features = np.concatenate([t.features, card_features, terminal_features, [t.label]])
                 rows.append(features)
         self.transactions_df = pd.DataFrame(rows, columns=self.feature_names + ["label"])
@@ -69,6 +76,12 @@ class Banksys:
         y_pred = self.clf.predict(x_test)
         accuracy = np.mean(y_pred == y_test)
         print(f"Accuracy: {accuracy:.2f}")
+        # Print classifier feature importances
+        if hasattr(self.clf.ml_classifier, "feature_importances_"):
+            feature_importances = self.clf.ml_classifier.feature_importances_
+            print("Feature importances:")
+            for name, importance in zip(self.training_features, feature_importances):
+                print(f"{name}: {importance:.4f}")
 
     def _make_features(self, transaction: Transaction, with_label: bool) -> np.ndarray:
         terminal = self.terminals[transaction.terminal_id]
@@ -77,15 +90,17 @@ class Banksys:
         card_features = card.features(transaction.timestamp)
 
         if with_label:
+            assert transaction.label is not None, "Label must be set for the transaction used in the agredated features"
             return np.concatenate([transaction.features, terminal_features, card_features, [transaction.label]])
         return np.concatenate([transaction.features, terminal_features, card_features])
 
     def classify(self, transaction: Transaction) -> bool:
         trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
         trx = pd.DataFrame(trx_features, columns=self.feature_names)
-        transaction.label = self.clf.predict(trx).item()  # type: ignore
+        label: bool = self.clf.predict(trx).item()  # type: ignore
+        transaction.label = label
         self._add_transaction(transaction)
-        return transaction.label
+        return label
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
         closest_terminal = None
