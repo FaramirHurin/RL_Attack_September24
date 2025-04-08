@@ -10,7 +10,6 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, Union
-from datetime import datetime
 
 import pandas as pd
 import numpy as np
@@ -1102,7 +1101,7 @@ class Cardsim:
         n_payers: int = 10000,
         n_days: int = 365,
         start_date: str = "2023-01-01",
-    ) -> tuple[list[Card], list[Terminal], list[Transaction], pd.Series]:
+    ):
         """Run the payment transaction simulator.
 
         Parameters
@@ -1179,21 +1178,13 @@ class Cardsim:
         self.logger.info(f"Simulator completed in {round(self.simulator_runtime)} seconds\n")
 
         transactions = list[Transaction]()
-        is_fraud = df["fraud"]
         for _, row in df.iterrows():
             dt = row["date_time"]
             assert isinstance(dt, pd.Timestamp)
             transactions.append(
-                Transaction(
-                    round(row["amount"], 2),
-                    dt.to_pydatetime(),
-                    row["payee_id"],
-                    row["remote"],
-                    row["payer_id"],
-                    row["fraud"]
-                )
+                Transaction(round(row["amount"], 2), dt.to_pydatetime(), row["payee_id"], row["remote"], row["payer_id"], row["fraud"])
             )
-        return self.get_cards(), self.get_terminals(), transactions # , is_fraud
+        return self.get_cards(), self.get_terminals(), transactions
 
     # Convenience -------------------------------------------------------------
 

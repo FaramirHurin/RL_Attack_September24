@@ -1,13 +1,12 @@
-import time
-
-import pandas as pd
-import numpy as np
 import datetime
-from transaction import Transaction
-from terminal import Terminal
-from card import Card
-from classification import ClassificationSystem
-from environment import StepData
+
+import numpy as np
+import pandas as pd
+
+from .card import Card
+from .classification import ClassificationSystem
+from .terminal import Terminal
+from .transaction import Transaction
 
 
 class Banksys:
@@ -24,10 +23,11 @@ class Banksys:
         self.clf = clf
         self.cards = cards
         self.terminals = terminals
-        week_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        self.feature_names = ["amount", "hour_ratio"]+ week_days+ ["is_online"] +\
-                             self.cards[0].feature_names + \
-                             self.terminals[0].feature_names
+        self.label_feature = "label"
+        week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        self.feature_names = (
+            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
+        )
         self._create_df_and_aggregate(transactions)
         self._setup(train_split)
 
@@ -50,7 +50,7 @@ class Banksys:
                 rows.append(features)
         self.transactions_df = pd.DataFrame(rows, columns=self.feature_names + ["label"])
 
-    def _setup(self, train_split:float):
+    def _setup(self, train_split: float):
         # Split the data into training and testing sets
         tr_size = int(self.transactions_df.shape[0] * train_split)
         training_set = self.transactions_df.iloc[:tr_size, :]
@@ -58,9 +58,8 @@ class Banksys:
 
         # Define the features and label
         self.training_features = [col for col in training_set.columns if col != "label"]
-        self.label_feature = "label"
-        x_train = training_set[self.training_features].values
-        y_train = training_set[self.label_feature].values
+        x_train = training_set[self.training_features]
+        y_train = training_set[self.label_feature].to_numpy()
         self.clf.fit(x_train, y_train)
 
         x_test = testing_set[self.training_features]
@@ -71,35 +70,22 @@ class Banksys:
         accuracy = np.mean(y_pred == y_test)
         print(f"Accuracy: {accuracy:.2f}")
 
+    def _make_features(self, transaction: Transaction, with_label: bool) -> np.ndarray:
+        terminal = self.terminals[transaction.terminal_id]
+        card = self.cards[transaction.card_id]
+        terminal_features = terminal.features(transaction.timestamp)
+        card_features = card.features(transaction.timestamp)
 
-    def classify(self, step: StepData) -> bool:
-        terminal = self.get_closest_terminal(step.terminal_x, step.terminal_y)
-        card = self.cards[step.card_id]
-        timestamp = step.to_stamp()
-        terminal_features = terminal.features(timestamp)
-        card_features = card.features(timestamp)
+        if with_label:
+            return np.concatenate([transaction.features, terminal_features, card_features, [transaction.label]])
+        return np.concatenate([transaction.features, terminal_features, card_features])
 
-        # Create Transaction object
-        transaction = Transaction(step.amount, timestamp, terminal.id, card.id,  step.action.is_online)
-
-        # Compute the features for the transaction
-        day_of_week = transaction.day_of_week
-        hour = transaction.hour_ratio
-
-        # Concatenate all features
-        features = np.concatenate([transaction.amount,hour, day_of_week,
-                                   transaction.is_online, terminal_features, card_features])
-
-        trx = pd.Series(features, index=self.feature_names)
-
-        label = self.clf.predict(trx)
-        transaction.label = label
-
-        terminal.add_transaction(transaction)
-        card.add_transaction(transaction)
+    def classify(self, transaction: Transaction) -> bool:
+        trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
+        trx = pd.DataFrame(trx_features, columns=self.feature_names)
+        transaction.label = self.clf.predict(trx).item()  # type: ignore
         self._add_transaction(transaction)
-
-        return label
+        return transaction.label
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
         closest_terminal = None
@@ -114,7 +100,10 @@ class Banksys:
 
     def _add_transaction(self, transaction: Transaction):
         # Add the transaction to the dataframe self.transactions_df without using append
-        self.transactions_df.loc[len(self.transactions_df)] = transaction.features
+        features = self._make_features(transaction, with_label=True)
+        self.transactions_df.loc[len(self.transactions_df)] = features
+        self.terminals[transaction.terminal_id].add_transaction(transaction)
+        self.cards[transaction.card_id].add_transaction(transaction)
 
     """
     def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:
@@ -161,7 +150,6 @@ class Banksys:
             trx["COUNT_" + str(day)] = columns_names_count[day]
         return trx
     """
-
 
     """
     clf: ClassificationSystem

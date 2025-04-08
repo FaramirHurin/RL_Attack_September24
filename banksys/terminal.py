@@ -1,22 +1,24 @@
 from dataclasses import dataclass
 import numpy as np
 from datetime import datetime
-from transaction import Transaction
 from datetime import timedelta
+
+from .transaction import Transaction
+
 
 @dataclass
 class Terminal:
     id: int
     x: float
     y: float
-    days_aggregation: tuple[int, ...]
+    days_aggregation: tuple[timedelta, ...]
     transactions: list[Transaction]
 
-    def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (1, 7)): #, 30
+    def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))):
         self.id = id
         self.x = x
         self.y = y
-        self.days_aggregation:list[timedelta, ...] = [timedelta(days=day) for day in days_aggregation]
+        self.days_aggregation = days_aggregation
         self.transactions = []
 
     def add_transaction(self, transaction: Transaction):
@@ -24,7 +26,7 @@ class Terminal:
 
     @property
     def feature_names(self):
-        prefix = 'TERMINAL_ID_'
+        prefix = "TERMINAL_ID_"
         nb = "NB_TX_"
         risk = "RISK_"
         suffix = "DAY_WINDOW"
@@ -32,22 +34,21 @@ class Terminal:
         AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.days_aggregation]
         AGGREGATE_RISK = [prefix + risk + str(days) + suffix for days in self.days_aggregation]
 
-        to_return = ["x", "y"] + AGGREGATE_NB + AGGREGATE_RISK
+        to_return = ["terminal_x", "terminal_y"] + AGGREGATE_NB + AGGREGATE_RISK
 
         return to_return
 
-        #return ["x", "y"] + [f"terminal_agg_{days}" for days in self.days_aggregation]
+        # return ["x", "y"] + [f"terminal_agg_{days}" for days in self.days_aggregation]
 
     def features(self, current_time: datetime):
-        nb:[float] = []
-        risk:[float] = []
+        nb = list[float]()
+        risk = list[float]()
 
         transactions = [transaction for transaction in self.transactions if transaction.timestamp < current_time]
 
         for days in self.days_aggregation:
             # Select transactions from the last days
-            trx_days = [transaction for transaction in transactions if transaction.timestamp >
-                                          current_time - days]
+            trx_days = [transaction for transaction in transactions if transaction.timestamp > current_time - days]
             # Compute count
             nb.append(len(trx_days))
 
