@@ -9,7 +9,7 @@ from banksys import Card, Terminal, Transaction
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 import pandas as pd
 import numpy as np
@@ -243,14 +243,6 @@ class Cardsim:
         self.fraud_rate = fraud_rate
         self.lr_cap = lr_cap
         self.fraud_flag_threshold = fraud_flag_threshold
-        # Allocate storage for key components
-        self.tod_pmf = None
-        self.card_likelihood_ratio = None
-        self.location_likelihood_ratio = None
-        self.value_likelihood_ratio = None
-        self.distance_likelihood_ratio = None
-        self.tod_likelihood_ratio = None
-        self.fraud_posterior_odds = None
         self.run_id = None
 
     def derive_seed(self, seed_modifier: int):
@@ -689,7 +681,7 @@ class Cardsim:
 
         return p_x_given_not_fraud
 
-    def generate_payment_attribute(self, n_samples: int, atype: str = "credit_card") -> np.ndarray:
+    def generate_payment_attribute(self, n_samples: int, atype: Literal["credit_card", "remote"] = "credit_card"):
         """
         Generate a card type or location type payment attribute and likelihood
         ratio. Card and location type follow the same generation logic.
@@ -698,7 +690,7 @@ class Cardsim:
         ----------
         n_samples : int
             The number of samples to generate.
-        atype : str, optional
+        atype : str
             The type of attribute to derive. Current options are 'credit_card'
             and 'remote'. The default is 'credit_card'.
 
@@ -708,12 +700,9 @@ class Cardsim:
             A vector of 0/1 values corresponding to the dummy variable
             attribute. Also populates relevant likelihood ratio container.
         """
-
         valid_atypes = ["credit_card", "remote"]
-
         if atype not in valid_atypes:
             raise ValueError("'atype' must be one of: " + ", ".join(valid_atypes))
-
         if atype == "credit_card":
             mp = self.credit_card_marginal_p
             cp = self.credit_card_conditional_p
@@ -722,25 +711,14 @@ class Cardsim:
             cp = self.remote_conditional_p
 
         pmnt_attribute = self.transaction_rng.choice([1, 0], size=n_samples, p=[mp, 1 - mp])
-
         p_x = np.where(pmnt_attribute == 1, mp, 1 - mp)
-
         p_x_given_fraud = np.where(pmnt_attribute == 1, cp, 1 - cp)
-
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
-
         likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
-
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
+        return pmnt_attribute, likelihood_ratio
 
-        if atype == "credit_card":
-            self.card_likelihood_ratio = likelihood_ratio
-        else:
-            self.location_likelihood_ratio = likelihood_ratio
-
-        return pmnt_attribute
-
-    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame) -> np.ndarray:
+    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame):
         """
         Generate transaction values and likelihood ratios.
 
@@ -755,43 +733,28 @@ class Cardsim:
         np.ndarray
             A vector of transaction values.
         """
-
         if "day_index" not in df.columns:
             raise ValueError("'df' should be baseline transactions")
-
         df = df.copy()
-
         # Merge the payment amount details
         amount_vars = ["payer_id", "debit_ln_mu", "debit_ln_sd", "debit_ln_mu_fraud", "credit_ln_mu", "credit_ln_sd", "credit_ln_mu_fraud"]
-
         df = pd.merge(df, payers[amount_vars], how="left", on="payer_id")
 
         # Create a single column pulling debit and credit params, where relevant
         df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"])
-
         df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
-
         df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
-
         transaction_value = self.transaction_rng.lognormal(df["mu"], df["sigma"])
 
-        """
-        Likelihood ratio calculations. Approximating probability with densities 
-        using PDF. 
-        """
+        # Likelihood ratio calculations. Approximating probability with densities using PDF.
         p_x = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["mu"]))
-
         p_x_given_fraud = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["fraud_mu"]))
-
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
-
         value_likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
+        value_likelihood_ratio = np.minimum(value_likelihood_ratio, self.lr_cap)
+        return transaction_value, value_likelihood_ratio
 
-        self.value_likelihood_ratio = np.minimum(value_likelihood_ratio, self.lr_cap)
-
-        return transaction_value
-
-    def generate_add_payee_distance(self, df: pd.DataFrame, n_payees: int, distances: pd.DataFrame) -> pd.DataFrame:
+    def generate_add_payee_distance(self, df: pd.DataFrame, n_payees: int, distances: pd.DataFrame):
         """
         Generate the payee distances and add them to the transactions data
         frame.
@@ -806,12 +769,9 @@ class Cardsim:
         pd.DataFrame
             The input data frame with the payee distance added.
         """
-
         if "remote" not in df.columns:
             raise ValueError("'df' needs a location type column")
-
         df = df.copy()
-
         # Set up min, max, and mode indices for triangular distributions
         min_index = 0
         max_index = n_payees - 1  # zero-based indexing
@@ -821,44 +781,30 @@ class Cardsim:
 
         # Select mode for triangular distribution based on location type
         mode_vector = np.where(df["remote"] == 1, remote_mode, inperson_mode)
-
         # Draw payee indices from triangular distribution
         drawn_index = self.transaction_rng.triangular(left=min_index, mode=mode_vector, right=max_index, size=len(df))
 
-        """
-        Round indices and ensure within bounds
-        Give the variable the same name as the var that will be merged 
-        """
+        # Round indices and ensure within bounds
+        # Give the variable the same name as the var that will be merged
         df["payee_order"] = np.clip(np.round(drawn_index).astype(int), min_index, max_index)
-
-        # Merge the payee IDs and distances
         df = df.merge(distances, how="left", on=["payer_id", "payee_order"])
 
-        """
-        Distance likelihood ratio
-
-        Scipy expects: x (value), loc (left), scale (right - left), and c,
-        which is (mode - loc) / scale. Because left is simply 0 in this case,
-        c simplifies to mode / max_index, and scale is simply max_index. 
-        """
+        # Distance likelihood ratio
+        # Scipy expects: x (value), loc (left), scale (right - left), and c,
+        # which is (mode - loc) / scale. Because left is simply 0 in this case,
+        # c simplifies to mode / max_index, and scale is simply max_index.
         p_x = triang.pdf(drawn_index, c=mode_vector / max_index, loc=min_index, scale=max_index)
-
         p_x_given_fraud = triang.pdf(drawn_index, c=fraud_mode / max_index, loc=min_index, scale=max_index)
-
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
 
-        """
-        Working directly with the draws should prevent divide by zero errors. 
-        If errors ever emerge, options are: (1) shift scale up by 1, but this 
-        would require adjusting the c calculation, (2) working with distances, 
-        but that would make the lookup more complicated. 
-        """
+        # Working directly with the draws should prevent divide by zero errors.
+        # If errors ever emerge, options are: (1) shift scale up by 1, but this
+        # would require adjusting the c calculation, (2) working with distances,
+        # but that would make the lookup more complicated.
 
         distance_likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
-
-        self.distance_likelihood_ratio = np.minimum(distance_likelihood_ratio, self.lr_cap)
-
-        return df.drop(columns="payee_order")
+        distance_likelihood_ratio = np.minimum(distance_likelihood_ratio, self.lr_cap)
+        return df.drop(columns="payee_order"), distance_likelihood_ratio
 
     @staticmethod
     def calculate_time_density(weights: dict, windows: dict, tri_peak: float) -> np.ndarray:
@@ -904,37 +850,29 @@ class Cardsim:
         return density
 
     def generate_hourly_probabilities(self):
-        """Generate marginal and conditional probabilities for each hour.
-
-        Returns
-        -------
-        None. Populates self.tod_pmf.
-        """
-
+        """Generate marginal and conditional probabilities for each hour."""
         hours = np.arange(24)
-
         marginal_density = Cardsim.calculate_time_density(
-            weights=self.marginal_tod_weights, windows=self.marginal_tod_windows, tri_peak=0.5
+            weights=self.marginal_tod_weights,
+            windows=self.marginal_tod_windows,
+            tri_peak=0.5,
         )
-
         conditional_density = Cardsim.calculate_time_density(
-            weights=self.conditional_tod_weights, windows=self.conditional_tod_windows, tri_peak=0.5
+            weights=self.conditional_tod_weights,
+            windows=self.conditional_tod_windows,
+            tri_peak=0.5,
         )
-
         # Normalize to get a PMF
         marginal_pmf = marginal_density / np.sum(marginal_density)
         conditional_pmf = conditional_density / np.sum(conditional_density)
-
         df = pd.DataFrame({"hour": hours, "marginal_pmf": marginal_pmf, "conditional_pmf": conditional_pmf})
-
         if self.tod_smoothing_param is not None:
             df["conditional_pmf"] = (df["marginal_pmf"] * self.tod_smoothing_param) + (
                 df["conditional_pmf"] * (1 - self.tod_smoothing_param)
             )
+        return df
 
-        self.tod_pmf = df
-
-    def generate_transaction_time(self, n_samples: int, return_seconds: bool = True) -> np.ndarray:
+    def generate_transaction_time(self, n_samples: int, tod_pmf: pd.DataFrame, return_seconds: bool = True) -> np.ndarray:
         """
         Generate a vector of times for payment transactions.
 
@@ -954,8 +892,7 @@ class Cardsim:
         """
 
         hours = np.arange(24)
-        assert self.tod_pmf is not None, "Time of day PMF not generated"
-        probs = self.tod_pmf["marginal_pmf"].to_numpy()
+        probs = tod_pmf["marginal_pmf"].to_numpy()
 
         # Generate hours using hourly PMF
         selected_hours = self.transaction_rng.choice(hours, size=n_samples, p=probs)
@@ -968,7 +905,7 @@ class Cardsim:
         else:
             return selected_hours
 
-    def calculate_tod_likelihood_ratio(self, df: pd.DataFrame):
+    def calculate_tod_likelihood_ratio(self, df: pd.DataFrame, tod_pmf: pd.DataFrame):
         """
         Calculate the time of day likelihood ratios by merging the hourly
         PMFs.
@@ -978,32 +915,27 @@ class Cardsim:
         df : pd.DataFrame
             A data frame of transactions that has had time of day features
             added.
-
-        Returns
-        -------
-        None
-            Populates self.tod_likelihood_ratio with an array of time of day
-            likelihood ratios.
         """
-        assert self.tod_pmf is not None, "Time of day PMF not generated"
         if "hour" not in df.columns:
             raise ValueError("'df' should contain time of day elements")
 
         df = df.copy()
-
-        df = pd.merge(df, self.tod_pmf, how="left", on="hour")
-
+        df = pd.merge(df, tod_pmf, how="left", on="hour")
         p_x = df["marginal_pmf"].to_numpy()
-
         p_x_given_fraud = df["conditional_pmf"].to_numpy()
-
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
-
         tod_likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
+        tod_likelihood_ratio = np.minimum(tod_likelihood_ratio, self.lr_cap)
+        return tod_likelihood_ratio
 
-        self.tod_likelihood_ratio = np.minimum(tod_likelihood_ratio, self.lr_cap)
-
-    def generate_fraud(self) -> np.ndarray:
+    def generate_fraud(
+        self,
+        distance_likelihood_ratio: np.ndarray,
+        card_likelihood_ratio: np.ndarray,
+        location_likelihood_ratio: np.ndarray,
+        tod_likelihood_ratio: np.ndarray,
+        value_likelihood_ratio: np.ndarray,
+    ) -> np.ndarray:
         """Generate the fraud flag by ranking posterior odds produced by Bayes'
         rule.
 
@@ -1012,25 +944,15 @@ class Cardsim:
         np.ndarray
             An array of binary values (the fraud flag).
         """
-        assert self.card_likelihood_ratio is not None, "Card likelihood ratio not generated"
         prior_odds = self.fraud_rate / (1 - self.fraud_rate)
 
         likelihood_ratio = (
-            self.card_likelihood_ratio
-            * self.location_likelihood_ratio
-            * self.value_likelihood_ratio
-            * self.distance_likelihood_ratio
-            * self.tod_likelihood_ratio
+            card_likelihood_ratio * location_likelihood_ratio * value_likelihood_ratio * distance_likelihood_ratio * tod_likelihood_ratio
         )
 
         posterior_odds = prior_odds * likelihood_ratio
-
-        self.fraud_posterior_odds = posterior_odds
-
         threshold_odds = np.percentile(posterior_odds, (1 - self.fraud_flag_threshold) * 100)
-
         fraud_flag = (posterior_odds >= threshold_odds).astype(int)
-
         return fraud_flag
 
     def simulate(
@@ -1071,18 +993,24 @@ class Cardsim:
         tx_start = time.time()
 
         df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
-        df["credit_card"] = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
-        df["remote"] = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-        df["amount"] = self.generate_transaction_value(df, payers)
-        df = self.generate_add_payee_distance(df, n_payees, distances)
-        self.generate_hourly_probabilities()
+        df["credit_card"], card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
+        df["remote"], location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
+        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers)
+        df, distance_likelihood_ratio = self.generate_add_payee_distance(df, n_payees, distances)
+        tod_pmf = self.generate_hourly_probabilities()
 
-        df["time_seconds"] = self.generate_transaction_time(n_samples=len(df))
+        df["time_seconds"] = self.generate_transaction_time(n_samples=len(df), tod_pmf=tod_pmf)
         df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
         df["hour"] = df["date_time"].dt.hour
 
-        self.calculate_tod_likelihood_ratio(df)
-        df["fraud"] = self.generate_fraud()
+        tod_likelihood_ratio = self.calculate_tod_likelihood_ratio(df, tod_pmf)
+        df["fraud"] = self.generate_fraud(
+            distance_likelihood_ratio=distance_likelihood_ratio,
+            card_likelihood_ratio=card_likelihood_ratio,
+            location_likelihood_ratio=location_likelihood_ratio,
+            tod_likelihood_ratio=tod_likelihood_ratio,
+            value_likelihood_ratio=value_likelihood_ratio,
+        )
 
         self.run_id = f"S{self.base_seed}P{n_payers}D{n_days}"
         df["run_id"] = self.run_id
