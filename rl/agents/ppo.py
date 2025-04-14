@@ -31,11 +31,11 @@ class PPO(Agent):
         self,
         obs_size: int,
         n_actions: int,
-        lr_actor: float,
-        lr_critic: float,
-        gamma: float,
-        k_epochs: int,
-        eps_clip: float,
+        lr_actor: float = 5e-4,
+        lr_critic: float = 1e-3,
+        gamma: float = 0.99,
+        k_epochs: int = 20,
+        eps_clip: float = 0.2,
         update_interval=16,
         device_name: str = "cpu",
     ):
@@ -58,7 +58,6 @@ class PPO(Agent):
         self.time_step = 0
         self.update_interval = update_interval
         self.parameters = self.policy.parameters()
-        DEBUG = 0
 
     def select_action(self, obs_data: np.ndarray):
         with torch.no_grad():

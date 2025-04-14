@@ -80,7 +80,7 @@ class Cardsim:
         conditional_tod_windows=None,
         tod_smoothing_param: Optional[float] = 0.5,
         fraud_rate: float = 0.01,
-        lr_cap: Union[float, int] = 5,
+        lr_cap: float = 5.0,
         fraud_flag_threshold: float = 0.01,
     ):
         """
@@ -956,29 +956,7 @@ class Cardsim:
         fraud_flag = (posterior_odds >= threshold_odds).astype(int)
         return fraud_flag
 
-    def simulate(
-        self,
-        n_payers: int = 10000,
-        n_days: int = 365,
-        start_date: str = "2023-01-01",
-    ):
-        """Run the payment transaction simulator.
-
-        Parameters
-        ----------
-        n_payers : int, optional
-            The number of payers, by default 10000
-        n_days : int, optional
-            Number of days the simulator should run, by default 365
-        start_date : str, optional
-            Fictional start date for the simulator in the format YYYY-MM-DD,
-            by default '2023-01-01'
-
-        Returns
-        -------
-        pd.DataFrame
-            A data frame of payment transactions, features, and a fraud flag.
-        """
+    def make_transactions_dataframe(self, n_payers: int, n_days: int, start_date: str):
         self.logger.debug("Starting world generation")
         world_start = time.time()
         card_txns, card_txns_daily = self.source_format_dcpc_data()
@@ -1022,9 +1000,65 @@ class Cardsim:
 
         simulator_runtime = world_runtime + transactions_runtime
         self.logger.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
+        return df, payers, payees
+
+    def simulate(
+        self,
+        n_payers: int = 10000,
+        n_days: int = 365,
+        start_date: str = "2023-01-01",
+    ):
+        """Run the payment transaction simulator.
+
+        Parameters
+        ----------
+        n_payers : int, optional
+            The number of payers, by default 10000
+        n_days : int, optional
+            Number of days the simulator should run, by default 365
+        start_date : str, optional
+            Fictional start date for the simulator in the format YYYY-MM-DD,
+            by default '2023-01-01'
+
+        Returns
+        -------
+        pd.DataFrame
+            A data frame of payment transactions, features, and a fraud flag.
+        """
+        cached_transactions = f"cache/transactions-{n_payers}-{n_days}-{start_date}.csv"
+        cached_payers = f"cache/payers-{n_payers}.csv"
+        cached_payees = f"cache/payees-{n_payers}.csv"
+        try:
+            # day_index,date,payer_id,credit_card,remote,amount,payee_id,distance,time_seconds,date_time,hour,fraud,run_id
+            df = pl.read_csv(
+                cached_transactions,
+                schema={
+                    "day_index": pl.Int32,
+                    "date": pl.Date,
+                    "payer_id": pl.Int32,
+                    "credit_card": pl.Int32,
+                    "remote": pl.Int32,
+                    "amount": pl.Float64,
+                    "payee_id": pl.Int32,
+                    "distance": pl.Float32,
+                    "time_seconds": pl.Int32,
+                    "date_time": pl.Datetime,
+                    "hour": pl.Int32,
+                    "fraud": pl.Int32,
+                    "run_id": pl.Utf8,
+                },
+            )
+            payers = pd.read_csv(cached_payers)
+            payees = pd.read_csv(cached_payees)
+            self.logger.info(f"Loaded transactions from {cached_transactions}")
+        except FileNotFoundError:
+            df, payers, payees = self.make_transactions_dataframe(n_payers, n_days, start_date)
+            df.to_csv(cached_transactions, index=False)
+            payers.to_csv(cached_payers, index=False)
+            payees.to_csv(cached_payees, index=False)
+            df = pl.from_pandas(df)
 
         # Polars is (much) faster for this (≃20x)
-        df = pl.from_pandas(df)
         transactions = list[Transaction]()
         start = time.time()
         for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in df.iter_rows():

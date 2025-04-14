@@ -1,14 +1,12 @@
 import torch
 from torch import distributions
-from datetime import datetime
-from nn_exception import NNException
 
 import torch.nn as nn
 
 
 class PositiveDefiniteMatrixGenerator(nn.Module):
     def __init__(self, input_size, matrix_size):
-        super(PositiveDefiniteMatrixGenerator, self).__init__()
+        super().__init__()
         # Output size is for the lower triangular part of the matrix
         self.fc = nn.Linear(input_size, matrix_size * (matrix_size + 1) // 2)
 
@@ -59,9 +57,6 @@ class ActorCritic(torch.nn.Module):
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, 1),
         ).to(self.device)
 
-    def forward(self):
-        raise NotImplementedError()
-
     def _action_distribution(self, state: torch.Tensor):
         action_mean_std = self.actions_mean_std(state.to(self.device))
         means = action_mean_std[:, : self.n_actions]
@@ -71,65 +66,25 @@ class ActorCritic(torch.nn.Module):
 
         # Calculate the Frobenius norm of the original matrix
         norm = torch.norm(std, p="fro", dim=(1, 2), keepdim=True)
-
         # Normalize the matrix by dividing by its Frobenius norm
         std_normalized_local = std / (norm + 1e-8)
-
         # Perform the matrix multiplication of the normalized matrix and its transpose
         result_normalized = std_normalized_local @ std_normalized_local.mT + torch.eye(self.n_actions).unsqueeze(0).to(self.device)
-
         # Scale the result by the original Frobenius norm
         normalized_cov_mat = result_normalized * norm
-
-        if torch.any(normalized_cov_mat.isnan()):
-            print(f"[{datetime.now()}]Nan encountered for input: {state}")
-            print(f"\tmeans: {means}")
-            print(f"\tstd: {std}")
-            print(f"\tnorm: {norm}")
-            print(f"\tstd_normalized_local: {std_normalized_local}")
-            print(f"\tresult_normalized: {result_normalized}")
-            print(f"\tnormalized_cov_mat: {normalized_cov_mat}")
-            # normalized_cov_mat = torch.ones_like(normalized_cov_mat)
-            raise NNException(self.actions_mean_std, "Nan encountered")
-
-        """
-        cov_mat = std @ std.mT
-        cov_mat = cov_mat +  torch.eye(self.n_actions).unsqueeze(0)
-
-        # Calculate the determinant for each matrix in the batch
-        det = torch.det(cov_mat)
-        # normalizer = cov_mat.min()
-        #    Normalize by dividing each matrix by its determinant, with epsilon to avoid division by zero
-        epsilon = 1e-8
-        normalized_cov_mat = cov_mat / (det.unsqueeze(-1).unsqueeze(-1) + epsilon)
-        """
 
         # print(torch.linalg.eigvals(cov_mat))
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
         # dist = distributions.Normal(means, std)
         return dist
 
-    def act(self, state: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        state = state.unsqueeze(0).to(self.device)
+    def policy(self, state: torch.Tensor):
         dist = self._action_distribution(state)
-        action = dist.sample().squeeze(0)
-        action_logprob = dist.log_prob(action).squeeze(0)
-        return action, action_logprob
+        return dist
 
-    def evaluate(self, state: torch.Tensor, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        dist = self._action_distribution(state.to(self.device))
-        if len(action.size()) == 1:
-            action = action.unsqueeze(-1)
-        action_logprob = dist.log_prob(action.to(self.device))
-        entropy = dist.entropy()
-        return action_logprob, entropy
-
-    def value(self, x: torch.Tensor) -> torch.Tensor:
-        return self.critic(x.to(self.device))
-
-    def q_value(self, x: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """Get the q-value estimated for the given state and action"""
-        raise NotImplementedError()
+    def value(self, state: torch.Tensor):
+        value = self.critic.forward(state)
+        return value
 
     def to(self, device: torch.device):
         self.device = device

@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 import numpy as np
+
 
 @dataclass
 class Action:
@@ -10,5 +11,17 @@ class Action:
     delay_days: int
     delay_hours: float
 
-    def to_classification_numpy(self):
-        return np.array([self.is_online, self.amount], dtype=np.float32)
+    def __init__(self, amount: float, terminal_x: float, terminal_y: float, is_online: bool | float, delay_days: int, delay_hours: float):
+        self.amount = amount
+        self.terminal_x = terminal_x
+        self.terminal_y = terminal_y
+        self.is_online = bool(is_online)
+        self.delay_days = delay_days
+        self.delay_hours = delay_hours
+
+    @staticmethod
+    def from_numpy(array: np.ndarray):
+        return Action(*array)
+
+    def to_numpy(self):
+        return np.ndarray(astuple(self), dtype=np.float32)

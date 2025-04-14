@@ -1,28 +1,43 @@
-from banksys import Terminal, Card, Banksys, Transaction
+from banksys import Banksys, Transaction
 from .action import Action
 from copy import deepcopy
 import random
 import numpy as np
 from datetime import datetime, timedelta
-from .step_data import StepData
 import numpy.typing as npt
 
 
 class CardSimEnv:
-    def __init__(self, system: Banksys, start_date: datetime, attack_duration: timedelta, customer_location_is_known: bool = False):
+    def __init__(self, system: Banksys, attack_duration: timedelta, *, customer_location_is_known: bool = False):
         self.transaction_index = 0
         """Index of the next transaction to be processed."""
         assert isinstance(system, Banksys), "System must be an instance of Banksys"
         self.system = system
-        self.t_start = start_date
-        self.current_time = deepcopy(start_date)
+        self.t_start = system.earliest_attackable_moment
+        self.current_time = deepcopy(self.t_start)
         self.current_card = self.system.cards[0]
-        self.t_max = start_date + attack_duration
+        self.t_max = self.t_start + attack_duration
         self.customer_location_is_known = customer_location_is_known
 
     def reset(self) -> npt.NDArray[np.float32]:
         self.current_card = random.choice(self.system.cards)
         return self.get_state()
+
+    @property
+    def transactions(self):
+        return self.system.transactions
+
+    @property
+    def current_transaction(self):
+        return self.transactions[self.transaction_index]
+
+    @property
+    def observation_size(self):
+        return len(self.current_transaction.features)
+
+    @property
+    def n_actions(self):
+        return 6
 
     @property
     def hour(self) -> float:

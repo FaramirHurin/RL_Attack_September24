@@ -1,9 +1,9 @@
 import torch
 import numpy as np
-from marlenv import Transition, EpisodeBuilder
+from marlenv import Transition, Episode
 from rl.replay_memory import EpisodeMemory
-from .networks import ActorCritic
-from .agent import Agent
+from ..rl.agents.networks import ActorCritic
+from ..rl.agents.agent import Agent
 import logging
 
 

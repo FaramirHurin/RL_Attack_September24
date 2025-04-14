@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Deque, Generic, Iterable, Literal, TypeVar
 
 import numpy as np
-from marlenv import Episode, Transition
+from marlenv import Transition
 
-from .batch import Batch, EpisodeBatch, TransitionBatch
+from .batch import Batch, TransitionBatch
 
 
 T = TypeVar("T")
@@ -69,14 +69,3 @@ class TransitionMemory(ReplayMemory[TransitionBatch, Transition]):
     def get_batch(self, indices: Iterable[int]):
         transitions = [self._memory[i] for i in indices]
         return TransitionBatch(transitions)
-
-
-class EpisodeMemory(ReplayMemory[EpisodeBatch, Episode]):
-    """Replay Memory that stores and samples full Episodes"""
-
-    def __init__(self, max_size: int):
-        super().__init__(max_size, "episode")
-
-    def get_batch(self, indices: Iterable[int]):
-        episodes = [self._memory[i] for i in indices]
-        return EpisodeBatch(episodes)

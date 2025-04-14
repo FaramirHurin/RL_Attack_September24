@@ -7,7 +7,7 @@ requires-python = ">=3.11,<4"
 dependencies = [
     "imblearn>=0.0",
     "matplotlib>=3.9.2",
-    "multi-agent-rlenv>=1.0.0<2",
+    "multi-agent-rlenv>=3.3.7",
     "pandas>=2.2.3",
     "polars>=1.14.0",
     "python-dotenv>=1.0.1",

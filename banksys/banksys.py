@@ -1,4 +1,6 @@
 import datetime
+import os
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -17,7 +19,6 @@ class Banksys:
         cards: list[Card],
         terminals: list[Terminal],
         transactions: list[Transaction],
-        train_split: float = 0.9,
     ):
         # Sort transactions by timestamp
         self.transactions = sorted(transactions, key=lambda t: t.timestamp)
@@ -29,9 +30,8 @@ class Banksys:
         self.feature_names = (
             ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
-        self.transactions_df = self._create_df_and_aggregate(transactions)
-        self._setup(train_split)
 
+    @property
     def earliest_attackable_moment(self) -> datetime.datetime:
         trx0 = self.transactions[0]
         start_date = trx0.timestamp
@@ -49,11 +49,12 @@ class Banksys:
                 rows.append(features)
         return pd.DataFrame(rows, columns=self.feature_names + ["label"])
 
-    def _setup(self, train_split: float):
+    def train_classifier(self, train_split: float = 0.9):
+        transactions_df = self._create_df_and_aggregate(self.transactions)
         # Split the data into training and testing sets
-        tr_size = int(self.transactions_df.shape[0] * train_split)
-        training_set = self.transactions_df.iloc[:tr_size, :]
-        testing_set = self.transactions_df.iloc[tr_size:, :]
+        tr_size = int(len(self.transactions) * train_split)
+        training_set = transactions_df.iloc[:tr_size, :]
+        testing_set = transactions_df.iloc[tr_size:, :]
 
         # Define the features and label
         self.training_features = [col for col in training_set.columns if col != "label"]
@@ -112,6 +113,18 @@ class Banksys:
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 
+    def save(self, directory: str = "cache/"):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(location: str = "cache/banksys.pkl") -> "Banksys":
+        with open(location, "rb") as f:
+            banksys = pickle.load(f)
+        return banksys
+
     """
     def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:
         columns_names_avg = {}
@@ -156,12 +169,4 @@ class Banksys:
             trx["AVG_" + str(day)] = columns_names_avg[day]
             trx["COUNT_" + str(day)] = columns_names_count[day]
         return trx
-    """
-
-    """
-    clf: ClassificationSystem
-    terminals: list[Terminal]
-    cards: list[Card]
-    training_set: pd.DataFrame
-    tramsactions_df: pd.DataFrame
     """
