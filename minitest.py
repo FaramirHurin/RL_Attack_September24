@@ -7,20 +7,27 @@ from environment import CardSimEnv
 from rl.agents.ppo_new import PPO
 from rl.agents.networks import ActorCritic
 import torch
+from marlenv import Transition
 
 
 def train(env: CardSimEnv, n_episodes: int = 1000):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(network, 0.99)
+    t = 0
     for episode in range(n_episodes):
-        obs = env.reset()
+        obs, state = env.reset()
         done = False
         score = 0
         while not done:
-            action = agent.choose_action(obs)
-            obs, reward, done = env.step(action)
-            score += reward
+            action = agent.choose_action(obs.data)
+            step = env.step(action)
+            agent.update_step(Transition.from_step(obs, state, action.to_numpy(), step), t)
+            done = step.is_terminal
+            obs = step.obs
+            state = step.state
+            t += 1
+            score += step.reward
         print(f"Episode {episode + 1}/{n_episodes} - Score: {score}")
 
 

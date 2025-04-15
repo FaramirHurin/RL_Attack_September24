@@ -32,14 +32,14 @@ class PPO:
         self,
         actor_critic: ActorCritic,
         gamma: float,
-        lr_actor: float = 1e-3,
+        lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
-        n_epochs: int = 64,
+        n_epochs: int = 20,
         eps_clip: float = 0.2,
         critic_c1: Schedule | float = 0.5,
         exploration_c2: Schedule | float = 0.01,
         train_interval: int = 2048,
-        minibatch_size: Optional[int] = None,
+        minibatch_size: int = 10,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
     ):
@@ -165,7 +165,6 @@ class PPO:
             min_loss = min(min_loss, loss.item())
             max_loss = max(max_loss, loss.item())
 
-        self._memory.clear()
         logs = {
             "avg_actor_loss": total_actor_loss / self.n_epochs,
             "avg_critic_loss": total_critic_loss / self.n_epochs,
@@ -188,6 +187,7 @@ class PPO:
         if len(self._memory) == self.batch_size:
             batch = TransitionBatch(self._memory).to(self._device)
             logs = self.train(batch, time_step)
+            self._memory.clear()
             return logs
         return {}
 
