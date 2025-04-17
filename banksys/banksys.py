@@ -52,16 +52,17 @@ class Banksys:
     def train_classifier(self, train_split: float = 0.9):
         transactions_df = self._create_df_and_aggregate(self.transactions)
         # Split the data into training and testing sets
-        tr_size = int(len(self.transactions) * train_split)
+        tr_size = int(len(transactions_df) * train_split)
         training_set = transactions_df.iloc[:tr_size, :]
         testing_set = transactions_df.iloc[tr_size:, :]
-
         # Define the features and label
         self.training_features = [col for col in training_set.columns if col != "label"]
         x_train = training_set[self.training_features]
         y_train = training_set[self.label_feature].to_numpy()
         self.clf.fit(x_train, y_train)
+        return testing_set
 
+    def evaluate_classifier(self, testing_set: pd.DataFrame):
         x_test = testing_set[self.training_features]
         y_test = testing_set[self.label_feature].values
 
@@ -90,7 +91,7 @@ class Banksys:
     def classify(self, transaction: Transaction) -> bool:
         trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
         trx = pd.DataFrame(trx_features, columns=self.feature_names)
-        label: bool = self.clf.predict(trx).item()  # type: ignore
+        label = self.clf.predict(trx).item()
         transaction.label = label
         self._add_transaction(transaction)
         return label

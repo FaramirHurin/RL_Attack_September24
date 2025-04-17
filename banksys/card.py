@@ -22,8 +22,8 @@ class Card(HasOrderedTransactions):
     ):  # , 30
         self.id = id
         self.is_credit = is_credit
-        self.x = x
-        self.y = y
+        self.customer_x = x
+        self.customer_y = y
         self.days_aggregation = days_aggregation
         super().__init__()
 
@@ -58,4 +58,4 @@ class Card(HasOrderedTransactions):
             else:
                 # Compute the average amount of the transactions
                 avg.append(np.mean([transaction.amount for transaction in trx_days]).item())
-        return np.array([self.x, self.y] + nb + avg, dtype=np.float32)
+        return np.array([self.customer_x, self.customer_y] + nb + avg, dtype=np.float32)

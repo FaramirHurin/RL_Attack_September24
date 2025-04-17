@@ -7,6 +7,7 @@ from environment import CardSimEnv
 from rl.agents.ppo_new import PPO
 from rl.agents.networks import ActorCritic
 import torch
+from datetime import datetime
 from marlenv import Transition
 
 
@@ -38,14 +39,14 @@ def main():
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
 
-        # Sort and separate the last 100 transactions for testing
-        transactions = sorted(transactions, key=lambda x: x.timestamp)
-        transactions_train = transactions[:-100]
-
-        clf = RandomForestClassifier()
+        clf = RandomForestClassifier(n_jobs=-1)
         system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], [])
-        banksys = Banksys(system, cards, terminals, transactions_train)
+        banksys = Banksys(system, cards, terminals, transactions)
+        start = datetime.now()
+        test_set = banksys.train_classifier()
+        print(f"Training time: {datetime.now() - start}")
         banksys.save()
+        banksys.evaluate_classifier(test_set)
 
     env = CardSimEnv(banksys, timedelta(days=7))
     train(env)

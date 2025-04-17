@@ -1029,7 +1029,6 @@ class Cardsim:
         cached_payers = f"cache/payers-{n_payers}.csv"
         cached_payees = f"cache/payees-{n_payers}.csv"
         try:
-            # day_index,date,payer_id,credit_card,remote,amount,payee_id,distance,time_seconds,date_time,hour,fraud,run_id
             df = pl.read_csv(
                 cached_transactions,
                 schema={
@@ -1072,7 +1071,7 @@ class Cardsim:
                     label=is_fraud,
                 )
             )
-        self.logger.info(f"Created transaction objects in {time.time() - start} seconds")
+        self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")
         return self.get_cards(payers), self.get_terminals(payees), transactions
 
     # Convenience -------------------------------------------------------------

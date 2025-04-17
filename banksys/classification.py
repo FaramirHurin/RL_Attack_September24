@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Callable
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
@@ -66,10 +67,10 @@ class ClassificationSystem:
         self.ml_classifier.fit(transactions, is_fraud)
         self.statistical_classifier.fit(transactions)
 
-    def predict(self, transactions: pd.DataFrame) -> np.ndarray:
-        classification_prediction: np.ndarray = self.ml_classifier.predict(transactions)
-        statistical_prediction: np.ndarray = self.statistical_classifier.predict(transactions)
-        rule_based_prediction: np.ndarray = self.rule_classifier.predict(transactions)
+    def predict(self, transactions: pd.DataFrame) -> npt.NDArray[np.bool]:
+        classification_prediction = self.ml_classifier.predict(transactions)
+        statistical_prediction = self.statistical_classifier.predict(transactions)
+        rule_based_prediction = self.rule_classifier.predict(transactions)
 
         classification_prediction = np.logical_or(classification_prediction, statistical_prediction)
         classification_prediction = np.logical_or(classification_prediction, rule_based_prediction)
