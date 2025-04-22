@@ -19,7 +19,7 @@ class Card(HasOrderedTransactions):
 
     def __init__(
         self, id: int, is_credit: bool, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))
-    ):  # , 30
+    ):
         self.id = id
         self.is_credit = is_credit
         self.customer_x = x
@@ -42,6 +42,7 @@ class Card(HasOrderedTransactions):
         return to_return
 
     def features(self, current_time: datetime):
+        # TODO: add the mean/median terminal location ?
         nb = list[float]()
         avg = list[float]()
         for n_days in self.days_aggregation:

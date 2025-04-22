@@ -7,29 +7,36 @@ from environment import CardSimEnv
 from rl.agents.ppo_new import PPO
 from rl.agents.networks import ActorCritic
 import torch
+from collections import OrderedDict
 from datetime import datetime
-from marlenv import Transition
+from marlenv import Episode
 
 
 def train(env: CardSimEnv, n_episodes: int = 1000):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(network, 0.99)
-    t = 0
     for episode in range(n_episodes):
-        obs, state = env.reset()
-        done = False
-        score = 0
-        while not done:
-            action = agent.choose_action(obs.data)
-            step = env.step(action)
-            agent.update_step(Transition.from_step(obs, state, action.to_numpy(), step), t)
-            done = step.is_terminal
+        episodes = dict[int, Episode]()
+        observations, states = env.reset()
+        actions = OrderedDict((card_id, agent.choose_action(obs.data)) for card_id, obs in observations.items())
+        step, card_id = env.first_step(list(actions.values()))
+
+        episodes[card_id] = Episode.new(observations[card_id], states[card_id])
+        episodes[card_id].add(step, actions[card_id])
+
+        obs = step.obs
+        state = step.state
+        while not step.is_terminal:
+            action = agent.choose_action(step.obs.data)
+            step, card_id = env.step(action, card_id)
+            if card_id not in episodes:
+                episodes[card_id] = Episode.new(obs, state)
+            episodes[card_id].add(step, action)
+
+            # agent.update_step(Transition.from_step(obs, state, action.to_numpy(), step), t)
             obs = step.obs
             state = step.state
-            t += 1
-            score += step.reward
-        print(f"Episode {episode + 1}/{n_episodes} - Score: {score}")
 
 
 def main():
@@ -48,7 +55,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7))
+    env = CardSimEnv(banksys, timedelta(days=7), 10)
     train(env)
 
 

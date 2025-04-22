@@ -177,11 +177,6 @@ class PPO:
             logs["total_grad_norm"] = total_norm.item()
         return logs
 
-    @property
-    def value_parameters(self):
-        params = self.actor_critic.value_parameters
-        return params
-
     def update_step(self, transition: Transition, time_step: int) -> dict[str, Any]:
         self._memory.append(transition)
         if len(self._memory) == self.batch_size:
@@ -226,7 +221,6 @@ class PPO:
         Seed `ranom`, `numpy`, and `torch` libraries by default.
         """
         import random
-
         import numpy as np
 
         random.seed(seed)

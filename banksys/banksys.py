@@ -11,6 +11,8 @@ from .classification import ClassificationSystem
 from .terminal import Terminal
 from .transaction import Transaction
 
+# TODO: when a card is blocked, we should remove all its future transactions
+
 
 class Banksys:
     def __init__(

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, astuple
 import numpy as np
+from datetime import timedelta
 
 
 @dataclass
@@ -18,6 +19,10 @@ class Action:
         self.is_online = is_online
         self.delay_days = delay_days
         self.delay_hours = delay_hours
+
+    @property
+    def timedelta(self):
+        return timedelta(days=self.delay_days, hours=self.delay_hours)
 
     @staticmethod
     def from_numpy(array: np.ndarray):
