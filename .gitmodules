@@ -1,0 +1,3 @@
+[submodule "modern_Baselines"]
+	path = modern_Baselines
+	url = https://github.com/benearnthof/TimeGAN

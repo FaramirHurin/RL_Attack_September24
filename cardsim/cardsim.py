@@ -1052,6 +1052,7 @@ class Cardsim:
             self.logger.info(f"Loaded transactions from {cached_transactions}")
         except FileNotFoundError:
             df, payers, payees = self.make_transactions_dataframe(n_payers, n_days, start_date)
+            os.makedirs('cache', exist_ok=True)
             df.to_csv(cached_transactions, index=False)
             payers.to_csv(cached_payers, index=False)
             payees.to_csv(cached_payees, index=False)
