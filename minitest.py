@@ -2,7 +2,7 @@
 from sklearn.ensemble import RandomForestClassifier
 from datetime import timedelta
 from banksys import Banksys, ClassificationSystem
-from cardsim import Cardsim
+from CardSim.cardsim import Cardsim
 from environment import CardSimEnv
 from rl.agents.ppo_new import PPO
 from rl.agents.networks import ActorCritic
