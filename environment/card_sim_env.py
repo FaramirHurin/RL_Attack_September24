@@ -5,8 +5,8 @@ import random
 from collections import OrderedDict
 import numpy as np
 from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, ContinuousActionSpace, State
-
+from marlenv import Observation, Step, MARLEnv, ContinuousSpace, State, ContinuousActionSpace
+#ContinuousSpace  ContinuousActionSpace
 
 class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
     def __init__(self, system: Banksys, attack_duration: timedelta, n_parallel: int = 10, *, customer_location_is_known: bool = False):
