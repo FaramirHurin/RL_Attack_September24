@@ -7,7 +7,9 @@ from .transaction import Transaction
 from .has_ordered_transactions import HasOrderedTransactions
 
 
-@dataclass
+# In case there is an equality in the priority queue, it compares
+# the cards. Therefore, we want the order to be defined.
+@dataclass(order=True)
 class Card(HasOrderedTransactions):
     id: int
     is_credit: bool

@@ -1,41 +1,78 @@
-# from imblearn.ensemble import BalancedRandomForestClassifier
-from sklearn.ensemble import RandomForestClassifier
-from datetime import timedelta
-from banksys import Banksys, ClassificationSystem
-from environment import CardSimEnv
-from rl.agents.ppo_new import PPO
-from rl.agents.networks import ActorCritic
+import random
+from datetime import datetime, timedelta
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
-from collections import OrderedDict
-from datetime import datetime
-from marlenv import Episode
+from sklearn.ensemble import RandomForestClassifier
+
+from banksys import Banksys, ClassificationSystem, Transaction
+from cardsim import Cardsim
+from environment import CardSimEnv
+from rl.agents.networks import ActorCritic
+from rl.agents.ppo_new import PPO
+from rl.delayed_parellel_agent import DelayedParallelAgent
+
+torch.manual_seed(0)
+random.seed(0)
+np.random.seed(0)
 
 
-def train(env: CardSimEnv, n_episodes: int = 1000):
+def plot_transactions(transactions: list[Transaction]):
+    fig, ax = plt.subplots()
+    ax.set_xlim([transactions[0].timestamp, transactions[-1].timestamp])  # type: ignore
+    # Optional: format date axis
+    ax.xaxis.set_major_locator(mdates.DayLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%a\n%d-%b"))
+
+    # Set labels
+    ax.set_title("Transactions over time")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Amount")
+
+    COLOURS = {}
+    fraud_dates, fraud_amounts, fraud_colours = [], [], []
+    genuine_dates, genuine_amounts, genuine_colours = [], [], []
+    for t in transactions:
+        if t.card_id not in COLOURS:
+            COLOURS[t.card_id] = np.random.rand(3)
+        if t.label:
+            fraud_dates.append(t.timestamp)
+            fraud_amounts.append(t.amount)
+            fraud_colours.append(COLOURS[t.card_id])
+        else:
+            genuine_dates.append(t.timestamp)
+            genuine_amounts.append(t.amount)
+            genuine_colours.append(COLOURS[t.card_id])
+    # Create a scatter plot
+    ax.scatter(fraud_dates, fraud_amounts, c=fraud_colours, marker="x", s=50)
+    ax.scatter(genuine_dates, genuine_amounts, c=genuine_colours, marker="o", s=50)
+    fig.show()
+
+
+def train(env: CardSimEnv, n_weeks: int = 1000):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     network = ActorCritic(env.observation_size, env.n_actions, device)
-    agent = PPO(network, 0.99)
-    for episode in range(n_episodes):
-        episodes = dict[int, Episode]()
-        observations, states = env.reset()
-        actions = OrderedDict((card_id, agent.choose_action(obs.data)) for card_id, obs in observations.items())
-        step, card_id = env.first_step(list(actions.values()))
+    agent = DelayedParallelAgent(PPO(network, 0.99))
+    i = 0
+    for week_num in range(n_weeks):
+        print(f"Week {week_num}")
+        observations = env.reset()
+        agent.reset(env.t_start, observations)
+        transactions = []
 
-        episodes[card_id] = Episode.new(observations[card_id], states[card_id])
-        episodes[card_id].add(step, actions[card_id])
-
-        obs = step.obs
-        state = step.state
-        while not step.is_terminal:
-            action = agent.choose_action(step.obs.data)
-            step, card_id = env.step(action, card_id)
-            if card_id not in episodes:
-                episodes[card_id] = Episode.new(obs, state)
-            episodes[card_id].add(step, action)
-
-            # agent.update_step(Transition.from_step(obs, state, action.to_numpy(), step), t)
-            obs = step.obs
-            state = step.state
+        while not agent.is_done:
+            i += 1
+            print(i)
+            t, (card, action) = agent.pop_next_action()
+            step, trx = env.step(t, action, card)
+            agent.store_transition(t, card, action, step)
+            if trx is not None:
+                transactions.append(trx)
+        print("Done ")
+        plot_transactions(transactions)
+        input("Press Enter to continue...")
 
 
 def main():
@@ -54,7 +91,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), 10)
+    env = CardSimEnv(banksys, timedelta(days=3), 10)
     train(env)
 
 

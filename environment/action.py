@@ -1,6 +1,7 @@
 from dataclasses import dataclass, astuple
 import numpy as np
 from datetime import timedelta
+import random
 
 
 @dataclass
@@ -13,12 +14,15 @@ class Action:
     delay_hours: float
 
     def __init__(self, amount: float, terminal_x: float, terminal_y: float, is_online: bool, delay_days: int, delay_hours: float):
-        self.amount = amount
-        self.terminal_x = terminal_x
-        self.terminal_y = terminal_y
+        self.amount = max(0.01, min(100_000, amount))
+        self.terminal_x = max(0, min(200, terminal_x))
+        self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
-        self.delay_days = delay_days
-        self.delay_hours = delay_hours
+        self.delay_days = max(0, delay_days)
+        self.delay_hours = max(0, delay_hours)
+        if self.delay_days == 0 and self.delay_hours == 0:
+            # Randomly wait for at most 5 minutes
+            self.delay_hours = (5 / 60) * random.random()
 
     @property
     def timedelta(self):

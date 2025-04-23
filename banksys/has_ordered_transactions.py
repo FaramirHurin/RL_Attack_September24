@@ -1,6 +1,5 @@
 from .transaction import Transaction
-from datetime import datetime, timedelta
-import numpy as np
+from datetime import datetime
 
 
 class HasOrderedTransactions:
