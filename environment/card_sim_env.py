@@ -65,7 +65,7 @@ class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         return np.array(features, dtype=np.float32)
 
     def step(self, t: datetime, action: Action, card: Card):
-        assert t > self.prev_t, (
+        assert t >= self.prev_t, (
             f"Can not go back in time with actions ! Previous action was taken at {self.prev_t} and current action is at {t}."
         )
         self.prev_t = t

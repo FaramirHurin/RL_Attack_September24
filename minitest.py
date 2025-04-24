@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn.ensemble import RandomForestClassifier
+from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction
 from cardsim import Cardsim
@@ -82,7 +83,8 @@ def main():
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
 
-        clf = RandomForestClassifier(n_jobs=-1)
+        # clf = RandomForestClassifier(n_jobs=-1)
+        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.1)  # type:ignore
         system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], [])
         banksys = Banksys(system, cards, terminals, transactions)
         start = datetime.now()
@@ -91,7 +93,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=3), 10)
+    env = CardSimEnv(banksys, timedelta(days=7), 100)
     train(env)
 
 
