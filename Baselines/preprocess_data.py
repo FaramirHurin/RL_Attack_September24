@@ -17,7 +17,7 @@ def process_remote(x):
 
 
 def process_data(df):
-    df['amount'] = df['amount'].apply(process_positive)
+    df['amount'] = df['amount'].apply(process_positive).round(2)
     df['payee_x'] = df['payee_x'].apply(process_coordinates)
     df['payee_y'] = df['payee_y'].apply(process_coordinates)
     df['hour'] = df['hour'].apply(process_hour)

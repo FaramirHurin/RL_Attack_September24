@@ -4,8 +4,11 @@ import torch.optim as optim
 from sklearn.ensemble import IsolationForest
 from imblearn.ensemble import BalancedRandomForestClassifier
 
+def NMSE(y_true, y_pred):
+    return torch.mean((y_true - y_pred) ** 2) / torch.std(y_true) ** 2
+
 class VAE(nn.Module):
-    def __init__(self, hidden_dim=80, latent_dim=8):
+    def __init__(self, latent_dim, hidden_dim):
         super(VAE, self).__init__()
         # Encoder
         self.fc1 = nn.Linear(4, hidden_dim)
@@ -39,35 +42,37 @@ class VAE(nn.Module):
 
 
 class Attack_Generation:
-    def __init__(self, device, criterion, latent_dim=8, hidden_dim=80, lr=0.001, trees=20, supervised = False, y=None):
+    def __init__(self, device, criterion, latent_dim, hidden_dim, lr, trees, supervised = False, y=None):
         self.device = device
-        self.model = VAE()
+        self.model = VAE(latent_dim=latent_dim, hidden_dim=hidden_dim).to(self.device)
         self.model.to(self.device)
         self.criterion = criterion
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
         self.supervised = supervised
         self.y = y
         if supervised:
-            self.detector = BalancedRandomForestClassifier(n_estimators=trees, random_state=42, sampling_strategy=0.15)
+            self.detector = BalancedRandomForestClassifier(n_estimators=trees,
+                                                           random_state=42, sampling_strategy=0.15)
         else:
             self.detector = IsolationForest(n_estimators=trees)
 
     def train(self, real_data, batch_size=32, num_epochs=1000):
-        self.train_vae(real_data, batch_size, num_epochs)
         if self.supervised:
             self.detector.fit(real_data.cpu().numpy(), self.y)
         else:
             self.detector.fit(real_data.cpu().numpy())
+        self.train_vae(real_data, batch_size, num_epochs)
 
     def vae_loss(self, recon_x, x, mu, logvar, epoch, beta=0.001):
-        recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
+        #recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
+        recon_loss = NMSE(x, recon_x)
         kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         if epoch % 100 == 0:
             print(f"Epoch {epoch}, KL: {kl_div.item():.4f}, Recon Loss: {recon_loss.item():.4f}")
 
-        return recon_loss + beta * kl_div
+        return recon_loss  + beta * kl_div
 
     def train_vae(self, data,  batch_size, num_epochs=1000):
         data = data.to(self.device)
