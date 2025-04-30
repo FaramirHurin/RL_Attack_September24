@@ -8,7 +8,8 @@ from datetime import datetime
 
 
 class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
-    def __init__(self, system: Banksys, attack_duration: timedelta, n_parallel: int = 10, *, customer_location_is_known: bool = False):
+    def __init__(self, system: Banksys, attack_duration: timedelta, n_parallel: int = 10, *,
+                 customer_location_is_known: bool = False):
         if customer_location_is_known:
             obs_shape = (6,)
         else:

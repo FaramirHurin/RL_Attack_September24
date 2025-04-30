@@ -9,11 +9,12 @@ from sklearn.ensemble import RandomForestClassifier
 from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction
-from cardsim import Cardsim
+from CardSim.cardsim import Cardsim
 from environment import CardSimEnv
 from rl.agents.networks import ActorCritic
 from rl.agents.ppo_new import PPO
 from rl.delayed_parellel_agent import DelayedParallelAgent
+from Baselines.attack_generation import Attack_Generation
 
 torch.manual_seed(0)
 random.seed(0)
@@ -52,10 +53,29 @@ def plot_transactions(transactions: list[Transaction]):
     fig.show()
 
 
-def train(env: CardSimEnv, n_weeks: int = 1000):
+def train(env: CardSimEnv, n_weeks: int = 20):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = DelayedParallelAgent(PPO(network, 0.99))
+
+
+    terminals = env.system.terminals[:10]
+    # Get the transactions from the terminals
+    transactions = []
+    for t in terminals:
+        new_transactions = t.transactions
+        # Add x and y coordinates to the transactions
+        new_transactions = list(map(lambda trx: trx.add_coordinates(payee_x=t.x, payee_y=t.y),
+                                    new_transactions))
+        transactions += new_transactions
+
+
+    # Turn transactions into a tensor
+    transactions_tensor = torch.tensor([[t.amount, t.payee_x, t.payee_y, t.timestamp.hour] for t in transactions])
+    transactions_tensor = transactions_tensor.to(device)
+
+    agent = DelayedParallelAgent(PPO(network, 0.99))
+
     i = 0
     for week_num in range(n_weeks):
         print(f"Week {week_num}")

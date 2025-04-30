@@ -4,10 +4,11 @@ from banksys import Card
 from environment import Action
 from marlenv import Episode, Observation, State, Step
 from datetime import datetime
+from Baselines.attack_generation import Attack_Generation
 
 
 class DelayedParallelAgent:
-    def __init__(self, agent: PPO):
+    def __init__(self, agent: PPO|Attack_Generation):
         self.buffered_actions = PriorityQueue[tuple[Card, Action]]()
         self.episodes = dict[int, Episode]()
         self.agent = agent
@@ -17,6 +18,8 @@ class DelayedParallelAgent:
         self.episodes.clear()
         for card, obs, state in card_data:
             action = self.agent.choose_action(obs.data)
+            if not sum(obs.data) == 0:
+                DEBUG = True
             t_action = t + action.timedelta
             self.buffered_actions.push((card, action), t_action)
             self.episodes[card.id] = Episode.new(obs, state)

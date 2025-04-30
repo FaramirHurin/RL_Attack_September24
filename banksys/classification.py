@@ -67,7 +67,7 @@ class ClassificationSystem:
         self.ml_classifier.fit(transactions, is_fraud)
         self.statistical_classifier.fit(transactions)
 
-    def predict(self, transactions: pd.DataFrame) -> npt.NDArray[np.bool]:
+    def predict(self, transactions: pd.DataFrame) -> npt.NDArray[np.bool_]:
         classification_prediction = self.ml_classifier.predict(transactions)
         statistical_prediction = self.statistical_classifier.predict(transactions)
         rule_based_prediction = self.rule_classifier.predict(transactions)

@@ -49,3 +49,11 @@ class Transaction:
     @property
     def hour_ratio(self):
         return (self.timestamp.hour * 60 + self.timestamp.minute) / N_MINUTES_IN_DAY
+
+    def add_coordinates(self, payee_x, payee_y):
+        """
+        Add the x and y coordinates of the payee to the transaction.
+        """
+        self.payee_x = payee_x
+        self.payee_y = payee_y
+        return self

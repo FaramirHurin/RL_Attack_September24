@@ -30,7 +30,8 @@ class Banksys:
         self.label_feature = "label"
         week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         self.feature_names = (
-            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
+            ["amount", "hour_ratio"] + week_days + ["is_online"] +
+            self.cards[0].feature_names + self.terminals[0].feature_names
         )
 
     @property

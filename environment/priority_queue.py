@@ -1,8 +1,11 @@
 import heapq
 from datetime import datetime
+from typing import TypeVar, Generic
+
+T = TypeVar('T')
 
 
-class PriorityQueue[T]:
+class PriorityQueue(Generic[T]):
     def __init__(self):
         self.elements = list[tuple[datetime, T]]()
 
