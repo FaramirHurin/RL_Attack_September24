@@ -8,8 +8,7 @@ from datetime import datetime
 
 
 class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
-    def __init__(self, system: Banksys, attack_duration: timedelta, n_parallel: int = 10, *,
-                 customer_location_is_known: bool = False):
+    def __init__(self, system: Banksys, attack_duration: timedelta, n_parallel: int = 10, *, customer_location_is_known: bool = False):
         if customer_location_is_known:
             obs_shape = (6,)
         else:
@@ -43,11 +42,13 @@ class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
             obs.append((card, Observation(s, available_actions), State(s)))
         return obs
 
-    def get_observation(self):
-        raise NotImplementedError()
+    def get_observation(self, t: datetime, card: Card):
+        state = self.compute_state(t, card)
+        return Observation(state, self.available_actions())
 
-    def get_state(self, card_id: int):
-        raise NotImplementedError()
+    def get_state(self, t: datetime, card: Card):
+        state = self.compute_state(t, card)
+        return State(state)
 
     @property
     def observation_size(self):
