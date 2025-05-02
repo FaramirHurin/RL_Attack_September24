@@ -55,7 +55,8 @@ class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         return self.observation_shape[0]
 
     def compute_state(self, t: datetime, card: Card):
-        remaining_time = (self.t_max - t).seconds / self.t_max.second
+        total_duration = (self.t_max - self.t_start).total_seconds()
+        remaining_time = (self.t_max - t).total_seconds() / total_duration
         day = (t - self.t_start).days
         hour = t.hour / 24.0
         features = [remaining_time, card.is_credit, hour, day]
@@ -80,7 +81,7 @@ class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         else:
             terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
             trx = Transaction(action.amount, t, terminal_id, card.id, action.is_online)
-            is_fraud = self.system.classify(trx)
+            is_fraud = self.system.process_transaction(trx)
             if is_fraud:
                 reward = 0.0
             else:

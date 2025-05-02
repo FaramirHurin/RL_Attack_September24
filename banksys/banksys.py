@@ -30,8 +30,7 @@ class Banksys:
         self.label_feature = "label"
         week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         self.feature_names = (
-            ["amount", "hour_ratio"] + week_days + ["is_online"] +
-            self.cards[0].feature_names + self.terminals[0].feature_names
+            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
 
     @property
@@ -46,7 +45,7 @@ class Banksys:
         ndays_warmup = max(*self.cards[0].days_aggregation, *self.terminals[0].days_aggregation)
         rows = []
         for t in tqdm(transactions):
-            self._add_transaction(t)
+            self.add_transaction(t)
             if t.timestamp - start > ndays_warmup:
                 features = self._make_features(t, with_label=True)
                 rows.append(features)
@@ -91,12 +90,15 @@ class Banksys:
             return np.concatenate([transaction.features, terminal_features, card_features, [transaction.label]])
         return np.concatenate([transaction.features, terminal_features, card_features])
 
-    def classify(self, transaction: Transaction) -> bool:
+    def process_transaction(self, transaction: Transaction) -> bool:
+        """
+        Process the transaction and return whether it is fraudulent or not.
+        """
         trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
         trx = pd.DataFrame(trx_features, columns=self.feature_names)
         label = self.clf.predict(trx).item()
         transaction.label = label
-        self._add_transaction(transaction)
+        self.add_transaction(transaction)
         return label
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
@@ -110,7 +112,7 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def _add_transaction(self, transaction: Transaction):
+    def add_transaction(self, transaction: Transaction):
         # Add the transaction to the dataframe self.transactions_df without using append
         # features = self._make_features(transaction, with_label=True)
         # self.transactions_df.loc[len(self.transactions_df)] = features

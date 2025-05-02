@@ -13,8 +13,15 @@ class Action:
     delay_days: int
     delay_hours: float
 
-    def __init__(self, amount: float, terminal_x: float, terminal_y: float,
-                 is_online: bool, delay_days: int, delay_hours: float):
+    def __init__(
+        self,
+        amount: float,
+        terminal_x: float,
+        terminal_y: float,
+        is_online: bool,
+        delay_days: int,
+        delay_hours: float,
+    ):
         self.amount = max(0.01, min(100_000, amount))
         self.terminal_x = max(0, min(200, terminal_x))
         self.terminal_y = max(0, min(200, terminal_y))

@@ -9,12 +9,12 @@ from sklearn.ensemble import RandomForestClassifier
 from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction
-from CardSim.cardsim import Cardsim
 from environment import CardSimEnv
 from rl.agents.networks import ActorCritic
 from rl.agents.ppo_new import PPO
 from rl.delayed_parellel_agent import DelayedParallelAgent
 from Baselines.attack_generation import Attack_Generation
+from cardsim import Cardsim
 
 torch.manual_seed(0)
 random.seed(0)
@@ -58,17 +58,14 @@ def train(env: CardSimEnv, n_weeks: int = 20):
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = DelayedParallelAgent(PPO(network, 0.99))
 
-
     terminals = env.system.terminals[:10]
     # Get the transactions from the terminals
     transactions = []
     for t in terminals:
         new_transactions = t.transactions
         # Add x and y coordinates to the transactions
-        new_transactions = list(map(lambda trx: trx.add_coordinates(payee_x=t.x, payee_y=t.y),
-                                    new_transactions))
+        new_transactions = list(map(lambda trx: trx.add_coordinates(payee_x=t.x, payee_y=t.y), new_transactions))
         transactions += new_transactions
-
 
     # Turn transactions into a tensor
     transactions_tensor = torch.tensor([[t.amount, t.payee_x, t.payee_y, t.timestamp.hour] for t in transactions])
@@ -113,7 +110,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), 100)
+    env = CardSimEnv(banksys, timedelta(days=7), 1)
     train(env)
 
 
