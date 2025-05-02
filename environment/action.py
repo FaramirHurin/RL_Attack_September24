@@ -27,7 +27,7 @@ class Action:
         self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
         self.delay_days = max(0, delay_days)
-        self.delay_hours = max(0, delay_hours)
+        self.delay_hours = min(max(0, delay_hours), 23)
         if self.delay_days == 0 and self.delay_hours == 0:
             # Randomly wait for at most 5 minutes
             self.delay_hours = (5 / 60) * random.random()
@@ -39,9 +39,9 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        amount, terminal_x, terminal_y, online_score, delay_days, delay_hours = array
-        is_online = online_score > 0.5
-        return Action(
+        is_online, amount, terminal_x, terminal_y,  delay_days, delay_hours = array
+        is_online = is_online > 0.5
+        to_return = Action(
             amount=float(amount),
             terminal_x=float(terminal_x),
             terminal_y=float(terminal_y),
@@ -49,6 +49,7 @@ class Action:
             delay_days=int(delay_days),
             delay_hours=float(delay_hours),
         )
+        return to_return
 
     def to_numpy(self):
         return np.array(astuple(self), dtype=np.float32)

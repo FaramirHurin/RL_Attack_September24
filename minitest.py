@@ -13,8 +13,9 @@ from environment import CardSimEnv
 from rl.agents.networks import ActorCritic
 from rl.agents.ppo_new import PPO
 from rl.delayed_parellel_agent import DelayedParallelAgent
-from Baselines.attack_generation import Attack_Generation
-from cardsim import Cardsim
+from Baselines.attack_generation import Attack_Generation, Delayed_Vae_Agent
+from CardSim.cardsim import Cardsim
+from torch import nn
 
 torch.manual_seed(0)
 random.seed(0)
@@ -55,23 +56,18 @@ def plot_transactions(transactions: list[Transaction]):
 
 def train(env: CardSimEnv, n_weeks: int = 20):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    network = ActorCritic(env.observation_size, env.n_actions, device)
-    agent = DelayedParallelAgent(PPO(network, 0.99))
 
-    terminals = env.system.terminals[:10]
-    # Get the transactions from the terminals
-    transactions = []
-    for t in terminals:
-        new_transactions = t.transactions
-        # Add x and y coordinates to the transactions
-        new_transactions = list(map(lambda trx: trx.add_coordinates(payee_x=t.x, payee_y=t.y), new_transactions))
-        transactions += new_transactions
 
-    # Turn transactions into a tensor
-    transactions_tensor = torch.tensor([[t.amount, t.payee_x, t.payee_y, t.timestamp.hour] for t in transactions])
-    transactions_tensor = transactions_tensor.to(device)
+    #network = ActorCritic(env.observation_size, env.n_actions, device)
+    #agent = DelayedParallelAgent(PPO(network, 0.99))
 
-    agent = DelayedParallelAgent(PPO(network, 0.99))
+    TERMINALS = env.system.terminals[:5]
+    agent = Delayed_Vae_Agent( device=device, criterion=nn.MSELoss(),latent_dim=10, hidden_dim=120,
+                    lr=0.0005, trees=20, banksys=env.system, terminal_codes=[t for t in TERMINALS],
+                    batch_size=8, num_epochs=4000, know_client=False, supervised=False,
+                    current_time=env.t_start, quantile=0.95)
+
+    agent = DelayedParallelAgent(agent)  #PPO(network, 0.99)
 
     i = 0
     for week_num in range(n_weeks):
@@ -88,6 +84,8 @@ def train(env: CardSimEnv, n_weeks: int = 20):
             agent.store_transition(t, card, action, step)
             if trx is not None:
                 transactions.append(trx)
+            # Print whether agent is done
+            #print('Is the agent done? ' + str(agent.is_done))
         print("Done ")
         plot_transactions(transactions)
         input("Press Enter to continue...")
@@ -110,7 +108,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), 1)
+    env = CardSimEnv(banksys, timedelta(days=7), 5)
     train(env)
 
 
