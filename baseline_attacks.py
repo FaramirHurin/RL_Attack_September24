@@ -24,7 +24,8 @@ def prepare_Data(transactions):
 
     payees_transactions = payees_transactions[(transactions["amount"] < q_hi)
                                               & (payees_transactions["amount"] > q_low)]
-    gan_transactions = copy.deepcopy(payees_transactions[['remote', 'amount', 'payee_x', 'payee_y', 'hour']])
+    gan_transactions = copy.deepcopy(payees_transactions[
+                                         ['remote', 'amount', 'payee_x', 'payee_y', 'hour']])
     print(gan_transactions.describe())
     y = payees_transactions["fraud"].values
 
@@ -53,8 +54,9 @@ real_data, scaler, y = prepare_Data(transactions)
 
 # Load the VAE model
 atk_generator = Attack_Generation(device=device, criterion = nn.MSELoss(),
-                              latent_dim=latent_dim, hidden_dim=hidden_dim, training_data=real_data,
-                                  lr=0.0005, trees=20, supervised=supervised, y=y)
+                              latent_dim=latent_dim, hidden_dim=hidden_dim,
+                                  training_data=real_data,  lr=0.0005,
+                                  trees=20, supervised=supervised, y=y)
 atk_generator.train( batch_size=batch_size, num_epochs=num_epochs)
 
 # Generate synthetic data

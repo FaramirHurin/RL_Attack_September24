@@ -22,12 +22,14 @@ from environment.action import Action
 from datetime import datetime
 
 
-COLUMNS = [ 'payer_id', 'credit_card', 'remote', 'amount', 'payee_id', 'distance',
-            'time_seconds', 'date_time', 'hour', 'fraud', 'run_id']
+COLUMNS = [ 'payer_id', 'credit_card', 'is_online', 'amount', 'payee_id', 'distance',
+            'time_seconds', 'date_time', 'hour', 'fraud', 'run_id', 'label']
 
-VAE_COLUMNS = ['remote', 'amount', 'payee_x', 'payee_y', 'hour']
-VAE_CLIENT_COLUMNS = ['remote', 'amount',  'delta_x', 'delta_y', 'hour']
+VAE_COLUMNS = ['is_online', 'amount', 'payee_x', 'payee_y', 'hour']
+VAE_CLIENT_COLUMNS = ['is_online', 'amount',  'delta_x', 'delta_y', 'hour']
 
+OBSERVATION_FEATURES = ['remaining_time', 'is_credit', 'hour', 'day']
+OBSERVATION_FEATURES_CLIENT = ['remaining_time', 'is_credit', 'hour', 'day', 'payer_x', 'payer_y']
 
 
 def NMSE(y_true, y_pred):
@@ -83,7 +85,7 @@ class VAE(nn.Module):
 
 class Attack_Generation:
     def __init__(self, device, criterion, latent_dim, hidden_dim,
-                 lr, trees, training_data, supervised = False, y=None):
+                 lr, trees, training_data, y,  supervised = False, ):
         self.device = device
         self.model = VAE(input_dim=training_data.shape[1],
                          latent_dim=latent_dim, hidden_dim=hidden_dim).to(self.device)
@@ -106,7 +108,7 @@ class Attack_Generation:
             self.detector.fit(self.training_data.cpu().numpy(), self.y)
         else:
             self.detector.fit(self.training_data.cpu().numpy())
-        self._train_vae(self.training_data, batch_size, num_epochs)
+        self._train_vae(self.training_data.to(torch.float), batch_size, num_epochs)
 
     def _train_vae(self, data,  batch_size, num_epochs=1000):
         data = data.to(self.device)
@@ -140,52 +142,50 @@ class Attack_Generation:
         valid_samples = samples[undetected]
         return valid_samples
 
-    def choose_action(self, obs=None)-> Action:
-        PERCENTILE = 0.9
-        batch = self._generate_batch(3000)
-        # Select the line with value on the first column equal to the threshold
-        threshold = np.percentile(batch[:, 0], PERCENTILE)
-        trx = batch[batch[:, 0] == threshold][0]
 
-        action = Action.from_numpy(trx)
 
 
 class Delayed_Vae_Agent:
     def __init__(self, device, criterion, latent_dim:int, hidden_dim:int,
                  lr:float, trees:int, banksys:Banksys, terminal_codes:list, batch_size=32,
-                 num_epochs=1000,know_client:bool=False, supervised:bool = False,
+                 num_epochs=1000,know_client:bool=False, supervised:bool = True,
                  current_time:datetime=None, quantile:float=0.9,):
         self.device = device
         self.banksys = banksys
         self.current_time = current_time
-        self.terminal_codes = terminal_codes
+        self.terminals = terminal_codes
         self.know_client = know_client
         self.supervised = supervised
         self.quantile = quantile
 
         if self.know_client:
+
             self.columns = VAE_CLIENT_COLUMNS
         else:
             self.columns = VAE_COLUMNS
 
         # Preprocess the data
-        transactions_df = self._prepare_data()[self.columns]
-        q_low = transactions_df["amount"].quantile(0.05)
-        q_hi = transactions_df["amount"].quantile(0.94)
+        transactions_df = self._prepare_data()
+        card_ids = transactions_df["card_id"].values
+        q_low = transactions_df["amount"].quantile(0.02)
+        q_hi = transactions_df["amount"].quantile(0.98)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi)
                                           & (transactions_df["amount"] > q_low)]
+        labels = transactions_df["label"].values
+        transactions_df = transactions_df[self.columns]
+
 
         # Normalize the data
         self.scaler = MinMaxScaler()
         self.scaler.fit(transactions_df[self.columns].values)
         normalized_values = self.scaler.transform(transactions_df[self.columns].values)
 
-        self.attack_generator = Attack_Generation(device=device, criterion=criterion,
-                                                   latent_dim=latent_dim, hidden_dim=hidden_dim,
-                                                   training_data=torch.tensor(normalized_values).to(device),
-                                                   lr=lr, trees=trees, supervised=supervised)
+        self.attack_generator = Attack_Generation\
+            (device=device, criterion=criterion, y =labels,
+             latent_dim=latent_dim, hidden_dim=hidden_dim,
+             training_data=torch.tensor(normalized_values).to(device),
+             lr=lr, trees=trees, supervised=supervised)
         self.attack_generator.train(batch_size=batch_size, num_epochs=num_epochs)
-
 
 
     def _prepare_data(self) -> pd.DataFrame:
@@ -193,50 +193,61 @@ class Delayed_Vae_Agent:
         Preprocess the data and return a DataFrame with the transactions
         '''
         terminals:list[Terminal] = [terminal for terminal in self.banksys.terminals
-                     if terminal.code in self.terminal_codes]
+                                    if terminal in self.terminals]
 
         transactions_df = self.get_trx_from_terminals(terminals, self.current_time)
 
         if self.know_client:
             customers: list[Card] = self.banksys.cards
             transactions_df = self._trx_and_customers(transactions_df, customers)
-
+        transactions_df['hour'] = transactions_df['timestamp'].dt.hour
         return transactions_df
 
     def choose_action(self, observation: np.ndarray) -> Action:
-        # At the moment we assume observartion has time and MAY have the customer coordinates
-
+        '''
+        Choose an action based on the observation given by environment
+        :param observation: the observation comprising the remaining time, is_credit, hour, day and
+        if self.know_client, payer_x, payer_y
+        :return: the action to be taken, comprising
+         [is_online, amount, terminal_x, terminal_y, delay_hours, delay_day, payee_x, payee_y]
+        '''
+        # Generate a batch of transactions
         batch = self.attack_generator._generate_batch(3000)
         # Turn it to the original scale and to dataframe
         batch = self.scaler.inverse_transform(batch)
+        # Sort batch by second column (amount)
+        batch = pd.DataFrame(batch, columns=self.columns)
+        batch['is_online'] = batch['is_online'] > 0.5
+        batch['amount'] = batch['amount'].round(2)
+        batch['payee_x'] = batch['payee_x'].astype(int)
+        batch['payee_y'] = batch['payee_y'].astype(int)
+        batch = batch.sort_values(by='amount', ascending=True)
+        small_df = batch.iloc[:int(self.quantile * len(batch)), :]
+        index = np.random.randint(0, len(small_df))
+        trx = small_df.iloc[index, :]
+
+        # Make dictionary of the observation
         if self.know_client:
-            batch = pd.DataFrame(batch, VAE_CLIENT_COLUMNS)
-            #TODO Check if observation.payee_x and observation.payee_y are the correct code
-            batch['payee_x'] = observation.payee_x + batch['delta_x']
-            batch['payee_y'] = observation.payee_y + batch['delta_y']
-            batch = batch.drop(columns=['delta_x', 'delta_y'])
+            observation = {k: v for k, v in zip(OBSERVATION_FEATURES_CLIENT, observation)}
+            #trx = trx.rename(columns = VAE_CLIENT_COLUMNS)
+            trx['payee_x'] = observation['payer_x'] + trx['delta_x']
+            trx['payee_y'] = observation['payer_y'] + trx['delta_y']
+            trx = trx.drop(columns=['delta_x', 'delta_y'])
         else:
-            batch = pd.DataFrame(batch, VAE_COLUMNS)
+            observation = {k: v for k, v in zip(OBSERVATION_FEATURES, observation)}
+            #trx = trx.rename(columns = VAE_COLUMNS)
 
-        # Select the line with value on the first column equal to the threshold
-        threshold = np.percentile(batch.iloc[:, 0], self.quantile)
-        trx = batch[batch.iloc[:, 0] == threshold].iloc[0, :]
-        trx['delay'] = self._compute_delay(observation, trx['hour'])
-        trx.drop('hour', axis=1, inplace=True)
+        # If hour > observation.hour, same day and new hour. Otherwise, next day and new hour
+        trx = trx.copy()  # Make an explicit copy to avoid SettingWithCopyWarning
+        trx['delay_hours'] = int((observation['hour'] + trx['hour']) % 24)
+        trx['delay_day'] = int(observation['hour'] > trx['hour'])
 
-        # Convert to Action
-        trx = trx.to_numpy()
-        action = Action.from_numpy(trx)
+        # Drop trx['hour']
+        trx = trx.drop('hour')
+        # Reorder Series to match the order of the Action class
+        trx = trx[['is_online', 'amount', 'payee_x', 'payee_y', 'delay_day', 'delay_hours']]
+        action = Action.from_numpy(trx.to_numpy())
         return action
-
-
-    @staticmethod
-    def _compute_delay(observation, hour):
-        '''
-        If hour > observation.hour, same day and new hour. Otherwise, next day and new hour
-        '''
-        raise NotImplementedError("Not implemented yet")
-
 
     @staticmethod
     def get_trx_from_terminals(terminals:list[Terminal], current_time:datetime) -> pd.DataFrame:
@@ -249,12 +260,17 @@ class Delayed_Vae_Agent:
         transactions:list[Transaction] = []
         for terminal in terminals:
             transactions += terminal.transactions
+            # Add terminal coordinates to the transactions
+            for transaction in transactions:
+                transaction.payee_x = terminal.x
+                transaction.payee_y = terminal.y
         transactions = [transaction for transaction in transactions
                        if transaction.timestamp <= current_time]
         transactions_df = pd.DataFrame([transaction.__dict__ for transaction in transactions])
         return transactions_df
+
     @staticmethod
-    def _trx_and_customers(self, transactionsDF:pd.DataFrame, customers:list[Card]) -> pd.DataFrame:
+    def _trx_and_customers(transactionsDF:pd.DataFrame, customers:list[Card]) -> pd.DataFrame:
         '''
         Preprocess the transactions and use s.
         :param transactionsDF: DataFrame with the transactions
