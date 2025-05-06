@@ -64,8 +64,8 @@ def train(env: CardSimEnv, n_weeks: int = 20):
     TERMINALS = env.system.terminals[:5]
     agent = Delayed_Vae_Agent( device=device, criterion=nn.MSELoss(),latent_dim=10, hidden_dim=120,
                     lr=0.0005, trees=20, banksys=env.system, terminal_codes=[t for t in TERMINALS],
-                    batch_size=8, num_epochs=4000, know_client=False, supervised=False,
-                    current_time=env.t_start, quantile=0.95)
+                    batch_size=8, num_epochs=4000, know_client=True, supervised=False,
+                    current_time=env.t_start, quantile=0.99)
 
     agent = DelayedParallelAgent(agent)  #PPO(network, 0.99)
 
@@ -99,7 +99,7 @@ def main():
         cards, terminals, transactions = simulator.simulate(n_days=50)
 
         # clf = RandomForestClassifier(n_jobs=-1)
-        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.1)  # type:ignore
+        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.5)  # type:ignore
         system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], [])
         banksys = Banksys(system, cards, terminals, transactions)
         start = datetime.now()
@@ -108,7 +108,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), 5)
+    env = CardSimEnv(banksys, timedelta(days=7), 10)
     train(env)
 
 

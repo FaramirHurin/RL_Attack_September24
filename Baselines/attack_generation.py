@@ -219,8 +219,13 @@ class Delayed_Vae_Agent:
         batch = pd.DataFrame(batch, columns=self.columns)
         batch['is_online'] = batch['is_online'] > 0.5
         batch['amount'] = batch['amount'].round(2)
-        batch['payee_x'] = batch['payee_x'].astype(int)
-        batch['payee_y'] = batch['payee_y'].astype(int)
+        if self.know_client:
+            #TODO How to pass observation[payer_x]. Possibly -2, -1
+            batch['payee_x'] = observation['payer_x'] + batch['delta_x']
+            batch['payee_y'] = observation['payer_y'] + batch['delta_y']
+        else:
+            batch['payee_x'] = batch['payee_x'].astype(int)
+            batch['payee_y'] = batch['payee_y'].astype(int)
         batch = batch.sort_values(by='amount', ascending=True)
         small_df = batch.iloc[:int(self.quantile * len(batch)), :]
         index = np.random.randint(0, len(small_df))
@@ -279,10 +284,12 @@ class Delayed_Vae_Agent:
         '''
         # Create a DataFrame with the customers and their coordinates
         card_df = pd.DataFrame([card.__dict__ for card in customers])
-        card_df = card_df[["card_id", "x", "y"]]
+        card_df = card_df[["id", "customer_x", "customer_y"]]
+        # rename id to card_id
+        card_df = card_df.rename(columns={"id": "card_id"})
 
         # Join transactionsDF and card_df on card_id
-        transactionsDF = pd.merge(transactionsDF, card_df, on="card_id")
+        transactionsDF = pd.merge(transactionsDF, card_df, on="card_id", how="left")
         transactionsDF = transactionsDF.rename(columns={"x": "customer_x", "y": "customer_y"})
 
         transactionsDF['delta_x'] = transactionsDF['payee_x'] - transactionsDF['customer_x']
