@@ -4,11 +4,11 @@ from banksys import Card
 from environment import Action
 from marlenv import Episode, Observation, State, Step
 from datetime import datetime
-from Baselines.attack_generation import Delayed_Vae_Agent
+from Baselines.attack_generation import VaeAgent
 
 
 class DelayedParallelAgent:
-    def __init__(self, agent: PPO|Delayed_Vae_Agent):
+    def __init__(self, agent: PPO | VaeAgent):
         self.buffered_actions = PriorityQueue[tuple[Card, Action]]()
         self.episodes = dict[int, Episode]()
         self.agent = agent

@@ -3,7 +3,6 @@
 from marlenv import Transition
 import torch
 import numpy as np
-import torch.utils
 from .agent import Agent
 from .networks import ActorCritic
 
