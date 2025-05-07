@@ -1,6 +1,7 @@
-from banksys import Banksys, Transaction, Card
+from banksys import Banksys, Transaction
 from .action import Action
 import random
+from copy import deepcopy
 import numpy as np
 from datetime import timedelta
 from marlenv import Observation, Step, MARLEnv, State, ContinuousActionSpace
@@ -38,12 +39,20 @@ class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         )
         self.system = system
         self.t = system.earliest_attackable_moment
+        self.t_start = deepcopy(system.earliest_attackable_moment)
         """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.current_card = self.card_registry.release_card(self.t)
 
+    def print_info(self):
+        print("SimpleCardSimEnv")
+        print(f"\tCurrent time: {self.t}")
+        print(f"\tCurrent card: id={self.current_card.id}")
+        print(f"\tCard expiration date: {self.card_registry.get_expiration(self.current_card)}")
+
     def reset(self):
+        self.t = self.t_start
         self.current_card = self.steal_card()
         obs = self.get_observation()
         state = self.get_state()
@@ -78,9 +87,10 @@ class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         """
         Perform the given action at the given time.
         """
+        print(action)
         self.t += action.timedelta
-        self.card_registry.update(self.t)
         if self.card_registry.has_expired(self.current_card, self.t):
+            self.card_registry.clear(self.current_card)
             done = True
             reward = 0.0
             trx = None

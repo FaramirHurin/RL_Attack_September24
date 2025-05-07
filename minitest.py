@@ -10,13 +10,14 @@ from sklearn.ensemble import RandomForestClassifier
 from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction
-from environment import CardSimEnv
+from environment import CardSimEnv, SimpleCardSimEnv
 from rl.agents.networks import ActorCritic
 from rl.agents.ppo_new import PPO
 from rl.delayed_parallel_agent import DelayedParallelAgent
 from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
 from torch import nn
+from marlenv import Episode
 
 torch.manual_seed(0)
 random.seed(0)
@@ -75,7 +76,7 @@ def get_vae(env: CardSimEnv, device: torch.device):
     )
 
 
-def get_ppo(env: CardSimEnv, device: torch.device):
+def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(network, 0.99)
     return agent
@@ -109,6 +110,31 @@ def train(env: CardSimEnv, n_weeks: int = 20, n_cards: int = 10):
             input("Press Enter to continue to next week...")
 
 
+def train_simple(env: SimpleCardSimEnv, n_steps: int = 200):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    agent = get_ppo(env, device)
+    n = 0
+    while n < n_steps:
+        obs, state = env.reset()
+        env.print_info()
+        episode = Episode.new(obs, state)
+        transactions = list[Transaction]()
+        while not episode.is_finished:
+            print(f"Observation: {obs.data}")
+            action = agent.choose_action(obs.data)
+            step, trx = env.step(action)
+            episode.add(step, action)
+            if trx is not None:
+                transactions.append(trx)
+            obs = step.obs
+        agent.update(episode)
+        print(f"Episode {n} finished in {len(episode)} steps")
+        plot_transactions(transactions)
+        input("Press Enter to continue to next week...")
+        n += len(episode)
+
+
 def main():
     try:
         banksys = Banksys.load()
@@ -126,8 +152,8 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
-    train(env)
+    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
+    train_simple(env)
 
 
 if __name__ == "__main__":
