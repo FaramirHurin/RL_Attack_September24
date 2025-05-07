@@ -32,7 +32,7 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
 
 class ActorCritic(torch.nn.Module):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
-        super(ActorCritic, self).__init__()
+        super().__init__()
         self.n_actions = n_actions
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
@@ -41,6 +41,68 @@ class ActorCritic(torch.nn.Module):
         INNER_SIZE_SEQUNTIAL = 32
         self.actions_mean_std = torch.nn.Sequential(
             # torch.nn.BatchNorm1d(state_size),
+            torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
+        ).to(self.device)
+
+        self.critic = torch.nn.Sequential(
+            torch.nn.LayerNorm(state_size),
+            torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, 1),
+        ).to(self.device)
+
+    def _action_distribution(self, state: torch.Tensor):
+        action_mean_std = self.actions_mean_std(state.to(self.device))
+        means = action_mean_std[:, : self.n_actions]
+        std = torch.exp(action_mean_std[:, self.n_actions :])
+        std = std.reshape(-1, self.n_actions, self.n_actions)
+        std = torch.clamp(std, min=-1e3, max=1e3)
+
+        # Calculate the Frobenius norm of the original matrix
+        norm = torch.norm(std, p="fro", dim=(1, 2), keepdim=True)
+        # Normalize the matrix by dividing by its Frobenius norm
+        std_normalized_local = std / (norm + 1e-8)
+        # Perform the matrix multiplication of the normalized matrix and its transpose
+        result_normalized = std_normalized_local @ std_normalized_local.mT + torch.eye(self.n_actions).unsqueeze(0).to(self.device)
+        # Scale the result by the original Frobenius norm
+        normalized_cov_mat = result_normalized * norm
+
+        # print(torch.linalg.eigvals(cov_mat))
+        dist = distributions.MultivariateNormal(means, normalized_cov_mat)
+        # dist = distributions.Normal(means, std)
+        return dist
+
+    def policy(self, state: torch.Tensor):
+        dist = self._action_distribution(state)
+        return dist
+
+    def value(self, state: torch.Tensor):
+        value = self.critic.forward(state)
+        return value
+
+    def to(self, device: torch.device):
+        self.device = device
+        self.actions_mean_std.to(device)
+        self.critic.to(device)
+        return self
+
+
+class RecurrentActorCritic(torch.nn.Module):
+    def __init__(self, state_size: int, n_actions: int, device: torch.device):
+        super().__init__()
+        self.n_actions = n_actions
+        self.device = device
+        # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
+        n_action_outputs = n_actions + n_actions**2
+        INNER_SIZE_ACTIONS = 32
+        INNER_SIZE_SEQUNTIAL = 32
+        self.actions_mean_std = torch.nn.Sequential(
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),

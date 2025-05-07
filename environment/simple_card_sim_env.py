@@ -7,7 +7,7 @@ from marlenv import Observation, Step, MARLEnv, State, ContinuousActionSpace
 from .card_registry import CardRegistry
 
 
-class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
+class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
     def __init__(
         self,
         system: Banksys,
@@ -41,58 +41,59 @@ class CardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
         """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
+        self.current_card = self.card_registry.release_card(self.t)
 
-    def reset(self, n_parallel: int = 10):
-        cards = [self.steal_card() for _ in range(n_parallel)]
-        obs = [self.get_observation(c) for c in cards]
-        states = [self.get_state(c) for c in cards]
-        return list(zip(cards, obs, states))
+    def reset(self):
+        self.current_card = self.steal_card()
+        obs = self.get_observation()
+        state = self.get_state()
+        return obs, state
 
-    def get_observation(self, card: Card):
-        state = self.compute_state(card)
+    def get_observation(self):
+        state = self.compute_state()
         return Observation(state, self.available_actions())
 
-    def get_state(self, card: Card):
-        state = self.compute_state(card)
+    def get_state(self):
+        state = self.compute_state()
         return State(state)
 
     @property
     def observation_size(self):
         return self.observation_shape[0]
 
-    def compute_state(self, card: Card):
-        time_ratio = self.card_registry.get_time_ratio(card, self.t)
-        features = [time_ratio, card.is_credit, self.t.hour, self.t.day]
+    def compute_state(self):
+        time_ratio = self.card_registry.get_time_ratio(self.current_card, self.t)
+        features = [time_ratio, self.current_card.is_credit, self.t.hour, self.t.day]
         if self.customer_location_is_known:
             features += [
-                card.customer_x,
-                card.customer_y,
+                self.current_card.customer_x,
+                self.current_card.customer_y,
             ]
         return np.array(features, dtype=np.float32)
 
     def steal_card(self):
         return self.card_registry.release_card(self.t)
 
-    def step(self, action: Action, card: Card):
+    def step(self, action: Action):
         """
         Perform the given action at the given time.
         """
         self.t += action.timedelta
         self.card_registry.update(self.t)
-        if self.card_registry.has_expired(card, self.t):
+        if self.card_registry.has_expired(self.current_card, self.t):
             done = True
             reward = 0.0
             trx = None
         else:
-            terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
-            trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online)
+            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
+            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online)
             is_fraud = self.system.process_transaction(trx)
             if is_fraud:
                 reward = 0.0
             else:
                 reward = action.amount
             done = is_fraud
-        state = self.compute_state(card)
+        state = self.compute_state()
         return Step(Observation(state, self.available_actions()), State(state), reward, done, False), trx
 
     def seed(self, seed_value: int):

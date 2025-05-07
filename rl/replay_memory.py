@@ -1,20 +1,21 @@
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Generic, Iterable, Literal, TypeVar
+from typing import Deque, Generic, Iterable, Literal
+from typing_extensions import TypeVar
 
 import numpy as np
-from marlenv import Transition
+from marlenv import Episode, Transition
 
-from .batch import Batch, TransitionBatch
+from .batch import Batch, EpisodeBatch, TransitionBatch
 
 
 T = TypeVar("T")
-B = TypeVar("B", bound=Batch)
+B = TypeVar("B", bound=Batch, default=Batch)
 
 
 @dataclass
-class ReplayMemory(Generic[B, T], ABC):
+class ReplayMemory(Generic[T, B], ABC):
     """Parent class of any ReplayMemory"""
 
     max_size: int
@@ -60,7 +61,8 @@ class ReplayMemory(Generic[B, T], ABC):
         return self._memory[index]
 
 
-class TransitionMemory(ReplayMemory[TransitionBatch, Transition]):
+@dataclass
+class TransitionMemory(ReplayMemory[Transition, TransitionBatch]):
     """Replay Memory that stores Transitions"""
 
     def __init__(self, max_size: int):
@@ -69,3 +71,15 @@ class TransitionMemory(ReplayMemory[TransitionBatch, Transition]):
     def get_batch(self, indices: Iterable[int]):
         transitions = [self._memory[i] for i in indices]
         return TransitionBatch(transitions)
+
+
+@dataclass
+class EpisodeMemory(ReplayMemory[Episode, EpisodeBatch]):
+    """Replay Memory that stores and samples full Episodes"""
+
+    def __init__(self, max_size: int):
+        super().__init__(max_size, "episode")
+
+    def get_batch(self, indices: Iterable[int]):
+        episodes = [self._memory[i] for i in indices]
+        return EpisodeBatch(episodes)

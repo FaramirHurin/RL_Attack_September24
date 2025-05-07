@@ -18,11 +18,12 @@ class DelayedParallelAgent:
         self.episodes.clear()
         for card, obs, state in card_data:
             action = self.agent.choose_action(obs.data)
-            if not sum(obs.data) == 0:
-                DEBUG = True
             t_action = t + action.timedelta
             self.buffered_actions.push((card, action), t_action)
             self.episodes[card.id] = Episode.new(obs, state)
+
+    def add_card(self, t: datetime, card: Card, obs: Observation, state: State):
+        pass
 
     def buffer_action_for(self, current_time: datetime, card: Card):
         e = self.episodes[card.id]
@@ -31,15 +32,19 @@ class DelayedParallelAgent:
         self.buffered_actions.push((card, action), current_time + action.timedelta)
 
     def pop_next_action(self):
-        return self.buffered_actions.ppop()
+        return self.buffered_actions.pop()
 
     def store_transition(self, t: datetime, card: Card, action: Action, step: Step):
         """
         When an action has been performed in the environment, we store the transition in the episode.
         """
-        e = self.episodes[card.id]
-        e.add(step, action)
-        if not step.is_terminal:
+        if step.is_terminal:
+            # The card has been blocked
+            episode = self.episodes.pop(card.id)
+            episode.add(step, action)
+            self.agent.update(episode)
+        else:
+            self.episodes[card.id].add(step, action)
             self.buffer_action_for(t, card)
 
     @property

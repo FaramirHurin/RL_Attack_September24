@@ -2,10 +2,10 @@ from typing import Any, Literal, Optional
 
 import numpy as np
 import torch
-from marlenv import Transition
+from marlenv import Episode
 from marlenv.utils import Schedule
 
-from ..batch import Batch, TransitionBatch
+from ..batch import Batch, EpisodeBatch
 from .networks import ActorCritic
 from environment import Action
 
@@ -38,7 +38,7 @@ class PPO:
         eps_clip: float = 0.2,
         critic_c1: Schedule | float = 0.5,
         exploration_c2: Schedule | float = 0.01,
-        train_interval: int = 2048,
+        train_interval: int = 128,
         minibatch_size: int = 10,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
@@ -53,11 +53,12 @@ class PPO:
         - `eps_clip`: The clipping parameter for the PPO loss
         - `critic_c1`: The coefficient for the critic loss
         - `exploration_c2`: The coefficient for the entropy loss
-        - `train_interval`: The number of steps between training iterations, i.e. the number of steps to collect before training
+        - `train_interval`: The number of steps between training iterations, i.e. the number of steps (transactions) to collect before training
         - `minibatch_size`: The size of the minibatches to use for training, must be lower or equal to `train_interval`
         - `gae_lambda`: The lambda parameter (trace decay) for the generalized advantage estimation
         - `grad_norm_clipping`: The maximum norm of the gradients at each epoch
         """
+        self.step = 0
         self._device = torch.device("cpu")
         self.batch_size = train_interval
         if minibatch_size is None:
@@ -67,7 +68,7 @@ class PPO:
         self.gamma = gamma
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
-        self._memory = []
+        self._memory = Memory()
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
@@ -177,11 +178,12 @@ class PPO:
             logs["total_grad_norm"] = total_norm.item()
         return logs
 
-    def update_step(self, transition: Transition, time_step: int) -> dict[str, Any]:
-        self._memory.append(transition)
-        if len(self._memory) == self.batch_size:
-            batch = TransitionBatch(self._memory).to(self._device)
-            logs = self.train(batch, time_step)
+    def update(self, episode: Episode) -> dict[str, Any]:
+        self._memory.add(episode)
+        if self._memory.size >= self.batch_size:
+            self.step += 1
+            batch = self._memory.as_batch().to(self._device)
+            logs = self.train(batch, self.step)
             self._memory.clear()
             return logs
         return {}
@@ -234,3 +236,20 @@ def randomize(init_fn, nn: torch.nn.Module):
             init_fn(param.data.view(1, -1))
         else:
             init_fn(param.data)
+
+
+class Memory:
+    def __init__(self):
+        self._memory = []
+        self.size = 0
+
+    def add(self, episode: Episode):
+        self._memory.append(episode)
+        self.size += len(episode)
+
+    def clear(self):
+        self._memory.clear()
+        self.size = 0
+
+    def as_batch(self):
+        return EpisodeBatch(self._memory)

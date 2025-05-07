@@ -17,11 +17,11 @@ class Terminal(HasOrderedTransactions):
     """Transactions, ordered by timestamp"""
 
     def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))):
+        super().__init__()
         self.id = id
         self.x = x
         self.y = y
         self.days_aggregation = days_aggregation
-        super().__init__()
 
     @property
     def feature_names(self):

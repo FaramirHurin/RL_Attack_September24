@@ -1,5 +1,6 @@
 import random
 from datetime import datetime, timedelta
+from copy import deepcopy
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ from banksys import Banksys, ClassificationSystem, Transaction
 from environment import CardSimEnv
 from rl.agents.networks import ActorCritic
 from rl.agents.ppo_new import PPO
-from rl.delayed_parellel_agent import DelayedParallelAgent
+from rl.delayed_parallel_agent import DelayedParallelAgent
 from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
 from torch import nn
@@ -54,14 +55,9 @@ def plot_transactions(transactions: list[Transaction]):
     fig.show()
 
 
-def train(env: CardSimEnv, n_weeks: int = 20):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # network = ActorCritic(env.observation_size, env.n_actions, device)
-    # agent = DelayedParallelAgent(PPO(network, 0.99))
-
+def get_vae(env: CardSimEnv, device: torch.device):
     TERMINALS = env.system.terminals[:5]
-    agent = VaeAgent(
+    return VaeAgent(
         device=device,
         criterion=nn.MSELoss(),
         latent_dim=10,
@@ -74,32 +70,43 @@ def train(env: CardSimEnv, n_weeks: int = 20):
         num_epochs=4000,
         know_client=True,
         supervised=False,
-        current_time=env.t_start,
+        current_time=env.t,
         quantile=0.99,
     )
 
-    agent = DelayedParallelAgent(agent)  # PPO(network, 0.99)
 
-    i = 0
-    for week_num in range(n_weeks):
-        print(f"Week {week_num}")
-        observations = env.reset()
-        agent.reset(env.t_start, observations)
-        transactions = []
+def get_ppo(env: CardSimEnv, device: torch.device):
+    network = ActorCritic(env.observation_size, env.n_actions, device)
+    agent = PPO(network, 0.99)
+    return agent
 
-        while not agent.is_done:
-            i += 1
-            print(i)
-            t, (card, action) = agent.pop_next_action()
-            step, trx = env.step(t, action, card)
-            agent.store_transition(t, card, action, step)
+
+def train(env: CardSimEnv, n_weeks: int = 20, n_cards: int = 10):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    agent = get_ppo(env, device)
+    agent = DelayedParallelAgent(agent)
+    reset_data = env.reset(n_parallel=n_cards)
+    agent.reset(env.t, reset_data)
+    end_time = env.t + timedelta(weeks=n_weeks)
+
+    while env.t < end_time:
+        end_week = env.t + timedelta(weeks=1)
+        while env.t < end_week:
+            transactions = list[Transaction]()
+            card, action = agent.pop_next_action()
+            step, trx = env.step(action, card)
+            agent.store_transition(env.t, card, action, step)
+            if trx is None:
+                # Card has been blocked
+                new_card = env.steal_card()
+                obs = env.get_observation(new_card)
+                pass
             if trx is not None:
                 transactions.append(trx)
-            # Print whether agent is done
-            # print('Is the agent done? ' + str(agent.is_done))
-        print("Done ")
-        plot_transactions(transactions)
-        input("Press Enter to continue...")
+            print("Done")
+            plot_transactions(transactions)
+            input("Press Enter to continue to next week...")
 
 
 def main():
@@ -119,7 +126,7 @@ def main():
         banksys.save()
         banksys.evaluate_classifier(test_set)
 
-    env = CardSimEnv(banksys, timedelta(days=7), 10, customer_location_is_known=True)
+    env = CardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
     train(env)
 
 

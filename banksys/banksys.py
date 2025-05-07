@@ -113,9 +113,6 @@ class Banksys:
         return closest_terminal
 
     def add_transaction(self, transaction: Transaction):
-        # Add the transaction to the dataframe self.transactions_df without using append
-        # features = self._make_features(transaction, with_label=True)
-        # self.transactions_df.loc[len(self.transactions_df)] = features
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 

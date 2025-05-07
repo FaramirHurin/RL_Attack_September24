@@ -1,26 +1,19 @@
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.ensemble import IsolationForest
 from imblearn.ensemble import BalancedRandomForestClassifier
-import numpy as np
-from environment.action import Action
-import pandas as pd
-import pickle
-import numpy as np
-import torch
-import torch.nn as nn
-import copy
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.ensemble import IsolationForest
-from Baselines.preprocess_data import process_data
+from sklearn.preprocessing import MinMaxScaler
+
 from banksys.banksys import Banksys
+from banksys.card import Card
 from banksys.terminal import Terminal
 from banksys.transaction import Transaction
-from banksys.card import Card
 from environment.action import Action
-from datetime import datetime
-
 
 COLUMNS = [
     "payer_id",
@@ -171,11 +164,11 @@ class VaeAgent:
         trees: int,
         banksys: Banksys,
         terminal_codes: list,
+        current_time: datetime,
         batch_size=32,
         num_epochs=1000,
         know_client: bool = False,
         supervised: bool = True,
-        current_time: datetime = None,
         quantile: float = 0.9,
     ):
         self.device = device
@@ -193,7 +186,6 @@ class VaeAgent:
 
         # Preprocess the data
         transactions_df = self._prepare_data()
-        card_ids = transactions_df["card_id"].values
         q_low = transactions_df["amount"].quantile(0.02)
         q_hi = transactions_df["amount"].quantile(0.98)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
@@ -313,3 +305,6 @@ class VaeAgent:
         transactionsDF["delta_y"] = transactionsDF["payee_y"] - transactionsDF["customer_y"]
 
         return transactionsDF
+
+    def update(self, *args, **kwargs):
+        return {}
