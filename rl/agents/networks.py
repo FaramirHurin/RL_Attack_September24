@@ -58,7 +58,9 @@ class ActorCritic(torch.nn.Module):
         ).to(self.device)
 
     def _action_distribution(self, state: torch.Tensor):
-        action_mean_std = self.actions_mean_std(state.to(self.device))
+        action_mean_std = self.actions_mean_std.forward(state.to(self.device))
+        *dims, action_outputs = action_mean_std.shape
+        action_mean_std = action_mean_std.view(-1, action_outputs)
         means = action_mean_std[:, : self.n_actions]
         std = torch.exp(action_mean_std[:, self.n_actions :])
         std = std.reshape(-1, self.n_actions, self.n_actions)
@@ -73,6 +75,9 @@ class ActorCritic(torch.nn.Module):
         # Scale the result by the original Frobenius norm
         normalized_cov_mat = result_normalized * norm
 
+        # Reshape
+        means = means.reshape(*dims, self.n_actions)
+        normalized_cov_mat = normalized_cov_mat.reshape(*dims, self.n_actions, self.n_actions)
         # print(torch.linalg.eigvals(cov_mat))
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
         # dist = distributions.Normal(means, std)
@@ -82,9 +87,9 @@ class ActorCritic(torch.nn.Module):
         dist = self._action_distribution(state)
         return dist
 
-    def value(self, state: torch.Tensor):
+    def value(self, state: torch.Tensor) -> torch.Tensor:
         value = self.critic.forward(state)
-        return value
+        return value.squeeze(-1)
 
     def to(self, device: torch.device):
         self.device = device

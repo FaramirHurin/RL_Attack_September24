@@ -38,22 +38,19 @@ class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
             state_shape=obs_shape,
         )
         self.system = system
+        self.saved_system = deepcopy(system)
         self.t = system.earliest_attackable_moment
         self.t_start = deepcopy(system.earliest_attackable_moment)
-        """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.current_card = self.card_registry.release_card(self.t)
-
-    def print_info(self):
-        print("SimpleCardSimEnv")
-        print(f"\tCurrent time: {self.t}")
-        print(f"\tCurrent card: id={self.current_card.id}")
-        print(f"\tCard expiration date: {self.card_registry.get_expiration(self.current_card)}")
+        self.transactions = list[Transaction]()
 
     def reset(self):
+        self.system.rollback(self.transactions)
+        self.transactions = []
         self.t = self.t_start
-        self.current_card = self.steal_card()
+        self.current_card = self.card_registry.release_card(self.t)
         obs = self.get_observation()
         state = self.get_state()
         return obs, state
@@ -80,14 +77,11 @@ class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
             ]
         return np.array(features, dtype=np.float32)
 
-    def steal_card(self):
-        return self.card_registry.release_card(self.t)
-
-    def step(self, action: Action):
+    def step(self, np_action: np.ndarray):
         """
         Perform the given action at the given time.
         """
-        print(action)
+        action = Action.from_numpy(np_action)
         self.t += action.timedelta
         if self.card_registry.has_expired(self.current_card, self.t):
             self.card_registry.clear(self.current_card)
@@ -98,6 +92,7 @@ class SimpleCardSimEnv(MARLEnv[Action, ContinuousActionSpace]):
             terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
             trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online)
             is_fraud = self.system.process_transaction(trx)
+            self.transactions.append(trx)
             if is_fraud:
                 reward = 0.0
             else:

@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 import os
 import pickle
 
@@ -20,10 +20,12 @@ class Banksys:
         clf: ClassificationSystem,
         cards: list[Card],
         terminals: list[Terminal],
-        transactions: list[Transaction],
+        t_start: datetime,
     ):
         # Sort transactions by timestamp
-        self.transactions = sorted(transactions, key=lambda t: t.timestamp)
+        # self.transactions = sorted(transactions, key=lambda t: t.timestamp)
+        n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
+        self.earliest_attackable_moment = t_start + n_days_warmup
         self.clf = clf
         self.cards = cards
         self.terminals = terminals
@@ -32,13 +34,6 @@ class Banksys:
         self.feature_names = (
             ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
-
-    @property
-    def earliest_attackable_moment(self) -> datetime.datetime:
-        trx0 = self.transactions[0]
-        start_date = trx0.timestamp
-        n_days_warmup = max(*self.cards[0].days_aggregation, *self.terminals[0].days_aggregation)
-        return start_date + n_days_warmup
 
     def _create_df_and_aggregate(self, transactions: list[Transaction]):
         start = transactions[0].timestamp
@@ -51,8 +46,8 @@ class Banksys:
                 rows.append(features)
         return pd.DataFrame(rows, columns=self.feature_names + ["label"])
 
-    def train_classifier(self, train_split: float = 0.9):
-        transactions_df = self._create_df_and_aggregate(self.transactions)
+    def train_classifier(self, transactions: list[Transaction], train_split: float = 0.9):
+        transactions_df = self._create_df_and_aggregate(transactions)
         # Split the data into training and testing sets
         tr_size = int(len(transactions_df) * train_split)
         training_set = transactions_df.iloc[:tr_size, :]
@@ -127,6 +122,14 @@ class Banksys:
         with open(location, "rb") as f:
             banksys = pickle.load(f)
         return banksys
+
+    def rollback(self, transactions: list[Transaction]):
+        """
+        Undo the transactions. Typically called when the environment is reset.
+        """
+        for transaction in transactions:
+            self.terminals[transaction.terminal_id].remove(transaction)
+            self.cards[transaction.card_id].remove(transaction)
 
     """
     def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:

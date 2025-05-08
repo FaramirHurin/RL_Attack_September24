@@ -39,6 +39,10 @@ class ReplayMemory(Generic[T, B], ABC):
         indices = np.random.randint(0, len(self), batch_size)
         return self.get_batch(indices)
 
+    def as_batch(self):
+        """Return the memory as a `Batch`"""
+        return self.get_batch(range(len(self)))
+
     def can_sample(self, batch_size: int) -> bool:
         """Return whether the memory contains enough items to sample a batch of the given size"""
         return len(self) >= batch_size
@@ -83,3 +87,6 @@ class EpisodeMemory(ReplayMemory[Episode, EpisodeBatch]):
     def get_batch(self, indices: Iterable[int]):
         episodes = [self._memory[i] for i in indices]
         return EpisodeBatch(episodes)
+
+    def as_batch(self, device):
+        return EpisodeBatch(self._memory, device)

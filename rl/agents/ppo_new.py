@@ -8,6 +8,7 @@ from marlenv.utils import Schedule
 from ..batch import Batch, EpisodeBatch
 from .networks import ActorCritic
 from environment import Action
+from rl.replay_memory import EpisodeMemory
 
 
 class PPO:
@@ -68,7 +69,7 @@ class PPO:
         self.gamma = gamma
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
-        self._memory = Memory()
+        self._memory = EpisodeMemory(self.batch_size)
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
@@ -107,9 +108,10 @@ class PPO:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         policy = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions)
-        all_values = self.actor_critic.value(batch.all_obs)
-        advantages = batch.compute_gae(self.gamma, all_values, self.gae_lambda)
-        returns = advantages + all_values[:-1]
+        next_values = self.actor_critic.value(batch.next_obs)
+        returns = batch.compute_td1_returns(self.gamma, next_values)
+        values = self.actor_critic.value(batch.obs)
+        advantages = values - returns
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, time_step: int) -> dict[str, float]:
@@ -134,25 +136,28 @@ class PPO:
 
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
-            mini_policy, mini_values = self.actor_critic.forward(minibatch.obs, minibatch.extras, minibatch.available_actions)
-            critic_loss = torch.nn.functional.mse_loss(mini_values, mini_returns)
+            mini_values = self.actor_critic.value(minibatch.obs)
+            error = (mini_values - mini_returns).pow(2) * minibatch.masks
+            critic_loss = error.sum() / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
+            mini_policy = self.actor_critic.policy(minibatch.obs)
             new_log_probs = mini_policy.log_prob(minibatch.actions)
             # assert new_log_probs.shape == mini_log_probs.shape == mini_advantages.shape
             ratios = torch.exp(new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratios
             surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
             # Minus because we want to maximize the objective
-            actor_loss = -torch.min(surrogate1, surrogate2).mean()
+            actor_loss = -torch.min(surrogate1, surrogate2) * minibatch.masks
+            actor_loss = torch.sum(actor_loss) / minibatch.masks_sum
 
             # S[\pi_0](s_t) in the paper
-            entropy_loss = mini_policy.entropy().mean()
+            entropy_loss = torch.sum(mini_policy.entropy() * minibatch.masks) / minibatch.masks_sum
 
             self.optimizer.zero_grad()
             # Equation (9) in the paper
-            loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
+            loss = actor_loss + self.c1 * critic_loss  # - self.c2 * entropy_loss
             loss.backward()
             if self.grad_norm_clipping is not None:
                 total_norm += torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
@@ -180,9 +185,9 @@ class PPO:
 
     def update(self, episode: Episode) -> dict[str, Any]:
         self._memory.add(episode)
-        if self._memory.size >= self.batch_size:
+        if self._memory.can_sample(self.batch_size):
             self.step += 1
-            batch = self._memory.as_batch().to(self._device)
+            batch = self._memory.as_batch(self.device)
             logs = self.train(batch, self.step)
             self._memory.clear()
             return logs
