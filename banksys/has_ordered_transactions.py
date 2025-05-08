@@ -10,6 +10,13 @@ class HasOrderedTransactions:
         index = self._find_index(transaction.timestamp)
         self.transactions.insert(index, transaction)
 
+    def remove(self, transaction: Transaction):
+        """
+        Remove the transaction from the list.
+        """
+        index = self._find_index(transaction.timestamp)
+        return self.transactions.pop(index)
+
     def _find_index(self, timestamp: datetime) -> int:
         """
         Find the index where the transaction should be inserted to keep the list sorted by timestamp.

@@ -62,3 +62,6 @@ class Card(HasOrderedTransactions):
                 # Compute the average amount of the transactions
                 avg.append(np.mean([transaction.amount for transaction in trx_days]).item())
         return np.array([self.customer_x, self.customer_y] + nb + avg, dtype=np.float32)
+
+    def __hash__(self) -> int:
+        return self.id

@@ -1,155 +1,221 @@
-"""From https://github.com/nikhilbarhate99/PPO-PyTorch"""
+from typing import Any, Literal, Optional
 
-from marlenv import Transition
-import torch
 import numpy as np
-from .agent import Agent
+import torch
+from marlenv import Episode, Transition
+from marlenv.utils import Schedule
+
+from ..batch import Batch, EpisodeBatch, TransitionBatch
 from .networks import ActorCritic
 
 
-class RolloutBuffer:
-    def __init__(self):
-        self.actions = list[np.ndarray]()
-        self.states = list[np.ndarray]()
-        self.logprobs = list[np.ndarray]()
-        self.rewards = list[float]()
-        self.state_values = list[float]()
-        self.is_terminals = list[bool]()
+class PPO:
+    """
+    Proximal Policy Optimization (PPO) training algorithm.
+    PPO paper: https://arxiv.org/abs/1707.06347
+    """
 
-    def clear(self):
-        self.actions = list[np.ndarray]()
-        self.states = list[np.ndarray]()
-        self.logprobs = list[np.ndarray]()
-        self.rewards = list[float]()
-        self.state_values = list[float]()
-        self.is_terminals = list[bool]()
+    actor_critic: ActorCritic
+    batch_size: int
+    c1: Schedule
+    c2: Schedule
+    eps_clip: float
+    gae_lambda: float
+    gamma: float
+    lr: float
+    minibatch_size: int
+    n_epochs: int
+    grad_norm_clipping: Optional[float]
 
-
-class PPO(Agent):
     def __init__(
         self,
-        obs_size: int,
-        n_actions: int,
+        actor_critic: ActorCritic,
+        gamma: float,
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
-        gamma: float = 0.99,
-        k_epochs: int = 20,
+        n_epochs: int = 20,
         eps_clip: float = 0.2,
-        update_interval=16,
-        device_name: str = "cpu",
+        critic_c1: Schedule | float = 0.5,
+        entropy_c2: Schedule | float = 0.01,
+        train_interval: int = 128,
+        minibatch_size: int = 10,
+        gae_lambda: float = 0.95,
+        grad_norm_clipping: Optional[float] = None,
     ):
-        self.device = torch.device(device_name)
+        """
+        Parameters
+        - `actor_critic`: The actor-critic neural network
+        - `gamma`: The discount factor
+        - `lr_actor`: The learning rate for the actor
+        - `lr_critic`: The learning rate for the critic
+        - `n_epochs`: The number of epochs (K) to train the model, i.e. the number of gradient steps
+        - `eps_clip`: The clipping parameter for the PPO loss
+        - `critic_c1`: The coefficient for the critic loss
+        - `exploration_c2`: The coefficient for the entropy loss
+        - `train_interval`: The number of steps between training iterations, i.e. the number of steps (transactions) to collect before training
+        - `minibatch_size`: The size of the minibatches to use for training, must be lower or equal to `train_interval`
+        - `gae_lambda`: The lambda parameter (trace decay) for the generalized advantage estimation
+        - `grad_norm_clipping`: The maximum norm of the gradients at each epoch
+        """
+        self._device = torch.device("cpu")
+        self.batch_size = train_interval
+        if minibatch_size is None:
+            minibatch_size = train_interval
+        self.minibatch_size = minibatch_size
+        self.actor_critic = actor_critic
         self.gamma = gamma
+        self.n_epochs = n_epochs
         self.eps_clip = eps_clip
-        self.k_epochs = k_epochs
-        self.buffer = RolloutBuffer()
-        self.policy = ActorCritic(obs_size, n_actions, self.device)
-        self.optimizer = torch.optim.Adam(
-            [
-                {"params": self.policy.actions_mean_std.parameters(), "lr": lr_actor},
-                {"params": self.policy.critic.parameters(), "lr": lr_critic},
-            ]
-        )
+        self._memory = list[Transition]()
+        self._ratio_min = 1 - eps_clip
+        self._ratio_max = 1 + eps_clip
+        param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
+        self.optimizer = torch.optim.Adam(param_groups)
+        if isinstance(critic_c1, (float, int)):
+            critic_c1 = Schedule.constant(critic_c1)
+        self.c1 = critic_c1
+        if isinstance(entropy_c2, (float, int)):
+            entropy_c2 = Schedule.constant(entropy_c2)
+        self.c2 = entropy_c2
+        self.gae_lambda = gae_lambda
+        self.grad_norm_clipping = grad_norm_clipping
 
-        self.policy_old = ActorCritic(obs_size, n_actions, self.device)
-        self.policy_old.load_state_dict(self.policy.state_dict())
-        self.mse_loss = torch.nn.MSELoss()
-        self.time_step = 0
-        self.update_interval = update_interval
-        self.parameters = self.policy.parameters()
+    def _compute_param_groups(self, lr_actor: float, lr_critic: float):
+        all_parameters = list(self.actor_critic.parameters())
+        params = [
+            {"params": self.actor_critic.actions_mean_std.parameters(), "lr": lr_actor, "name": "actor parameters"},
+            {"params": self.actor_critic.critic.parameters(), "lr": lr_critic, "name": "critic parameters"},
+        ]
+        return params, all_parameters
 
-    def select_action(self, obs_data: np.ndarray):
+    def choose_action(self, observation: np.ndarray):
         with torch.no_grad():
-            tensor_data = torch.from_numpy(obs_data).to(self.device)
-            action, action_logprob = self.policy.act(tensor_data)
-            # Convert the action to a numpy array, perform the clamping, and then convert back to a tensor
+            obs_data = torch.from_numpy(observation).unsqueeze(0).to(self.device, non_blocking=True)
+            distribution = self.actor_critic.policy(obs_data)
+        action = distribution.sample().squeeze(0)
+        return action.numpy(force=True)
 
-            state_val = self.policy.value(tensor_data).item()
+    def value(self, observation: np.ndarray) -> float:
+        with torch.no_grad():
+            obs_data = torch.from_numpy(observation.data).unsqueeze(0).to(self.device, non_blocking=True)
+            values = self.actor_critic.value(obs_data)
+            return torch.mean(values).item()
 
-        self.buffer.state_values.append(state_val)
+    def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute the returns, advantages and action log_probs according to the current policy"""
+        policy = self.actor_critic.policy(batch.obs)
+        log_probs = policy.log_prob(batch.actions)
+        all_values = self.actor_critic.value(batch.all_obs)
+        advantages = batch.compute_gae(self.gamma, all_values)
+        returns = advantages + all_values[:-1]
+        return returns, advantages, log_probs
 
-        return action.numpy(force=True), action_logprob.numpy(force=True)
+    def train(self, batch: Batch):
+        # batch.normalize_rewards()
+        self.c1.update()
+        self.c2.update()
+        with torch.no_grad():
+            returns, advantages, log_probs = self._compute_training_data(batch)
 
-    def store(self, transition: Transition):
-        self.buffer.states.append(transition.obs.data)
-        self.buffer.actions.append(transition.action)
-        self.buffer.rewards.append(transition.reward.item())
-        self.buffer.is_terminals.append(transition.done)
-        self.buffer.logprobs.append(transition.probs)  # type: ignore
+        for _ in range(self.n_epochs):
+            indices = np.random.choice(self.batch_size, self.minibatch_size, replace=False)
+            minibatch = batch.get_minibatch(indices)
+            mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
 
-    def update(self):
-        self.time_step += 1
-        if self.time_step % self.update_interval != 0:
-            return
-        # Monte Carlo estimate of returns
-        rewards = self.buffer.rewards
+            # Use the Monte Carlo estimate of returns as target values
+            # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
+            mini_values = self.actor_critic.value(minibatch.obs)
+            critic_loss = torch.nn.functional.mse_loss(mini_values, mini_returns)
 
-        """
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
-            if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
-        """
+            # Actor loss (ratio between the new and old policy):
+            # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
+            mini_policy = self.actor_critic.policy(minibatch.obs)
+            new_log_probs = mini_policy.log_prob(minibatch.actions)
 
-        # Normalizing the rewards
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)  # 1e-7 originally
+            ratios = torch.exp(new_log_probs - mini_log_probs)
+            surrogate1 = mini_advantages * ratios
+            surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
+            # Minus because we want to maximize the objective
+            actor_loss = -torch.min(surrogate1, surrogate2).mean()
 
-        # convert list to tensor
-        old_states = torch.squeeze(torch.from_numpy(np.stack(self.buffer.states))).to(self.device)
-        if old_states.dim() <= 1:
-            old_states = old_states.unsqueeze(-1)
-        # old_actions = torch.squeeze(torch.from_numpy(np.stack(self.buffer.actions))).to(self.device)
-        old_actions = torch.squeeze(torch.from_numpy(np.stack([action for action in self.buffer.actions]))).to(self.device)
-        if old_actions.dim() <= 1:
-            # old_actions = old_actions.unsqueeze(-1)
-            DEBUG = 0
+            # S[\pi_0](s_t) in the paper (equation (9))
+            entropy_loss = torch.mean(mini_policy.entropy())
 
-        old_logprobs = torch.squeeze(torch.from_numpy(np.stack(self.buffer.logprobs))).to(self.device)
-        old_state_values = torch.tensor(self.buffer.state_values, device=self.device)
-
-        # calculate advantages
-        advantages = rewards - old_state_values  # There is no grad function here since they were added in "with torch.no_grad()"
-
-        # Optimize policy for K epochs
-        for _ in range(self.k_epochs):
-            # Evaluating old actions and values
-            logprobs, dist_entropy = self.policy.evaluate(old_states, old_actions)
-
-            state_values = self.policy.value(old_states)
-            # match state_values tensor dimensions with rewards tensor
-            state_values = torch.squeeze(state_values)
-
-            # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs)
-
-            # Finding Surrogate Loss
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * self.mse_loss.forward(state_values, rewards) - 0.01 * dist_entropy
-            torch.nn.utils.clip_grad_norm_(self.parameters, 10)
-            # take gradient step
             self.optimizer.zero_grad()
-            loss.mean().backward()
+            # Equation (9) in the paper
+            loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
+            loss.backward()
             self.optimizer.step()
 
-        # Copy new weights into old policy
-        self.policy_old.load_state_dict(self.policy.state_dict())
+    def update(self, t: Transition):
+        self._memory.append(t)
+        if len(self._memory) >= self.batch_size:
+            batch = TransitionBatch(self._memory)
+            self.train(batch)
+            self._memory.clear()
 
-        # clear buffer
-        self.buffer.clear()
+    @property
+    def networks(self):
+        """Dynamic list of neural networks attributes in the trainer"""
+        return [nn for nn in self.__dict__.values() if isinstance(nn, torch.nn.Module)]
 
-    def save(self, checkpoint_path):
-        torch.save(self.policy_old.state_dict(), checkpoint_path)
+    @property
+    def device(self):
+        return self._device
 
-    def load(self, checkpoint_path):
-        self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+    def randomize(self, method: Literal["xavier", "orthogonal"] = "xavier"):
+        """Randomize the state of the trainer."""
+        match method:
+            case "xavier":
+                rinit = torch.nn.init.xavier_uniform_
+            case "orthogonal":
+                rinit = torch.nn.init.orthogonal_
+            case _:
+                raise ValueError(f"Unknown randomization method: {method}")
+        for nn in self.networks:
+            randomize(rinit, nn)
 
     def to(self, device: torch.device):
-        self.policy.to(device)
-        self.policy_old.to(device)
-        self.device = device
+        """Send the networks to the given device."""
+        self._device = device
+        for nn in self.networks:
+            nn.to(device)
         return self
+
+    def seed(self, seed: int):
+        """
+        Seed the algorithm for reproducibility (e.g. during testing).
+
+        Seed `ranom`, `numpy`, and `torch` libraries by default.
+        """
+        import random
+        import numpy as np
+
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+
+def randomize(init_fn, nn: torch.nn.Module):
+    for param in nn.parameters():
+        if len(param.data.shape) < 2:
+            init_fn(param.data.view(1, -1))
+        else:
+            init_fn(param.data)
+
+
+class Memory:
+    def __init__(self):
+        self._memory = []
+        self.size = 0
+
+    def add(self, episode: Episode):
+        self._memory.append(episode)
+        self.size += len(episode)
+
+    def clear(self):
+        self._memory.clear()
+        self.size = 0
+
+    def as_batch(self):
+        return EpisodeBatch(self._memory)

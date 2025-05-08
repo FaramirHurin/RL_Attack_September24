@@ -9,7 +9,8 @@ from banksys import Card, Terminal, Transaction
 import sys
 import time
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
+from datetime import datetime
 
 import pandas as pd
 import polars as pl
@@ -245,6 +246,10 @@ class Cardsim:
         self.lr_cap = lr_cap
         self.fraud_flag_threshold = fraud_flag_threshold
         self.run_id = None
+
+    @property
+    def t_start(self) -> datetime:
+        return datetime(self.dcpc_start_year, 1, 1)
 
     def derive_seed(self, seed_modifier: int):
         """
@@ -1052,7 +1057,7 @@ class Cardsim:
             self.logger.info(f"Loaded transactions from {cached_transactions}")
         except FileNotFoundError:
             df, payers, payees = self.make_transactions_dataframe(n_payers, n_days, start_date)
-            os.makedirs('cache', exist_ok=True)
+            os.makedirs("cache", exist_ok=True)
             df.to_csv(cached_transactions, index=False)
             payers.to_csv(cached_payers, index=False)
             payees.to_csv(cached_payees, index=False)

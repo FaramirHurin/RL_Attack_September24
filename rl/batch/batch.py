@@ -33,21 +33,30 @@ class Batch(ABC):
     def __getitem__(self, key: str) -> torch.Tensor:
         """Retrieve a dynamic attribute of the batch."""
 
-    def normalize_rewards(self):
-        """Normalize the rewards of the batch such that they have a mean of 0 and a std of 1."""
-        self.rewards = (self.rewards - self.rewards.mean()) / (self.rewards.std() + 1e-8)
-
     def _normalize(self, tensor: torch.Tensor):
         """Normalize the tensor such that it has a mean of 0 and a std of 1."""
         return (tensor - tensor.mean()) / (tensor.std() + 1e-8)
 
-    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor, normalize: bool = True):
+    @cached_property
+    def dt(self):
         """
-        Compute the advantages using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.
+        Delta time (in days) between two consecutile observations.
         """
+        delay_days = self.actions[:, -2]
+        delay_hours = self.actions[:, -1]
+        return delay_days + delay_hours / 24.0
+
+    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0, normalize: bool = True):
+        """
+        Compute the returns using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.
+        """
+        # dt = self.dt
+        if isinstance(next_value, (float, int)):
+            next_value = torch.tensor(next_value, dtype=torch.float32)
         returns = torch.empty_like(self.rewards, dtype=torch.float32)
         for t in range(self.size - 1, -1, -1):
             next_value = self.rewards[t] + gamma * next_value * self.not_dones[t]
+            # next_value = self.rewards[t] + gamma ** dt[t] * next_value * self.not_dones[t]
             returns[t] = next_value
         if normalize:
             returns = self._normalize(returns)
@@ -60,7 +69,8 @@ class Batch(ABC):
         Args:
             next_values: Value estimate of the next states.
         """
-        returns = self.rewards + gamma * next_values * self.not_dones
+        discount = gamma**self.dt
+        returns = self.rewards + discount * next_values * self.not_dones
         if normalize:
             returns = self._normalize(returns)
         return returns
@@ -127,11 +137,12 @@ class Batch(ABC):
         values = all_values[:-1]
         next_values = all_values[1:]
         deltas = self.rewards + gamma * next_values * self.not_dones - values
-        # --- Problème de shape ici ---
         gae = torch.zeros(self.reward_size, dtype=torch.float32)
         advantages = torch.empty_like(self.rewards, dtype=torch.float32)
+        # Note: we want to discount the reward by the actual time between two observations
+        dt = self.dt
         for t in range(self.size - 1, -1, -1):
-            gae = deltas[t] + gamma * trace_decay * gae
+            gae = deltas[t] + gamma ** dt[t] * trace_decay * gae
             advantages[t] = gae
         if normalize:
             advantages = self._normalize(advantages)
@@ -285,6 +296,11 @@ class Batch(ABC):
     @cached_property
     def masks(self) -> torch.Tensor:
         """Masks (for padded episodes)"""
+
+    @cached_property
+    def masks_sum(self):
+        """Sum of the masks"""
+        return self.masks.sum()
 
     @abstractmethod  # type: ignore
     @cached_property
