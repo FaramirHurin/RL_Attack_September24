@@ -12,8 +12,7 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 from banksys import Banksys, ClassificationSystem, Transaction
 from environment import CardSimEnv, SimpleCardSimEnv
 from rl.agents.networks import ActorCritic
-from rl.agents.ppo_new import PPO as PPONew
-from rl.agents.ppo import PPO
+from rl.agents import PPO
 from rl.delayed_parallel_agent import DelayedParallelAgent
 from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
@@ -80,8 +79,18 @@ def get_vae(env: CardSimEnv, device: torch.device):
 
 def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = ActorCritic(env.observation_size, env.n_actions, device)
-    # agent = PPO(network, 0.99, train_interval=32, minibatch_size=16)
-    agent = PPO(env.observation_size, env.n_actions, 1e-3, 1e-3, 0.99, 32, 0.2)
+    agent = PPO(
+        network,
+        0.99,
+        train_interval=32,
+        minibatch_size=32,
+        lr_actor=1e-3,
+        lr_critic=1e-3,
+        n_epochs=32,
+        critic_c1=0.5,
+        entropy_c2=0.01,
+    )
+    # agent = PPO(network, 1e-3, 1e-3, 0.99, 32, 0.2)
     return agent
 
 
@@ -129,7 +138,9 @@ def train_simple(env: SimpleCardSimEnv, n_episodes: int = 2000):
             episode.add(t)
             obs, state = step.obs, step.state
         scores.append(episode.score)
-        logging.info(f"{e:4d} score={episode.score[0]:.2f} avg score={np.mean(scores[-50:]):.2f}, length={len(episode)} steps")
+        logging.info(
+            f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
+        )
 
 
 def main():

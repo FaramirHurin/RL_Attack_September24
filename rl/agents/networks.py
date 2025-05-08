@@ -83,6 +83,14 @@ class ActorCritic(torch.nn.Module):
         # dist = distributions.Normal(means, std)
         return dist
 
+    @property
+    def actor_parameters(self):
+        return list(self.actions_mean_std.parameters())
+
+    @property
+    def critic_parameters(self):
+        return list(self.critic.parameters())
+
     def policy(self, state: torch.Tensor):
         dist = self._action_distribution(state)
         return dist

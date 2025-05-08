@@ -1,5 +1,5 @@
 from environment.priority_queue import PriorityQueue
-from .agents.ppo_new import PPO
+from .agents.ppo import PPO
 from banksys import Card
 from environment import Action
 from marlenv import Episode, Observation, State, Step

@@ -46,11 +46,13 @@ class Batch(ABC):
         delay_hours = self.actions[:, -1]
         return delay_days + delay_hours / 24.0
 
-    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor, normalize: bool = True):
+    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0, normalize: bool = True):
         """
         Compute the returns using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.
         """
         # dt = self.dt
+        if isinstance(next_value, (float, int)):
+            next_value = torch.tensor(next_value, dtype=torch.float32)
         returns = torch.empty_like(self.rewards, dtype=torch.float32)
         for t in range(self.size - 1, -1, -1):
             next_value = self.rewards[t] + gamma * next_value * self.not_dones[t]
@@ -135,11 +137,12 @@ class Batch(ABC):
         values = all_values[:-1]
         next_values = all_values[1:]
         deltas = self.rewards + gamma * next_values * self.not_dones - values
-        # --- Problème de shape ici ---
         gae = torch.zeros(self.reward_size, dtype=torch.float32)
         advantages = torch.empty_like(self.rewards, dtype=torch.float32)
+        # Note: we want to discount the reward by the actual time between two observations
+        dt = self.dt
         for t in range(self.size - 1, -1, -1):
-            gae = deltas[t] + gamma * trace_decay * gae
+            gae = deltas[t] + gamma ** dt[t] * trace_decay * gae
             advantages[t] = gae
         if normalize:
             advantages = self._normalize(advantages)
