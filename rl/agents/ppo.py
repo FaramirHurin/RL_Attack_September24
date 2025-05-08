@@ -1,11 +1,11 @@
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
 import numpy as np
 import torch
-from marlenv import Episode, Transition
+from marlenv import Transition
 from marlenv.utils import Schedule
 
-from ..batch import Batch, EpisodeBatch, TransitionBatch
+from ..batch import Batch, TransitionBatch
 from .networks import ActorCritic
 
 
@@ -202,20 +202,3 @@ def randomize(init_fn, nn: torch.nn.Module):
             init_fn(param.data.view(1, -1))
         else:
             init_fn(param.data)
-
-
-class Memory:
-    def __init__(self):
-        self._memory = []
-        self.size = 0
-
-    def add(self, episode: Episode):
-        self._memory.append(episode)
-        self.size += len(episode)
-
-    def clear(self):
-        self._memory.clear()
-        self.size = 0
-
-    def as_batch(self):
-        return EpisodeBatch(self._memory)

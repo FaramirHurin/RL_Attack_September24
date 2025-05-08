@@ -8,6 +8,7 @@ dependencies = [
     "imblearn>=0.0",
     "matplotlib>=3.9.2",
     "multi-agent-rlenv>=3.3.7",
+    "orjson>=3.10.18",
     "pandas>=2.2.3",
     "polars>=1.14.0",
     "python-dotenv>=1.0.1",
