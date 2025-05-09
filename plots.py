@@ -2,7 +2,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from marlenv import Episode
 from functools import cached_property
-from banksys import Transaction, Card
+from banksys import Transaction
 from environment import Action
 
 

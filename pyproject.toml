@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<4"
 dependencies = [
     "imblearn>=0.0",
+    "jupyterlab>=4.4.2",
     "matplotlib>=3.9.2",
     "multi-agent-rlenv>=3.3.7",
     "orjson>=3.10.18",

@@ -15,9 +15,8 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction, Card
 from environment import CardSimEnv, SimpleCardSimEnv, Action
-from rl.agents.networks import ActorCritic
-from rl.agents import PPO
-from rl.delayed_parallel_agent import DelayedParallelAgent
+from agents.rl import ActorCritic
+from agents import PPO
 from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
 from torch import nn
