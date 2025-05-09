@@ -111,10 +111,11 @@ class Banksys:
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 
-    def save(self, directory: str = "cache/"):
+    def save(self, filename: str = "cache/banksys.pkl"):
+        directory = os.path.dirname(filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
-        with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
+        with open(filename, "wb") as f:
             pickle.dump(self, f)
 
     @staticmethod
@@ -130,49 +131,3 @@ class Banksys:
         for transaction in transactions:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
-
-    """
-    def compute_terminal_aggregated_features(self, terminal: Terminal, current_time: float) -> pd.Series:
-        columns_names_avg = {}
-        columns_names_count = {}
-
-        terminal_transactions = self.terminals_transactions[terminal.id]
-        terminal_transactions = terminal_transactions[terminal_transactions["timestamp"] < current_time]
-
-        # Compute aggregated features for the terminal
-        for days in self.days_aggregation:
-            # Select transactions from the last days
-            terminal_transactions_days = terminal_transactions[terminal_transactions["timestamp"] > current_time - days]
-            # Compute mean and count
-            columns_names_avg[days] = terminal_transactions_days.mean()
-            columns_names_count[days] = terminal_transactions_days.count()
-
-        trx = pd.Series()
-        for day in columns_names_avg.keys():
-            # TODO Correct naming of columns
-            trx["AVG_" + str(day)] = columns_names_avg[day]
-            trx["COUNT_" + str(day)] = columns_names_count[day]
-        return trx
-
-    def compute_card_aggregated_features(self, step: StepData, current_time: float) -> pd.Series:
-        columns_names_avg = {}
-        columns_names_count = {}
-
-        card_transactions = self.cards_transactions[step.card_id]
-        card_transactions = card_transactions[card_transactions["timestamp"] < current_time]
-
-        # Compute aggregated features for the card
-        for days in self.days_aggregation:
-            # Select transactions from the last days
-            card_transactions_days = card_transactions[card_transactions["timestamp"] > current_time - days]
-            # Compute mean and count
-            columns_names_avg[days] = card_transactions_days.mean()
-            columns_names_count[days] = card_transactions_days.count()
-
-        trx = pd.Series()
-        for day in columns_names_avg.keys():
-            # TODO Correct naming of columns
-            trx["AVG_" + str(day)] = columns_names_avg[day]
-            trx["COUNT_" + str(day)] = columns_names_count[day]
-        return trx
-    """

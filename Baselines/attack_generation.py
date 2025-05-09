@@ -13,7 +13,7 @@ from banksys.banksys import Banksys
 from banksys.card import Card
 from banksys.terminal import Terminal
 from banksys.transaction import Transaction
-from environment.action import Action
+from agents import Agent
 
 COLUMNS = [
     "payer_id",
@@ -109,7 +109,7 @@ class Attack_Generation:
         self.training_data = training_data
         self.y = y
         if supervised:
-            self.detector = BalancedRandomForestClassifier(n_estimators=trees, random_state=42, sampling_strategy=0.15)
+            self.detector = BalancedRandomForestClassifier(n_estimators=trees, random_state=42, sampling_strategy=0.15)  # type: ignore
         else:
             self.detector = IsolationForest(n_estimators=trees)
 
@@ -117,7 +117,7 @@ class Attack_Generation:
         if self.supervised:
             self.detector.fit(self.training_data.cpu().numpy(), self.y)
         else:
-            self.detector.fit(self.training_data.cpu().numpy())
+            self.detector.fit(self.training_data.cpu().numpy())  # type: ignore
         self._train_vae(self.training_data.to(torch.float), batch_size, num_epochs)
 
     def _train_vae(self, data, batch_size, num_epochs=1000):
@@ -153,7 +153,7 @@ class Attack_Generation:
         return valid_samples
 
 
-class VaeAgent:
+class VaeAgent(Agent):
     def __init__(
         self,
         device,
@@ -171,6 +171,7 @@ class VaeAgent:
         supervised: bool = True,
         quantile: float = 0.9,
     ):
+        super().__init__()
         self.device = device
         self.banksys = banksys
         self.current_time = current_time
@@ -224,7 +225,7 @@ class VaeAgent:
         transactions_df["hour"] = transactions_df["timestamp"].dt.hour
         return transactions_df
 
-    def choose_action(self, observation: np.ndarray) -> Action:
+    def choose_action(self, observation: np.ndarray):
         """
         Choose an action based on the observation given by environment
         :param observation: the observation comprising the remaining time, is_credit, hour, day and
@@ -261,8 +262,7 @@ class VaeAgent:
         trx = trx.drop("hour")
         # Reorder Series to match the order of the Action class
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
-        action = Action.from_numpy(trx.to_numpy())
-        return action
+        return trx.to_numpy()
 
     @staticmethod
     def get_trx_from_terminals(terminals: list[Terminal], current_time: datetime) -> pd.DataFrame:

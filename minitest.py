@@ -1,7 +1,8 @@
 import random
 from datetime import datetime, timedelta
 import logging
-
+from typing import Literal
+import typed_argparse as tap
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,6 +12,7 @@ import os
 from dataclasses import dataclass
 from sklearn.ensemble import RandomForestClassifier
 from functools import cached_property
+from agents import Agent
 from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction, Card
@@ -27,6 +29,11 @@ torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+class Args(tap.TypedArgs):
+    algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
+    banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
 
 def plot_transactions(transactions: list[Transaction]):
@@ -61,7 +68,7 @@ def plot_transactions(transactions: list[Transaction]):
     fig.show()
 
 
-def get_vae(env: CardSimEnv, device: torch.device):
+def get_vae(env: SimpleCardSimEnv, device: torch.device):
     TERMINALS = env.system.terminals[:5]
     return VaeAgent(
         device=device,
@@ -97,38 +104,7 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     return agent
 
 
-def train(env: CardSimEnv, n_weeks: int = 20, n_cards: int = 10):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    agent = get_ppo(env, device)
-    agent = DelayedParallelAgent(agent)
-    reset_data = env.reset(n_parallel=n_cards)
-    agent.reset(env.t, reset_data)
-    end_time = env.t + timedelta(weeks=n_weeks)
-
-    while env.t < end_time:
-        end_week = env.t + timedelta(weeks=1)
-        while env.t < end_week:
-            transactions = list[Transaction]()
-            card, action = agent.pop_next_action()
-            step, trx = env.step(action, card)
-            agent.store_transition(env.t, card, action, step)
-            if trx is None:
-                # Card has been blocked
-                new_card = env.steal_card()
-                obs = env.get_observation(new_card)
-                pass
-            if trx is not None:
-                transactions.append(trx)
-            print("Done")
-            plot_transactions(transactions)
-            input("Press Enter to continue to next week...")
-
-
-def train_simple(env: SimpleCardSimEnv, n_episodes: int = 2000):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    agent = get_ppo(env, device)
+def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 2000):
     scores = list[float]()
     episodes = list[Episode]()
 
@@ -159,9 +135,9 @@ def train_simple(env: SimpleCardSimEnv, n_episodes: int = 2000):
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
-def main():
+def main(args: Args):
     try:
-        banksys = Banksys.load()
+        banksys = Banksys.load(args.banksys)
     except FileNotFoundError:
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
@@ -173,13 +149,21 @@ def main():
         start = datetime.now()
         test_set = banksys.train_classifier(transactions)
         print(f"Training time: {datetime.now() - start}")
-        banksys.save()
+        banksys.save(args.banksys)
         banksys.evaluate_classifier(test_set)
 
     env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
-    train_simple(env, n_episodes=2000)
+    match args.algorithm:
+        case "ppo":
+            agent = get_ppo(env, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        case "vae":
+            agent = get_vae(env, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        case other:
+            raise ValueError(f"Unknown algorithm: {other}")
+    train_simple(env, agent, n_episodes=2000)
 
 
 if __name__ == "__main__":
-    for i in range(10):
-        main()
+    args = tap.Parser(Args).bind(main).run()
+    # for i in range(10):
+    #     main()

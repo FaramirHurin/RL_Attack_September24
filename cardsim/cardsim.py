@@ -249,7 +249,7 @@ class Cardsim:
 
     @property
     def t_start(self) -> datetime:
-        return datetime(self.dcpc_start_year, 1, 1)
+        return datetime(self.dcpc_end_year, 1, 1)
 
     def derive_seed(self, seed_modifier: int):
         """
