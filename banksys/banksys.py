@@ -17,22 +17,32 @@ from .transaction import Transaction
 class Banksys:
     def __init__(
         self,
-        clf: ClassificationSystem,
+        inner_clf,
         cards: list[Card],
         terminals: list[Terminal],
         t_start: datetime,
+        transactions: list[Transaction],
+        feature_names: list[str] = None,
+        quantiles: list[float] = None,
+        rules: list = None,
+
     ):
+
         # Sort transactions by timestamp
+        self.transactions = sorted(transactions, key=lambda t: t.timestamp)
+        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, features_for_quantiles=feature_names,
+                                        quantiles=quantiles, rules=rules)
+
         # self.transactions = sorted(transactions, key=lambda t: t.timestamp)
         n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
         self.earliest_attackable_moment = t_start + n_days_warmup
-        self.clf = clf
         self.cards = cards
         self.terminals = terminals
         self.label_feature = "label"
         week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         self.feature_names = (
-            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
+            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names
+            + self.terminals[0].feature_names
         )
 
     def _create_df_and_aggregate(self, transactions: list[Transaction]):
@@ -91,7 +101,7 @@ class Banksys:
         """
         trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
         trx = pd.DataFrame(trx_features, columns=self.feature_names)
-        label = self.clf.predict(trx).item()
+        label = self.clf.predict(trx, transaction).item()
         transaction.label = label
         self.add_transaction(transaction)
         return label

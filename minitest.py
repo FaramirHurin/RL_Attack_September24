@@ -35,6 +35,25 @@ class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
+def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=10) -> bool:
+    same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
+    return len(same_day_transactions) < max_number
+
+def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=5) -> bool:
+    same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
+    return len(same_hour_transactions) < max_number
+
+def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
+    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
+                              transaction.timestamp.isocalendar()[1]]
+    return len(same_week_transactions) < max_number
+
+
+FEATURE_NAMES = ['amount']
+QUANTILES = [0.01, 0.99]
+RULES = [max_trx_hour, max_trx_week, max_trx_day]
+
+
 
 def plot_transactions(transactions: list[Transaction]):
     fig, ax = plt.subplots()
@@ -141,11 +160,17 @@ def main(args: Args):
     except FileNotFoundError:
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
-
         # clf = RandomForestClassifier(n_jobs=-1)
-        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.5)  # type:ignore
-        system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], [])
-        banksys = Banksys(system, cards, terminals, simulator.t_start)
+        # banksys = Banksys(cards, terminals, simulator.t_start, feature_names=FEATURE_NAMES,
+        #                   quantiles= [0.02, 0.98], rules=RULES)
+        #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
+
+        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.5)
+
+        banksys = Banksys( inner_clf=clf, cards=cards, terminals=terminals, t_start= simulator.t_start,
+                           transactions=transactions, feature_names=FEATURE_NAMES,
+                           quantiles=QUANTILES, rules=RULES)
+
         start = datetime.now()
         test_set = banksys.train_classifier(transactions)
         print(f"Training time: {datetime.now() - start}")

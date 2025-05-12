@@ -1,19 +1,19 @@
 from abc import ABC, abstractmethod
 from typing import Callable
-
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-
 from .transaction import Transaction
+from .card import Card
+
+
 
 
 class StatisticalClassifier:
     """
     Classifier that classifies outliers as frauds.
     """
-
     def __init__(self, considered_features: list[str], quantiles: list[float]):
         self.considered_features = considered_features
         self.quantiles = quantiles
@@ -28,7 +28,55 @@ class StatisticalClassifier:
         return x[self.considered_features].isin(self.quantiles_df).all(axis=1).to_numpy()
 
 
-class RuleClassification(ABC):
+class RuleBasedClassifier:
+    def __init__(self, rules: list[Callable[[Transaction, list[Transaction]], bool]], banksys):
+        self.rules = rules
+        self.banksys = banksys
+
+    def predict(self, transaction:Transaction) -> np.ndarray:
+        card = self.banksys.cards[transaction.card_id]
+        transactions = [trx for trx in card.transactions if trx.timestamp < trx.timestamp]
+        for rule in self.rules:
+            if rule(transaction, transactions):
+                return True
+        return False
+
+
+
+
+class ClassificationSystem:
+    ml_classifier: RandomForestClassifier
+    rule_classifier: RuleBasedClassifier
+    statistical_classifier: StatisticalClassifier
+
+    def __init__(self, clf: RandomForestClassifier, features_for_quantiles: list[str], quantiles: list[float],
+                 banksys, rules):
+        self.ml_classifier = clf
+        self.rule_classifier = RuleBasedClassifier(rules, banksys)
+        self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
+
+
+    def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
+        self.ml_classifier.fit(transactions, is_fraud)
+        self.statistical_classifier.fit(transactions)
+
+    def predict(self, transactions_df: pd.DataFrame, transaction:Transaction) -> npt.NDArray[np.bool_]:
+        #transactions_df = pd.DataFrame(transactions)
+        
+        classification_prediction = self.ml_classifier.predict(transactions_df)
+        statistical_prediction = self.statistical_classifier.predict(transactions_df)
+        rule_based_prediction = self.rule_classifier.predict(transaction)
+
+        classification_prediction = np.logical_or(classification_prediction, statistical_prediction)
+        classification_prediction = np.logical_or(classification_prediction, rule_based_prediction)
+
+        return classification_prediction
+
+
+
+
+'''
+class RuleClassification:
     @abstractmethod
     def classify(self, transaction: Transaction) -> bool:
         """
@@ -37,42 +85,4 @@ class RuleClassification(ABC):
 
     def __call__(self, transaction: Transaction):
         return self.classify(transaction)
-
-
-class RuleBasedClassifier:
-    """
-    Implement rules logic. It could be a query frequency check, a value check, etc.
-    TODO
-    """
-
-    def __init__(self, rules: list[Callable[[Transaction], bool]]):
-        self.rules = rules
-
-    def predict(self, x: pd.DataFrame) -> np.ndarray:
-        # Return False for each trx in x
-        return np.zeros(x.shape[0], dtype=bool)
-
-
-class ClassificationSystem:
-    ml_classifier: RandomForestClassifier
-    rule_classifier: RuleBasedClassifier
-    statistical_classifier: StatisticalClassifier
-
-    def __init__(self, clf: RandomForestClassifier, features_for_quantiles: list[str], quantiles: list[float], rules):
-        self.ml_classifier = clf
-        self.rule_classifier = RuleBasedClassifier(rules)
-        self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
-
-    def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
-        self.ml_classifier.fit(transactions, is_fraud)
-        self.statistical_classifier.fit(transactions)
-
-    def predict(self, transactions: pd.DataFrame) -> npt.NDArray[np.bool_]:
-        classification_prediction = self.ml_classifier.predict(transactions)
-        statistical_prediction = self.statistical_classifier.predict(transactions)
-        rule_based_prediction = self.rule_classifier.predict(transactions)
-
-        classification_prediction = np.logical_or(classification_prediction, statistical_prediction)
-        classification_prediction = np.logical_or(classification_prediction, rule_based_prediction)
-
-        return classification_prediction
+'''

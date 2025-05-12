@@ -4,9 +4,8 @@ import random
 from copy import deepcopy
 import numpy as np
 from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
+from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace, ActionSpace
 from .card_registry import CardRegistry
-
 
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
@@ -27,13 +26,12 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             obs_shape = (6,)
         else:
             obs_shape = (4,)
-        super().__init__(
-            1,
-            ContinuousSpace(
-                low=[0.01] + [0.0] * 5,
-                high=[100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600],
+        action_space = ActionSpace(1, ContinuousSpace( low= np.array([0.01] + [0.0] * 5),
+                high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
                 labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
-            ),
+            ))
+        super().__init__(
+            action_space=action_space,
             observation_shape=obs_shape,
             state_shape=obs_shape,
         )
