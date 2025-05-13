@@ -10,6 +10,7 @@ from .networks import ActorCritic
 from agents import Agent
 
 
+
 class PPO(Agent):
     """
     Proximal Policy Optimization (PPO) training algorithm.
@@ -42,6 +43,7 @@ class PPO(Agent):
         minibatch_size: int = 10,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
+        device: torch.device = torch.device("cpu"),
     ):
         """
         Parameters
@@ -59,7 +61,7 @@ class PPO(Agent):
         - `grad_norm_clipping`: The maximum norm of the gradients at each epoch
         """
         super().__init__()
-        self._device = torch.device("cpu")
+        self._device = device
         self.batch_size = train_interval
         if minibatch_size is None:
             minibatch_size = train_interval
@@ -105,6 +107,7 @@ class PPO(Agent):
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
+        batch.to(self.device)
         policy = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions)
         all_values = self.actor_critic.value(batch.all_obs)
@@ -152,7 +155,7 @@ class PPO(Agent):
     def update(self, t: Transition):
         self._memory.append(t)
         if len(self._memory) >= self.batch_size:
-            batch = TransitionBatch(self._memory)
+            batch = TransitionBatch(self._memory).to(self.device)
             self.train(batch)
             self._memory.clear()
 

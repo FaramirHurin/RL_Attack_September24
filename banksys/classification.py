@@ -35,9 +35,10 @@ class RuleBasedClassifier:
 
     def predict(self, transaction:Transaction) -> np.ndarray:
         card = self.banksys.cards[transaction.card_id]
-        transactions = [trx for trx in card.transactions if trx.timestamp < trx.timestamp]
+        transactions = [trx for trx in card.transactions if trx.timestamp < transaction.timestamp]
         for rule in self.rules:
             if rule(transaction, transactions):
+                DEBUG = True
                 return True
         return False
 

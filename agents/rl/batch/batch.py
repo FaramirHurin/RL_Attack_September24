@@ -137,8 +137,8 @@ class Batch(ABC):
         values = all_values[:-1]
         next_values = all_values[1:]
         deltas = self.rewards + gamma * next_values * self.not_dones - values
-        gae = torch.zeros(self.reward_size, dtype=torch.float32)
-        advantages = torch.empty_like(self.rewards, dtype=torch.float32)
+        gae = torch.zeros(self.reward_size, dtype=torch.float32).to(device=self.device)
+        advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
         # Note: we want to discount the reward by the actual time between two observations
         dt = self.dt
         for t in range(self.size - 1, -1, -1):

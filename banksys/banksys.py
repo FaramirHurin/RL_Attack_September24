@@ -69,12 +69,15 @@ class Banksys:
         self.clf.fit(x_train, y_train)
         return testing_set
 
+
+    #TODO Allow rules to work on the whole test set to test baselines
+    """ 
     def evaluate_classifier(self, testing_set: pd.DataFrame):
         x_test = testing_set[self.training_features]
         y_test = testing_set[self.label_feature].values
 
         # Evaluate the classifier
-        y_pred = self.clf.predict(x_test)
+        y_pred = self.clf.predict(x_test, )
         accuracy = np.mean(y_pred == y_test)
         print(f"Accuracy: {accuracy:.2f}")
         # Print classifier feature importances
@@ -83,6 +86,7 @@ class Banksys:
             print("Feature importances:")
             for name, importance in zip(self.training_features, feature_importances):
                 print(f"{name}: {importance:.4f}")
+    """
 
     def _make_features(self, transaction: Transaction, with_label: bool) -> np.ndarray:
         terminal = self.terminals[transaction.terminal_id]

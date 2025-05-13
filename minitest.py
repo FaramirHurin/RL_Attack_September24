@@ -31,22 +31,26 @@ np.random.seed(0)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
+
+# Set device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
 def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=10) -> bool:
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
-    return len(same_day_transactions) < max_number
+    return len(same_day_transactions) > max_number
 
 def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=5) -> bool:
     same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
-    return len(same_hour_transactions) < max_number
+    return len(same_hour_transactions) > max_number
 
 def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
     same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
                               transaction.timestamp.isocalendar()[1]]
-    return len(same_week_transactions) < max_number
+    return len(same_week_transactions) > max_number
 
 
 FEATURE_NAMES = ['amount']
@@ -119,11 +123,12 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
         n_epochs=64,
         critic_c1=0.5,
         entropy_c2=0.01,
+        device=device,
     )
     return agent
 
 
-def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 2000):
+def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 500):
     scores = list[float]()
     episodes = list[Episode]()
 
@@ -134,6 +139,7 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 2000):
         terminals = list[int]()
         while not episode.is_finished:
             action = agent.choose_action(obs.data)
+            #print('.')
             step, trx = env.step(action)
             if trx is not None:
                 terminals.append(trx.terminal_id)
@@ -148,8 +154,10 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 2000):
         logging.info(
             f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
         )
+        #print(f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
+
     os.makedirs("logs", exist_ok=True)
-    filename = f"logs/{datetime.now()}.json"
+    filename = f"logs/ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
     with open(filename, "wb") as f:
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
@@ -158,6 +166,7 @@ def main(args: Args):
     try:
         banksys = Banksys.load(args.banksys)
     except FileNotFoundError:
+        print('Banksys not found, creating a new one')
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
         # clf = RandomForestClassifier(n_jobs=-1)
@@ -165,7 +174,7 @@ def main(args: Args):
         #                   quantiles= [0.02, 0.98], rules=RULES)
         #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
-        clf = BalancedRandomForestClassifier(n_jobs=-1, sampling_strategy=0.5)
+        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.5)
 
         banksys = Banksys( inner_clf=clf, cards=cards, terminals=terminals, t_start= simulator.t_start,
                            transactions=transactions, feature_names=FEATURE_NAMES,
@@ -175,14 +184,15 @@ def main(args: Args):
         test_set = banksys.train_classifier(transactions)
         print(f"Training time: {datetime.now() - start}")
         banksys.save(args.banksys)
-        banksys.evaluate_classifier(test_set)
+        #TODO: banksys.evaluate_classifier(test_set)
 
     env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     match args.algorithm:
         case "ppo":
-            agent = get_ppo(env, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            agent = get_ppo(env, device)
         case "vae":
-            agent = get_vae(env, torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            agent = get_vae(env, device)
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
     train_simple(env, agent, n_episodes=2000)

@@ -36,7 +36,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        self.saved_system = deepcopy(system)
+        #self.saved_system = deepcopy(system)
         self.t = system.earliest_attackable_moment
         self.t_start = deepcopy(system.earliest_attackable_moment)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
