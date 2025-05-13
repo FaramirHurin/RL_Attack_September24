@@ -28,26 +28,55 @@ from tqdm import tqdm
 torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
+
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
+
+def fix_episode_for_serialization(ep):
+    def to_float_list(arr):
+        return [float(x) for x in arr]
+
+    def fix_metrics(metrics):
+        fixed = {}
+        for k, v in metrics.items():
+            if isinstance(v, datetime):
+                fixed[k] = v.isoformat()
+            else:
+                fixed[k] = v
+        return fixed
+
+    return {
+        "all_observations": [obs.tolist() for obs in ep.all_observations],
+        "all_extras": [ex.tolist() for ex in ep.all_extras],
+        "actions": [to_float_list(a) for a in ep.actions],
+        "rewards": [r.tolist() for r in ep.rewards],
+        "all_available_actions": [a.tolist() for a in ep.all_available_actions],
+        "all_states": [s.tolist() for s in ep.all_states],
+        "all_states_extras": [se.tolist() for se in ep.all_states_extras],
+        "metrics": fix_metrics(ep.metrics),  # ✅ preserve score-0
+        "episode_len": ep.episode_len,
+        "other": ep.other,
+        "is_done": ep.is_done,
+        "is_truncated": ep.is_truncated
+    }
+
 
 class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
-def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=10) -> bool:
+def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=12) -> bool:
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
     return len(same_day_transactions) > max_number
 
-def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=5) -> bool:
+def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool:
     same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
     return len(same_hour_transactions) > max_number
 
-def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
+def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=25) -> bool:
     same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
                               transaction.timestamp.isocalendar()[1]]
     return len(same_week_transactions) > max_number
@@ -115,20 +144,20 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(
         network,
-        0.99,
-        train_interval=64,
-        minibatch_size=32,
+        1, #0.9
+        train_interval=128,
+        minibatch_size=64,
         lr_actor=1e-3,
-        lr_critic=1e-3,
+        lr_critic=5e-4,
         n_epochs=64,
-        critic_c1=0.5,
-        entropy_c2=0.01,
+        critic_c1=0.2,
+        entropy_c2=0.3,
         device=device,
     )
     return agent
 
 
-def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 500):
+def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes: int = 500):
     scores = list[float]()
     episodes = list[Episode]()
 
@@ -157,7 +186,9 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, n_episodes: int = 500):
         #print(f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
 
     os.makedirs("logs", exist_ok=True)
-    filename = f"logs/ppo/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
+    filename = f"logs/tests/{agent_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
+    if agent_name == 'vae':
+        episodes = [fix_episode_for_serialization(ep) for ep in episodes]
     with open(filename, "wb") as f:
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
@@ -188,14 +219,17 @@ def main(args: Args):
 
     env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    match args.algorithm:
+
+    agent_name = 'ppo' # args.algorithm
+    match agent_name:
         case "ppo":
             agent = get_ppo(env, device)
         case "vae":
             agent = get_vae(env, device)
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
-    train_simple(env, agent, n_episodes=2000)
+    train_simple(env, agent,agent_name, n_episodes=4000)
+
 
 
 if __name__ == "__main__":
