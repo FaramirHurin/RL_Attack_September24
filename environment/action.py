@@ -42,7 +42,7 @@ class Action:
         is_online, amount, terminal_x, terminal_y,  delay_days, delay_hours = array
         is_online = is_online > 0.5
         to_return = Action(
-            amount=float(amount),
+            amount=np.round(float(amount), 2),
             terminal_x=float(terminal_x),
             terminal_y=float(terminal_y),
             is_online=bool(is_online),

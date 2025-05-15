@@ -23,11 +23,15 @@ from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
 from torch import nn
 from marlenv import Episode, Transition
+from marlenv.utils import Schedule
 from tqdm import tqdm
+from sklearn.ensemble import IsolationForest
 
-torch.manual_seed(0)
-random.seed(0)
-np.random.seed(0)
+# Random integer seed from 0 to 9
+seed = np.random.randint(0, 10)
+torch.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -68,23 +72,25 @@ class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
-def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=12) -> bool:
+def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool:
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
     return len(same_day_transactions) > max_number
 
-def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool:
+def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=4) -> bool:
     same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
     return len(same_hour_transactions) > max_number
 
-def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=25) -> bool:
+def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
     same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
                               transaction.timestamp.isocalendar()[1]]
     return len(same_week_transactions) > max_number
 
+def positive_amount(transaction:Transaction, transactions:[list[Transaction]]) -> bool:
+    return transaction.amount < 0.01
 
 FEATURE_NAMES = ['amount']
 QUANTILES = [0.01, 0.99]
-RULES = [max_trx_hour, max_trx_week, max_trx_day]
+RULES = [max_trx_hour, max_trx_week, max_trx_day,positive_amount] #
 
 
 
@@ -121,7 +127,7 @@ def plot_transactions(transactions: list[Transaction]):
 
 
 def get_vae(env: SimpleCardSimEnv, device: torch.device):
-    TERMINALS = env.system.terminals[:5]
+    TERMINALS = env.system.terminals[:10]
     return VaeAgent(
         device=device,
         criterion=nn.MSELoss(),
@@ -144,14 +150,14 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(
         network,
-        1, #0.9
-        train_interval=128,
-        minibatch_size=64,
-        lr_actor=1e-3,
-        lr_critic=5e-4,
-        n_epochs=64,
-        critic_c1=0.2,
-        entropy_c2=0.3,
+        1, #0.99
+        train_interval=64,
+        minibatch_size=32,
+        lr_actor=1e-4,
+        lr_critic=4e-4,
+        n_epochs=16,
+        critic_c1=Schedule.linear(0.2, 0.001, 10000),
+        entropy_c2=Schedule.linear(0.35, 0.001, 1000),
         device=device,
     )
     return agent
@@ -167,6 +173,16 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes
         transactions = list[Transaction]()
         terminals = list[int]()
         while not episode.is_finished:
+            # Normalize the observation if model is PPO
+            """
+            if isinstance(agent, PPO):
+                if known_client:
+                    deviding_factor = np.max(obs.data[-2:])
+                    obs.data[-2:] = obs.data[-2:] / deviding_factor
+                #print(obs.data)
+                action = agent.choose_action(obs.data)
+            else:
+            """
             action = agent.choose_action(obs.data)
             #print('.')
             step, trx = env.step(action)
@@ -183,7 +199,13 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes
         logging.info(
             f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
         )
-        #print(f"{e:5d} score={episode.score[0]:9.2f}, avg score={np.mean(scores[-50:]):5.2f}, length={len(episode):3d} steps, t_end={env.t.date()} {env.t.time()}"
+        if e % 100 == 0:
+            # Print average over last 50 episodes
+            avg_score = np.mean(scores[-100:])
+            print(f"Episode {e}: average score over last 100 episodes: {avg_score:.2f}")
+            # Average length of last 50 episodes
+            avg_length = np.mean([len(ep) for ep in episodes[-100:]])
+            print(f"Episode {e}: average length over last 100 episodes: {avg_length:.2f}")
 
     os.makedirs("logs", exist_ok=True)
     filename = f"logs/tests/{agent_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
@@ -205,10 +227,12 @@ def main(args: Args):
         #                   quantiles= [0.02, 0.98], rules=RULES)
         #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
-        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.5)
+        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
+        anomaly_detection_clf = IsolationForest(n_jobs=1, contamination=0.005)
 
-        banksys = Banksys( inner_clf=clf, cards=cards, terminals=terminals, t_start= simulator.t_start,
-                           transactions=transactions, feature_names=FEATURE_NAMES,
+
+        banksys = Banksys( inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
+                           t_start= simulator.t_start, transactions=transactions, feature_names=FEATURE_NAMES,
                            quantiles=QUANTILES, rules=RULES)
 
         start = datetime.now()
@@ -217,10 +241,10 @@ def main(args: Args):
         banksys.save(args.banksys)
         #TODO: banksys.evaluate_classifier(test_set)
 
-    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=True)
+    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=False)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    agent_name = 'ppo' # args.algorithm
+    agent_name = 'vae' # args.algorithm
     match agent_name:
         case "ppo":
             agent = get_ppo(env, device)

@@ -18,6 +18,7 @@ class Banksys:
     def __init__(
         self,
         inner_clf,
+        anomaly_detection_clf,
         cards: list[Card],
         terminals: list[Terminal],
         t_start: datetime,
@@ -30,7 +31,8 @@ class Banksys:
 
         # Sort transactions by timestamp
         self.transactions = sorted(transactions, key=lambda t: t.timestamp)
-        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, features_for_quantiles=feature_names,
+        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, anomaly_detection_clf=anomaly_detection_clf,
+        features_for_quantiles=feature_names,
                                         quantiles=quantiles, rules=rules)
 
         # self.transactions = sorted(transactions, key=lambda t: t.timestamp)
@@ -105,7 +107,7 @@ class Banksys:
         """
         trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
         trx = pd.DataFrame(trx_features, columns=self.feature_names)
-        label = self.clf.predict(trx, transaction).item()
+        label = self.clf.predict(trx, transaction)
         transaction.label = label
         self.add_transaction(transaction)
         return label

@@ -13,7 +13,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         system: Banksys,
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
-        customer_location_is_known: bool = False,
+        customer_location_is_known: bool = False, #TODO Move it somewhere else?
     ):
         """
         Args:
@@ -41,6 +41,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
+        assert self.customer_location_is_known == True
 
     def reset(self, n_parallel: int = 10):
         cards = [self.steal_card() for _ in range(n_parallel)]

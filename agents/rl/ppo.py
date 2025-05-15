@@ -117,8 +117,8 @@ class PPO(Agent):
 
     def train(self, batch: Batch):
         # batch.normalize_rewards()
-        self.c1.update()
-        self.c2.update()
+        self.c1.update(10)
+        self.c2.update(10)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
 

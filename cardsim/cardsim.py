@@ -17,6 +17,7 @@ import polars as pl
 import numpy as np
 from scipy.stats import lognorm, triang
 
+from sklearn.preprocessing import MinMaxScaler
 
 class Cardsim:
     """
@@ -723,7 +724,7 @@ class Cardsim:
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
         return pmnt_attribute, likelihood_ratio
 
-    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame):
+    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame):
         """
         Generate transaction values and likelihood ratios.
 
@@ -745,12 +746,32 @@ class Cardsim:
         amount_vars = ["payer_id", "debit_ln_mu", "debit_ln_sd", "debit_ln_mu_fraud", "credit_ln_mu", "credit_ln_sd", "credit_ln_mu_fraud"]
         df = pd.merge(df, payers[amount_vars], how="left", on="payer_id")
 
+        # Merge the payee details
+        #payee_vars = ["payee_id", "payee_x", "payee_y"]
+        #df = pd.merge(df, payees[payee_vars], how="left", on="payee_id")
+        # Merge the payer details
+        payer_vars = ["payer_id", "payer_x", "payer_y"]
+        df = pd.merge(df, payers[payer_vars], how="left", on="payer_id")
+
+        df["payer_delta_x"] = df["payer_x"] - df["payer_x"].mean()
+        df["payer_delta_y"] = df["payer_y"] - df["payer_y"].mean()
+        #df["payee_delta_x"] = df["payee_x"] - df["payee_x"].mean() / df["payee_x"].mean()
+        #df["payee_delta_y"] = df["payee_y"] - df["payee_y"].mean() / df["payee_y"].mean()
+
+        payer_scaler = MinMaxScaler(feature_range=(0.8, 1.2))
+        df[["payer_delta_x", "payer_delta_y"]] = payer_scaler.fit_transform(df[["payer_delta_x", "payer_delta_y"]])
+
         # Create a single column pulling debit and credit params, where relevant
-        df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"])
+        df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"]) \
+                   * ( df["payer_delta_x"] * df["payer_delta_y"])
         df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
-        df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
+        df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])\
+                         / ( df["payer_delta_x"] * df["payer_delta_y"])
         transaction_value = self.transaction_rng.lognormal(df["mu"], df["sigma"])
         transaction_value = transaction_value.round(2)
+
+        # Drop the delta columns
+        df = df.drop(columns=["payer_delta_x", "payer_delta_y"]) #, "payee_delta_x", "payee_delta_y"
 
         # Likelihood ratio calculations. Approximating probability with densities using PDF.
         p_x = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["mu"]))
@@ -979,7 +1000,7 @@ class Cardsim:
         df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
         df["credit_card"], card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
         df["remote"], location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers)
+        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers, payees)
         df, distance_likelihood_ratio = self.generate_add_payee_distance(df, n_payees, distances)
         tod_pmf = self.generate_hourly_probabilities()
 

@@ -6,6 +6,8 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from .transaction import Transaction
 from .card import Card
+# Import isolation forest
+from sklearn.ensemble import IsolationForest
 
 
 
@@ -43,36 +45,41 @@ class RuleBasedClassifier:
         return False
 
 
-
-
 class ClassificationSystem:
     ml_classifier: RandomForestClassifier
     rule_classifier: RuleBasedClassifier
     statistical_classifier: StatisticalClassifier
+    anomaly_detection_classifier: IsolationForest
 
-    def __init__(self, clf: RandomForestClassifier, features_for_quantiles: list[str], quantiles: list[float],
+    def __init__(self, clf: RandomForestClassifier,anomaly_detection_clf:IsolationForest, features_for_quantiles: list[str], quantiles: list[float],
                  banksys, rules):
         self.ml_classifier = clf
+        self.anomaly_detection_classifier = anomaly_detection_clf
         self.rule_classifier = RuleBasedClassifier(rules, banksys)
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
 
 
+
     def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
         self.ml_classifier.fit(transactions, is_fraud)
+        self.anomaly_detection_classifier.fit(transactions)
         self.statistical_classifier.fit(transactions)
 
     def predict(self, transactions_df: pd.DataFrame, transaction:Transaction) -> npt.NDArray[np.bool_]:
         #transactions_df = pd.DataFrame(transactions)
         
         classification_prediction = self.ml_classifier.predict(transactions_df)
+        #anomaly_prediction = self.anomaly_detection_classifier.predict(transactions_df) == -1
         statistical_prediction = self.statistical_classifier.predict(transactions_df)
         rule_based_prediction = self.rule_classifier.predict(transaction)
 
-        classification_prediction = np.logical_or(classification_prediction, statistical_prediction)
-        classification_prediction = np.logical_or(classification_prediction, rule_based_prediction)
+        # or anomaly_prediction
+        to_return = int(classification_prediction or statistical_prediction or rule_based_prediction)
 
-        return classification_prediction
+        if to_return:
+            debug= True
 
+        return to_return
 
 
 
