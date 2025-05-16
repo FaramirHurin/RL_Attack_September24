@@ -6,6 +6,7 @@ import numpy as np
 from datetime import timedelta
 from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace, ActionSpace
 from .card_registry import CardRegistry
+from banksys import Terminal
 
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
@@ -75,7 +76,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             ]
         return np.array(features, dtype=np.float32)
 
-    def step(self, np_action: np.ndarray):
+    def step(self, np_action: np.ndarray, atk_terminals: list[Terminal]):
         """
         Perform the given action at the given time.
         """
@@ -87,7 +88,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             reward = 0.0
             trx = None
         else:
-            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
+            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y, atk_terminals).id
             trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online)
             is_fraud = self.system.process_transaction(trx)
             self.transactions.append(trx)

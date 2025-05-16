@@ -9,23 +9,19 @@ import numpy as np
 import torch
 import orjson
 import os
-from dataclasses import dataclass
-from sklearn.ensemble import RandomForestClassifier
-from functools import cached_property
 from agents import Agent
 from imblearn.ensemble import BalancedRandomForestClassifier
-
-from banksys import Banksys, ClassificationSystem, Transaction, Card
-from environment import CardSimEnv, SimpleCardSimEnv, Action
+from banksys import Banksys,  Transaction
+from environment import CardSimEnv, SimpleCardSimEnv
 from agents.rl import ActorCritic
 from agents import PPO
-from Baselines.attack_generation import Attack_Generation, VaeAgent
+from Baselines.attack_generation import  VaeAgent
 from cardsim import Cardsim
 from torch import nn
 from marlenv import Episode, Transition
 from marlenv.utils import Schedule
 from tqdm import tqdm
-from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
 
 # Random integer seed from 0 to 9
 seed = np.random.randint(0, 10)
@@ -38,6 +34,21 @@ logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s -
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
+
+
+parameters_ppo = {
+    "know_client": False,
+    "lr_actor": 1e-4,
+    "lr_critic": 1e-4,
+    "n_epochs": 32,
+    "critic_c1": Schedule.linear(0.3, 0.01, 100),
+    "entropy_c2": Schedule.linear(0.35, 0.1, 10000),
+    "train_interval": 64,
+    "minibatch_size": 32,
+    "terminal_fract": 1,
+    "seed": seed,
+}
+
 
 def fix_episode_for_serialization(ep):
     def to_float_list(arr):
@@ -72,7 +83,7 @@ class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
-def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool:
+def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool: #7
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
     return len(same_day_transactions) > max_number
 
@@ -89,9 +100,8 @@ def positive_amount(transaction:Transaction, transactions:[list[Transaction]]) -
     return transaction.amount < 0.01
 
 FEATURE_NAMES = ['amount']
-QUANTILES = [0.01, 0.99]
+QUANTILES = [0.01, .99] #0.95
 RULES = [max_trx_hour, max_trx_week, max_trx_day,positive_amount] #
-
 
 
 def plot_transactions(transactions: list[Transaction]):
@@ -127,7 +137,7 @@ def plot_transactions(transactions: list[Transaction]):
 
 
 def get_vae(env: SimpleCardSimEnv, device: torch.device):
-    TERMINALS = env.system.terminals[:10]
+    TERMINALS = env.system.terminals[-5:]
     return VaeAgent(
         device=device,
         criterion=nn.MSELoss(),
@@ -139,7 +149,7 @@ def get_vae(env: SimpleCardSimEnv, device: torch.device):
         terminal_codes=[t for t in TERMINALS],
         batch_size=8,
         num_epochs=4000,
-        know_client=True,
+        know_client=parameters_ppo["know_client"],
         supervised=False,
         current_time=env.t,
         quantile=0.99,
@@ -151,19 +161,19 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     agent = PPO(
         network,
         1, #0.99
-        train_interval=64,
-        minibatch_size=32,
-        lr_actor=1e-4,
-        lr_critic=4e-4,
-        n_epochs=16,
-        critic_c1=Schedule.linear(0.2, 0.001, 10000),
-        entropy_c2=Schedule.linear(0.35, 0.001, 1000),
+        train_interval=parameters_ppo["train_interval"],
+        minibatch_size=parameters_ppo["minibatch_size"],
+        lr_actor=parameters_ppo["lr_actor"],
+        lr_critic=parameters_ppo["lr_critic"],
+        n_epochs=parameters_ppo["n_epochs"],
+        critic_c1=parameters_ppo["critic_c1"],
+        entropy_c2=parameters_ppo["entropy_c2"],
         device=device,
     )
     return agent
 
 
-def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes: int = 500):
+def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_terminals, n_episodes: int = 500):
     scores = list[float]()
     episodes = list[Episode]()
 
@@ -174,18 +184,12 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes
         terminals = list[int]()
         while not episode.is_finished:
             # Normalize the observation if model is PPO
-            """
-            if isinstance(agent, PPO):
-                if known_client:
-                    deviding_factor = np.max(obs.data[-2:])
-                    obs.data[-2:] = obs.data[-2:] / deviding_factor
-                #print(obs.data)
+            if isinstance(agent, PPO) and parameters_ppo["know_client"]:
+                obs.data[-2:] = obs.data[-2:] / 200
                 action = agent.choose_action(obs.data)
             else:
-            """
-            action = agent.choose_action(obs.data)
-            #print('.')
-            step, trx = env.step(action)
+                action = agent.choose_action(obs.data)
+            step, trx = env.step(action, atk_terminals)
             if trx is not None:
                 terminals.append(trx.terminal_id)
                 transactions.append(trx)
@@ -208,12 +212,16 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes
             print(f"Episode {e}: average length over last 100 episodes: {avg_length:.2f}")
 
     os.makedirs("logs", exist_ok=True)
-    filename = f"logs/tests/{agent_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
+    time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')
+    filename = f"logs/tests/{agent_name}_{time}.json"
     if agent_name == 'vae':
         episodes = [fix_episode_for_serialization(ep) for ep in episodes]
     with open(filename, "wb") as f:
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
-
+    # Save parameters PPO and pointer to the file
+    parameters_ppo["filename"] = filename
+    with open(f"logs/parameters_{time}.json", "wb") as f:
+        f.write(orjson.dumps(parameters_ppo, option=orjson.OPT_SERIALIZE_NUMPY))
 
 def main(args: Args):
     try:
@@ -228,7 +236,7 @@ def main(args: Args):
         #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
         clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
-        anomaly_detection_clf = IsolationForest(n_jobs=1, contamination=0.005)
+        anomaly_detection_clf = OneClassSVM(nu=0.005)
 
 
         banksys = Banksys( inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
@@ -241,10 +249,10 @@ def main(args: Args):
         banksys.save(args.banksys)
         #TODO: banksys.evaluate_classifier(test_set)
 
-    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=False)
+    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=parameters_ppo["know_client"],)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    agent_name = 'vae' # args.algorithm
+    agent_name = 'ppo' # args.algorithm
     match agent_name:
         case "ppo":
             agent = get_ppo(env, device)
@@ -252,8 +260,9 @@ def main(args: Args):
             agent = get_vae(env, device)
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
-    train_simple(env, agent,agent_name, n_episodes=4000)
-
+    # Random sample terminals
+    atk_terminals = random.sample(env.system.terminals, int(len(env.system.terminals) * parameters_ppo["terminal_fract"])) #
+    train_simple(env, agent,agent_name,atk_terminals, n_episodes=4000)
 
 
 if __name__ == "__main__":

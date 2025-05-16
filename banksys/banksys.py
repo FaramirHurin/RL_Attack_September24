@@ -27,6 +27,7 @@ class Banksys:
         quantiles: list[float] = None,
         rules: list = None,
 
+
     ):
 
         # Sort transactions by timestamp
@@ -112,10 +113,10 @@ class Banksys:
         self.add_transaction(transaction)
         return label
 
-    def get_closest_terminal(self, x: float, y: float) -> Terminal:
+    def get_closest_terminal(self, x: float, y: float, atk_terminals:list[Terminal]) -> Terminal:
         closest_terminal = None
         closest_distance = float("inf")
-        for terminal in self.terminals:
+        for terminal in atk_terminals:
             distance = (terminal.x - x) ** 2 + (terminal.y - y) ** 2
             if distance < closest_distance:
                 closest_terminal = terminal

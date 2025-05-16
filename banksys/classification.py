@@ -10,8 +10,6 @@ from .card import Card
 from sklearn.ensemble import IsolationForest
 
 
-
-
 class StatisticalClassifier:
     """
     Classifier that classifies outliers as frauds.
@@ -58,8 +56,6 @@ class ClassificationSystem:
         self.rule_classifier = RuleBasedClassifier(rules, banksys)
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
 
-
-
     def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
         self.ml_classifier.fit(transactions, is_fraud)
         self.anomaly_detection_classifier.fit(transactions)
@@ -69,12 +65,12 @@ class ClassificationSystem:
         #transactions_df = pd.DataFrame(transactions)
         
         classification_prediction = self.ml_classifier.predict(transactions_df)
-        #anomaly_prediction = self.anomaly_detection_classifier.predict(transactions_df) == -1
+        anomaly_prediction = self.anomaly_detection_classifier.predict(transactions_df) == -1
         statistical_prediction = self.statistical_classifier.predict(transactions_df)
         rule_based_prediction = self.rule_classifier.predict(transaction)
 
-        # or anomaly_prediction
-        to_return = int(classification_prediction or statistical_prediction or rule_based_prediction)
+        #
+        to_return = int(classification_prediction or statistical_prediction or rule_based_prediction or anomaly_prediction)
 
         if to_return:
             debug= True
