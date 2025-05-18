@@ -36,18 +36,40 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 
-parameters_ppo = {
+parameters_run = {
+    "agent_name": "vae", # ppo vae
+    "len_episode": 4000,
     "know_client": False,
-    "lr_actor": 1e-4,
-    "lr_critic": 1e-4,
-    "n_epochs": 32,
-    "critic_c1": Schedule.linear(0.3, 0.01, 100),
-    "entropy_c2": Schedule.linear(0.35, 0.1, 10000),
-    "train_interval": 64,
-    "minibatch_size": 32,
     "terminal_fract": 1,
     "seed": seed,
+    'quantiles_anomaly': [0.01, 0.99],
+    'use_anomaly_detection': True ,
+    'rules_names': ['max_trx_hour', 'max_trx_week', 'max_trx_day', 'positive_amount'],
+    'rules_values': {'max_trx_hour': 4, 'max_trx_week': 20, 'max_trx_day': 7, 'positive_amount': 0.01},
+    'ppo_hyperparameters': {
+        'lr_actor': 1e-4,
+        'lr_critic': 2e-4,
+        'n_epochs': 32,
+        'critic_c1': Schedule.linear(0.4, 0.01, 10000),
+        'entropy_c2': Schedule.linear(0.4, 0.1, 10000),
+        'train_interval': 64,
+        'minibatch_size': 32,
+        'discount': 0.99,
+        'seed': seed,
+
+    },
+    'vae_hyperparameters': {
+        'latent_dim': 10,
+        'hidden_dim': 120,
+        'lr': 0.0005,
+        'trees': 20,
+        'batch_size': 8,
+        'num_epochs': 4000,
+        'quantile': 0.99,
+        'supervised': False,
+    },
 }
+FEATURE_NAMES = ['amount']
 
 
 def fix_episode_for_serialization(ep):
@@ -82,26 +104,6 @@ def fix_episode_for_serialization(ep):
 class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
-
-def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool: #7
-    same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
-    return len(same_day_transactions) > max_number
-
-def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=4) -> bool:
-    same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
-    return len(same_hour_transactions) > max_number
-
-def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
-    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
-                              transaction.timestamp.isocalendar()[1]]
-    return len(same_week_transactions) > max_number
-
-def positive_amount(transaction:Transaction, transactions:[list[Transaction]]) -> bool:
-    return transaction.amount < 0.01
-
-FEATURE_NAMES = ['amount']
-QUANTILES = [0.01, .99] #0.95
-RULES = [max_trx_hour, max_trx_week, max_trx_day,positive_amount] #
 
 
 def plot_transactions(transactions: list[Transaction]):
@@ -141,37 +143,35 @@ def get_vae(env: SimpleCardSimEnv, device: torch.device):
     return VaeAgent(
         device=device,
         criterion=nn.MSELoss(),
-        latent_dim=10,
-        hidden_dim=120,
-        lr=0.0005,
-        trees=20,
+        latent_dim=parameters_run["vae_hyperparameters"]["latent_dim"],
+        hidden_dim=parameters_run["vae_hyperparameters"]["hidden_dim"],
+        lr=parameters_run["vae_hyperparameters"]["lr"],
+        trees=parameters_run["vae_hyperparameters"]["trees"],
         banksys=env.system,
         terminal_codes=[t for t in TERMINALS],
-        batch_size=8,
-        num_epochs=4000,
-        know_client=parameters_ppo["know_client"],
-        supervised=False,
+        batch_size=parameters_run["vae_hyperparameters"]["batch_size"],
+        num_epochs=parameters_run["vae_hyperparameters"]["num_epochs"],
+        know_client=parameters_run["know_client"],
+        supervised=parameters_run["vae_hyperparameters"]["supervised"],
         current_time=env.t,
-        quantile=0.99,
+        quantile=parameters_run["vae_hyperparameters"]["quantile"],
     )
-
 
 def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = ActorCritic(env.observation_size, env.n_actions, device)
     agent = PPO(
         network,
-        1, #0.99
-        train_interval=parameters_ppo["train_interval"],
-        minibatch_size=parameters_ppo["minibatch_size"],
-        lr_actor=parameters_ppo["lr_actor"],
-        lr_critic=parameters_ppo["lr_critic"],
-        n_epochs=parameters_ppo["n_epochs"],
-        critic_c1=parameters_ppo["critic_c1"],
-        entropy_c2=parameters_ppo["entropy_c2"],
+        parameters_run["ppo_hyperparameters"]['discount'], #
+        train_interval=parameters_run["ppo_hyperparameters"]["train_interval"],
+        minibatch_size=parameters_run["ppo_hyperparameters"]["minibatch_size"],
+        lr_actor=parameters_run["ppo_hyperparameters"]["lr_actor"],
+        lr_critic=parameters_run["ppo_hyperparameters"]["lr_critic"],
+        n_epochs=parameters_run["ppo_hyperparameters"]["n_epochs"],
+        critic_c1=parameters_run["ppo_hyperparameters"]["critic_c1"],
+        entropy_c2=parameters_run["ppo_hyperparameters"]["entropy_c2"],
         device=device,
     )
     return agent
-
 
 def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_terminals, n_episodes: int = 500):
     scores = list[float]()
@@ -184,7 +184,7 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_termin
         terminals = list[int]()
         while not episode.is_finished:
             # Normalize the observation if model is PPO
-            if isinstance(agent, PPO) and parameters_ppo["know_client"]:
+            if isinstance(agent, PPO) and parameters_run["know_client"]:
                 obs.data[-2:] = obs.data[-2:] / 200
                 action = agent.choose_action(obs.data)
             else:
@@ -213,15 +213,25 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_termin
 
     os.makedirs("logs", exist_ok=True)
     time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')
+
     filename = f"logs/tests/{agent_name}_{time}.json"
+    parameters_run['filename'] = filename
     if agent_name == 'vae':
         episodes = [fix_episode_for_serialization(ep) for ep in episodes]
     with open(filename, "wb") as f:
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
-    # Save parameters PPO and pointer to the file
-    parameters_ppo["filename"] = filename
-    with open(f"logs/parameters_{time}.json", "wb") as f:
-        f.write(orjson.dumps(parameters_ppo, option=orjson.OPT_SERIALIZE_NUMPY))
+
+    # Append the parameters to a file calles logs/test_parameters.json
+    os.makedirs("logs", exist_ok=True)
+    filename = f"logs/test_parameters.json"
+    if os.path.exists(filename):
+        with open(filename, "rb") as f:
+            parameters = orjson.loads(f.read())
+    else:
+        parameters = []
+    parameters.append(parameters_run)
+    with open(filename, "wb") as f:
+        f.write(orjson.dumps(parameters, option=orjson.OPT_SERIALIZE_NUMPY))
 
 def main(args: Args):
     try:
@@ -230,18 +240,14 @@ def main(args: Args):
         print('Banksys not found, creating a new one')
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
-        # clf = RandomForestClassifier(n_jobs=-1)
-        # banksys = Banksys(cards, terminals, simulator.t_start, feature_names=FEATURE_NAMES,
-        #                   quantiles= [0.02, 0.98], rules=RULES)
-        #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
         clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
         anomaly_detection_clf = OneClassSVM(nu=0.005)
 
 
-        banksys = Banksys( inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
-                           t_start= simulator.t_start, transactions=transactions, feature_names=FEATURE_NAMES,
-                           quantiles=QUANTILES, rules=RULES)
+        banksys = Banksys(inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
+                          t_start= simulator.t_start, transactions=transactions, feature_names=FEATURE_NAMES,
+                          quantiles=parameters_run['quantiles_anomaly'])
 
         start = datetime.now()
         test_set = banksys.train_classifier(transactions)
@@ -249,10 +255,13 @@ def main(args: Args):
         banksys.save(args.banksys)
         #TODO: banksys.evaluate_classifier(test_set)
 
-    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=parameters_ppo["know_client"],)
+    banksys.set_anomaly_detection(parameters_run["use_anomaly_detection"])
+    banksys.set_rules(parameters_run["rules_names"], parameters_run["rules_values"])
+
+    env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=parameters_run["know_client"], )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    agent_name = 'ppo' # args.algorithm
+    agent_name = parameters_run["agent_name"] # args.algorithm
     match agent_name:
         case "ppo":
             agent = get_ppo(env, device)
@@ -261,8 +270,9 @@ def main(args: Args):
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
     # Random sample terminals
-    atk_terminals = random.sample(env.system.terminals, int(len(env.system.terminals) * parameters_ppo["terminal_fract"])) #
-    train_simple(env, agent,agent_name,atk_terminals, n_episodes=4000)
+    atk_terminals = random.sample(env.system.terminals, int(len(env.system.terminals)
+                                                            * parameters_run["terminal_fract"])) #
+    train_simple(env, agent,agent_name,atk_terminals, n_episodes=parameters_run["len_episode"])
 
 
 if __name__ == "__main__":

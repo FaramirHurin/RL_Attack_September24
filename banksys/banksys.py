@@ -33,8 +33,7 @@ class Banksys:
         # Sort transactions by timestamp
         self.transactions = sorted(transactions, key=lambda t: t.timestamp)
         self.clf = ClassificationSystem(banksys=self, clf=inner_clf, anomaly_detection_clf=anomaly_detection_clf,
-        features_for_quantiles=feature_names,
-                                        quantiles=quantiles, rules=rules)
+        features_for_quantiles=feature_names,  quantiles=quantiles)
 
         # self.transactions = sorted(transactions, key=lambda t: t.timestamp)
         n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
@@ -148,3 +147,9 @@ class Banksys:
         for transaction in transactions:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
+
+    def set_anomaly_detection(self, use_anomaly_detection: bool):
+        self.clf.use_anomaly_detection = use_anomaly_detection
+
+    def set_rules(self, rules: list, rules_values: dict):
+        self.clf.set_rules(rules, rules_values)
