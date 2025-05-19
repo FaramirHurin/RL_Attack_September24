@@ -66,7 +66,6 @@ class RuleBasedClassifier:
         self.banksys = banksys
 
     def predict(self, transaction: Transaction) -> np.ndarray:
-        return False
         card = self.banksys.cards[transaction.card_id]
         transactions = [trx for trx in card.transactions if trx.timestamp < transaction.timestamp]
         for rule_name in self.rules.keys():
@@ -112,9 +111,8 @@ class ClassificationSystem:
         # transactions_df = pd.DataFrame(transactions)
 
         classification_prediction = self.ml_classifier.predict(transactions_df)
-        # anomaly_prediction = self.anomaly_detection_classifier.predict(transactions_df) == -1
         statistical_prediction = self.statistical_classifier.predict(transactions_df)
-        rule_based_prediction = False  #  self.rule_classifier.predict(transaction)
+        rule_based_prediction = self.rule_classifier.predict(transaction)  #
 
         #
         to_return = int(classification_prediction or statistical_prediction or rule_based_prediction)
@@ -127,14 +125,3 @@ class ClassificationSystem:
         return to_return
 
 
-'''
-class RuleClassification:
-    @abstractmethod
-    def classify(self, transaction: Transaction) -> bool:
-        """
-        Classify a transaction based on the rule.
-        """
-
-    def __call__(self, transaction: Transaction):
-        return self.classify(transaction)
-'''

@@ -38,7 +38,7 @@ print(device)
 
 
 parameters_run = {
-    "agent_name": "rppo",  # ppo vae rppo
+    "agent_name": "vae",  # ppo vae rppo
     "len_episode": 4000,
     "know_client": False,
     "terminal_fract": 1,
@@ -103,7 +103,7 @@ def fix_episode_for_serialization(ep):
         "all_available_actions": [a.tolist() for a in ep.all_available_actions],
         "all_states": [s.tolist() for s in ep.all_states],
         "all_states_extras": [se.tolist() for se in ep.all_states_extras],
-        "metrics": fix_metrics(ep.metrics),  # ✅ preserve score-0
+        "metrics": fix_metrics(ep.metrics),  # preserve score-0
         "episode_len": ep.episode_len,
         "other": ep.other,
         "is_done": ep.is_done,
@@ -271,10 +271,6 @@ def main(args: Args):
         print("Banksys not found, creating a new one")
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
-        # clf = RandomForestClassifier(n_jobs=-1)
-        # banksys = Banksys(cards, terminals, simulator.t_start, feature_names=FEATURE_NAMES,
-        #                   quantiles= [0.02, 0.98], rules=RULES)
-        # system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
         clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)  # type: ignore
         anomaly_detection_clf = OneClassSVM(nu=0.005)
@@ -298,7 +294,6 @@ def main(args: Args):
         start = datetime.now()
         print(f"Training time: {datetime.now() - start}")
         banksys.save(args.banksys)
-        # TODO: banksys.evaluate_classifier(test_set)
 
     confusion_matrix = banksys.set_up_run(
         use_anomaly_detection=parameters_run["use_anomaly_detection"],
