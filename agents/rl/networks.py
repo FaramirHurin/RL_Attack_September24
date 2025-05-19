@@ -92,7 +92,10 @@ class ActorCritic(torch.nn.Module):
         return list(self.critic.parameters())
 
     def policy(self, state: torch.Tensor):
-        dist = self._action_distribution(state)
+        try:
+            dist = self._action_distribution(state)
+        except:
+            dist = self._action_distribution(state)
         return dist
 
     def value(self, state: torch.Tensor) -> torch.Tensor:

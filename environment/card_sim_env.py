@@ -37,7 +37,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        self.t = system.earliest_attackable_moment
+        self.t = system.attack_time
         """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known

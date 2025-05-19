@@ -112,18 +112,3 @@ class ClassificationSystem:
 
         return to_return
 
-
-
-'''
-class RuleClassification:
-    @abstractmethod
-    def classify(self, transaction: Transaction) -> bool:
-        """
-        Classify a transaction based on the rule.
-        """
-
-    def __call__(self, transaction: Transaction):
-        return self.classify(transaction)
-'''
-
-

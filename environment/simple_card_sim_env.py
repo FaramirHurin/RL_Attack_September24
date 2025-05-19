@@ -38,8 +38,8 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         )
         self.system = system
         #self.saved_system = deepcopy(system)
-        self.t = system.earliest_attackable_moment
-        self.t_start = deepcopy(system.earliest_attackable_moment)
+        self.t = system.attack_time
+        self.t_start = deepcopy(system.attack_time)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.current_card = self.card_registry.release_card(self.t)

@@ -15,6 +15,16 @@ from .transaction import Transaction
 
 
 class Banksys:
+    train_transactions: list[Transaction]
+    clf: ClassificationSystem
+    terminals: list[Terminal]
+    cards: list[Card]
+    attack_time: datetime
+    label_feature: str
+    feature_names: list[str]
+    training_features: list[str]
+
+
     def __init__(
         self,
         inner_clf,
@@ -22,22 +32,26 @@ class Banksys:
         cards: list[Card],
         terminals: list[Terminal],
         t_start: datetime,
+        attack_time: datetime,
         transactions: list[Transaction],
         feature_names: list[str] = None,
         quantiles: list[float] = None,
-        rules: list = None,
 
 
     ):
+        self.attack_time = attack_time
 
         # Sort transactions by timestamp
-        self.transactions = sorted(transactions, key=lambda t: t.timestamp)
-        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, anomaly_detection_clf=anomaly_detection_clf,
-        features_for_quantiles=feature_names,  quantiles=quantiles)
-
-        # self.transactions = sorted(transactions, key=lambda t: t.timestamp)
+        transactions = sorted(transactions, key=lambda t: t.timestamp)
+        #  Filter transactions that are older than t_start + n_days_warmup
         n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
-        self.earliest_attackable_moment = t_start + n_days_warmup
+        self.train_transactions = [t for t in transactions if t.timestamp <= attack_time and
+                                   t.timestamp >= t_start + n_days_warmup]
+        self.test_transactions = [t for t in transactions if t.timestamp > attack_time]
+
+        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, anomaly_detection_clf=anomaly_detection_clf,
+        features_for_quantiles=feature_names, quantiles=quantiles)
+
         self.cards = cards
         self.terminals = terminals
         self.label_feature = "label"
@@ -47,48 +61,38 @@ class Banksys:
             + self.terminals[0].feature_names
         )
 
-    def _create_df_and_aggregate(self, transactions: list[Transaction]):
-        start = transactions[0].timestamp
-        ndays_warmup = max(*self.cards[0].days_aggregation, *self.terminals[0].days_aggregation)
+        self.training_features = self._train_classifier(self.train_transactions)
+
+        # Add test set
+        for transaction in self.test_transactions:
+            self.add_transaction(transaction)
+
+    def set_up_run(self, use_anomaly_detection:bool, rules:list, rules_values:dict, return_confusion:bool = False):
+        self.clf.use_anomaly_detection = use_anomaly_detection
+        self.clf.set_rules(rules, rules_values)
+
+        if return_confusion:
+            return self._confusion_matrix(self.test_transactions)
+        else:
+            return None
+
+    def _train_classifier(self, tr_transactions: list[Transaction]):
+
         rows = []
-        for t in tqdm(transactions):
+        for t in tqdm(tr_transactions):
             self.add_transaction(t)
-            if t.timestamp - start > ndays_warmup:
-                features = self._make_features(t, with_label=True)
-                rows.append(features)
-        return pd.DataFrame(rows, columns=self.feature_names + ["label"])
+            features = self._make_features(t, with_label=True)
+            rows.append(features)
 
-    def train_classifier(self, transactions: list[Transaction], train_split: float = 0.9):
-        transactions_df = self._create_df_and_aggregate(transactions)
-        # Split the data into training and testing sets
-        tr_size = int(len(transactions_df) * train_split)
-        training_set = transactions_df.iloc[:tr_size, :]
-        testing_set = transactions_df.iloc[tr_size:, :]
+        trainign_DF = pd.DataFrame(rows, columns=self.feature_names + ["label"])
+
         # Define the features and label
-        self.training_features = [col for col in training_set.columns if col != "label"]
-        x_train = training_set[self.training_features]
-        y_train = training_set[self.label_feature].to_numpy()
+        training_features = [col for col in trainign_DF.columns if col != "label"]
+        x_train = trainign_DF[training_features]
+        y_train = trainign_DF[self.label_feature].to_numpy()
         self.clf.fit(x_train, y_train)
-        return testing_set
 
-
-    #TODO Allow rules to work on the whole test set to test baselines
-    """ 
-    def evaluate_classifier(self, testing_set: pd.DataFrame):
-        x_test = testing_set[self.training_features]
-        y_test = testing_set[self.label_feature].values
-
-        # Evaluate the classifier
-        y_pred = self.clf.predict(x_test, )
-        accuracy = np.mean(y_pred == y_test)
-        print(f"Accuracy: {accuracy:.2f}")
-        # Print classifier feature importances
-        if hasattr(self.clf.ml_classifier, "feature_importances_"):
-            feature_importances = self.clf.ml_classifier.feature_importances_
-            print("Feature importances:")
-            for name, importance in zip(self.training_features, feature_importances):
-                print(f"{name}: {importance:.4f}")
-    """
+        return training_features
 
     def _make_features(self, transaction: Transaction, with_label: bool) -> np.ndarray:
         terminal = self.terminals[transaction.terminal_id]
@@ -148,8 +152,23 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def set_anomaly_detection(self, use_anomaly_detection: bool):
-        self.clf.use_anomaly_detection = use_anomaly_detection
+    def _confusion_matrix(self, transactions: list[Transaction]):
+        """
+        Compute the confusion matrix for the transactions.
+        """
+        tp = 0
+        tn = 0
+        fp = 0
+        fn = 0
+        for transaction in transactions:
+            trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
+            trx = pd.DataFrame(trx_features, columns=self.feature_names)
+            label = transaction.label
+            prediction = self.clf.predict(trx, transaction)
 
-    def set_rules(self, rules: list, rules_values: dict):
-        self.clf.set_rules(rules, rules_values)
+            tp += prediction and label
+            tn += not prediction and not label
+            fp += prediction and not label
+            fn += not prediction and label
+
+        return np.array([[tp, fn], [fp, tn]])

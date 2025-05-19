@@ -12,7 +12,7 @@ import os
 from agents import Agent
 from imblearn.ensemble import BalancedRandomForestClassifier
 from banksys import Banksys,  Transaction
-from environment import CardSimEnv, SimpleCardSimEnv
+from environment import CardSimEnv, SimpleCardSimEnv, Action
 from agents.rl import ActorCritic
 from agents import PPO
 from Baselines.attack_generation import  VaeAgent
@@ -37,7 +37,7 @@ print(device)
 
 
 parameters_run = {
-    "agent_name": "vae", # ppo vae
+    "agent_name": "ppo", # ppo vae
     "len_episode": 4000,
     "know_client": False,
     "terminal_fract": 1,
@@ -187,6 +187,9 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_termin
             if isinstance(agent, PPO) and parameters_run["know_client"]:
                 obs.data[-2:] = obs.data[-2:] / 200
                 action = agent.choose_action(obs.data)
+                # action[2] = action[2] * 200
+                # action[3] = action[3] * 200
+                debug = False
             else:
                 action = agent.choose_action(obs.data)
             step, trx = env.step(action, atk_terminals)
@@ -244,19 +247,23 @@ def main(args: Args):
         clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
         anomaly_detection_clf = OneClassSVM(nu=0.005)
 
+        # simulator._start + 30 days
+        TRAINING_DAYS = 30
+        attack_time = simulator.t_start + timedelta(days=TRAINING_DAYS)
 
         banksys = Banksys(inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
-                          t_start= simulator.t_start, transactions=transactions, feature_names=FEATURE_NAMES,
+                          t_start= simulator.t_start, attack_time=attack_time,
+                          transactions=transactions, feature_names=FEATURE_NAMES,
                           quantiles=parameters_run['quantiles_anomaly'])
 
         start = datetime.now()
-        test_set = banksys.train_classifier(transactions)
         print(f"Training time: {datetime.now() - start}")
         banksys.save(args.banksys)
-        #TODO: banksys.evaluate_classifier(test_set)
 
-    banksys.set_anomaly_detection(parameters_run["use_anomaly_detection"])
-    banksys.set_rules(parameters_run["rules_names"], parameters_run["rules_values"])
+    confusion_matrix = banksys.set_up_run(use_anomaly_detection=parameters_run["use_anomaly_detection"],
+                                          rules=parameters_run["rules_names"],
+                       rules_values=parameters_run["rules_values"], return_confusion=False)
+    print(confusion_matrix)
 
     env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=parameters_run["know_client"], )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
