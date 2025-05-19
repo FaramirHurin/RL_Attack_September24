@@ -2,21 +2,43 @@ from typing import Literal, Optional
 
 import numpy as np
 import torch
-from marlenv import Transition
+from marlenv import Transition, Episode
 from marlenv.utils import Schedule
 
-from .batch import Batch, TransitionBatch
-from .networks import ActorCritic
+from .batch import Batch, EpisodeBatch
+from .networks import RecurrentActorCritic
 from agents import Agent
 
 
-class PPO(Agent):
+class Memory:
+    def __init__(self):
+        self._data = list[Episode]()
+        self.size = 0
+        self.current_episode = None
+
+    def add(self, transition: Transition):
+        self.size += 1
+        if self.current_episode is None:
+            self.current_episode = Episode.from_transitions([transition])
+        else:
+            self.current_episode.add(transition)
+        if transition.is_terminal:
+            self._data.append(self.current_episode)
+            self.current_episode = None
+
+    def clear(self):
+        last_episode = self._data[-1]
+        self._data.clear()
+        if not last_episode.is_finished:
+            self._data.append(last_episode)
+
+
+class RPPO(Agent):
     """
-    Proximal Policy Optimization (PPO) training algorithm.
-    PPO paper: https://arxiv.org/abs/1707.06347
+    Recurrent Proximal Policy Optimization
     """
 
-    actor_critic: ActorCritic
+    actor_critic: RecurrentActorCritic
     batch_size: int
     c1: Schedule
     c2: Schedule
@@ -30,7 +52,7 @@ class PPO(Agent):
 
     def __init__(
         self,
-        actor_critic: ActorCritic,
+        actor_critic: RecurrentActorCritic,
         gamma: float,
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
@@ -69,7 +91,8 @@ class PPO(Agent):
         self.gamma = gamma
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
-        self._memory = list[Transition]()
+        # self._memory = list[Transition]()
+        self._memory = Memory()
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
@@ -107,6 +130,7 @@ class PPO(Agent):
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         batch.to(self.device)
+        self.actor_critic.reset_hidden_states()
         policy = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions)
         all_values = self.actor_critic.value(batch.all_obs)
@@ -115,7 +139,7 @@ class PPO(Agent):
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):
-        # batch.normalize_rewards()
+        self.actor_critic.save_hidden_states()
         self.c1.update(step)
         self.c2.update(step)
         with torch.no_grad():
@@ -150,11 +174,15 @@ class PPO(Agent):
             loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
             loss.backward()
             self.optimizer.step()
+        self.actor_critic.restore_hidden_states()
 
     def update(self, t: Transition, step: int):
-        self._memory.append(t)
-        if len(self._memory) >= self.batch_size:
-            batch = TransitionBatch(self._memory).to(self.device)
+        self._memory.add(t)
+        if t.is_terminal:
+            self.actor_critic.reset_hidden_states()
+        if self._memory.size >= self.batch_size:
+            batch = EpisodeBatch(self._memory._data).to(self.device)
+            # batch = TransitionBatch(self._memory).to(self.device)
             self.train(batch, step)
             self._memory.clear()
 

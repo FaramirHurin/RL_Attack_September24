@@ -53,13 +53,35 @@ class EpisodeBatch(Batch):
         res = np.array([e[key] for e in self.episodes], dtype=np.float32)
         return torch.from_numpy(res).to(self.device)
 
-    # def compute_normalized_returns(self, gamma: float, last_obs_value: Optional[float] = None) -> torch.Tensor:
-    #     """Compute the returns for each timestep in the batch"""
-    #     returns = self.compute_returns(gamma, last_obs_value)
-    #     # Normalize the returns such that the algorithm is more stable across environments
-    #     # Add 1e-8 to the std to avoid dividing by 0 in case all the returns are equal to 0
-    #     normalized_returns = (returns - returns.mean()) / (returns.std() + 1e-8)
-    #     return normalized_returns
+    def compute_gae(
+        self,
+        gamma: float,
+        all_values: torch.Tensor,
+        trace_decay: float = 0.95,
+        normalize: bool = False,
+    ):
+        values = all_values[:, :-1] * self.masks
+        next_values = all_values[:, 1:] * self.masks
+        deltas = self.rewards + gamma * next_values * self.not_dones - values
+        gae = torch.zeros(self.size, dtype=torch.float32).to(device=self.device)
+        advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
+        # Note: we want to discount the reward by the actual time between two observations
+        dt = self.dt
+        for t in range(self.size - 1, -1, -1):
+            gae = deltas[:, t] + gamma ** dt[:, t] * trace_decay * gae
+            advantages[:, t] = gae
+        if normalize:
+            advantages = self._normalize(advantages)
+        return advantages
+
+    @cached_property
+    def dt(self):
+        """
+        Delta time (in days) between two consecutile observations.
+        """
+        delay_days = self.actions[:, :, -2]
+        delay_hours = self.actions[:, :, -1]
+        return delay_days + delay_hours / 24.0
 
     @cached_property
     def reward_size(self) -> int:

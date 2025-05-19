@@ -17,8 +17,8 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 
 from banksys import Banksys, ClassificationSystem, Transaction, Card
 from environment import CardSimEnv, SimpleCardSimEnv, Action
-from agents.rl import ActorCritic
-from agents import PPO
+from agents.rl import ActorCritic, RecurrentActorCritic
+from agents import PPO, RPPO
 from Baselines.attack_generation import Attack_Generation, VaeAgent
 from cardsim import Cardsim
 from torch import nn
@@ -28,7 +28,7 @@ from tqdm import tqdm
 from sklearn.ensemble import IsolationForest
 
 # Random integer seed from 0 to 9
-seed = np.random.randint(0, 10)
+seed = 0  # np.random.randint(0, 10)
 torch.manual_seed(seed)
 random.seed(seed)
 np.random.seed(seed)
@@ -38,6 +38,7 @@ logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s -
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
+
 
 def fix_episode_for_serialization(ep):
     def to_float_list(arr):
@@ -64,7 +65,7 @@ def fix_episode_for_serialization(ep):
         "episode_len": ep.episode_len,
         "other": ep.other,
         "is_done": ep.is_done,
-        "is_truncated": ep.is_truncated
+        "is_truncated": ep.is_truncated,
     }
 
 
@@ -72,26 +73,29 @@ class Args(tap.TypedArgs):
     algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
     banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
-def max_trx_day(transaction:Transaction, transactions:[list[Transaction]], max_number:int=7) -> bool:
+
+def max_trx_day(transaction: Transaction, transactions: list[Transaction], max_number: int = 7) -> bool:
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
     return len(same_day_transactions) > max_number
 
-def max_trx_hour(transaction:Transaction, transactions:[list[Transaction]], max_number:int=4) -> bool:
+
+def max_trx_hour(transaction: Transaction, transactions: list[Transaction], max_number: int = 4) -> bool:
     same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
     return len(same_hour_transactions) > max_number
 
-def max_trx_week(transaction:Transaction, transactions:[list[Transaction]], max_number:int=20) -> bool:
-    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] ==
-                              transaction.timestamp.isocalendar()[1]]
+
+def max_trx_week(transaction: Transaction, transactions: list[Transaction], max_number: int = 20) -> bool:
+    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] == transaction.timestamp.isocalendar()[1]]
     return len(same_week_transactions) > max_number
 
-def positive_amount(transaction:Transaction, transactions:[list[Transaction]]) -> bool:
+
+def positive_amount(transaction: Transaction, transactions: list[Transaction]) -> bool:
     return transaction.amount < 0.01
 
-FEATURE_NAMES = ['amount']
-QUANTILES = [0.01, 0.99]
-RULES = [max_trx_hour, max_trx_week, max_trx_day,positive_amount] #
 
+FEATURE_NAMES = ["amount"]
+QUANTILES = [0.01, 0.99]
+RULES = [max_trx_hour, max_trx_week, max_trx_day, positive_amount]  #
 
 
 def plot_transactions(transactions: list[Transaction]):
@@ -147,50 +151,41 @@ def get_vae(env: SimpleCardSimEnv, device: torch.device):
 
 
 def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
-    network = ActorCritic(env.observation_size, env.n_actions, device)
-    agent = PPO(
+    network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
+    agent = RPPO(
         network,
-        1, #0.99
+        0.99,
         train_interval=64,
         minibatch_size=32,
         lr_actor=1e-4,
         lr_critic=4e-4,
         n_epochs=16,
         critic_c1=Schedule.linear(0.2, 0.001, 10000),
-        entropy_c2=Schedule.linear(0.35, 0.001, 1000),
+        entropy_c2=Schedule.linear(0.1, 0.001, 1000),
         device=device,
     )
     return agent
 
 
-def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes: int = 500):
+def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name: str, n_episodes: int = 500):
     scores = list[float]()
     episodes = list[Episode]()
 
+    i = 0
     for e in tqdm(range(n_episodes)):
         obs, state = env.reset()
         episode = Episode.new(obs, state, {"t_start": env.t_start, "card_id": env.current_card.id})
         transactions = list[Transaction]()
         terminals = list[int]()
         while not episode.is_finished:
-            # Normalize the observation if model is PPO
-            """
-            if isinstance(agent, PPO):
-                if known_client:
-                    deviding_factor = np.max(obs.data[-2:])
-                    obs.data[-2:] = obs.data[-2:] / deviding_factor
-                #print(obs.data)
-                action = agent.choose_action(obs.data)
-            else:
-            """
+            i += 1
             action = agent.choose_action(obs.data)
-            #print('.')
             step, trx = env.step(action)
             if trx is not None:
                 terminals.append(trx.terminal_id)
                 transactions.append(trx)
             t = Transition.from_step(obs, state, action, step)
-            agent.update(t)
+            agent.update(t, i)
             episode.add(t)
             episode.add_metrics({"t_end": env.t, "terminals": terminals})
             obs, state = step.obs, step.state
@@ -209,7 +204,7 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, n_episodes
 
     os.makedirs("logs", exist_ok=True)
     filename = f"logs/tests/{agent_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
-    if agent_name == 'vae':
+    if agent_name == "vae":
         episodes = [fix_episode_for_serialization(ep) for ep in episodes]
     with open(filename, "wb") as f:
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
@@ -219,41 +214,47 @@ def main(args: Args):
     try:
         banksys = Banksys.load(args.banksys)
     except FileNotFoundError:
-        print('Banksys not found, creating a new one')
+        print("Banksys not found, creating a new one")
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
         # clf = RandomForestClassifier(n_jobs=-1)
         # banksys = Banksys(cards, terminals, simulator.t_start, feature_names=FEATURE_NAMES,
         #                   quantiles= [0.02, 0.98], rules=RULES)
-        #system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
+        # system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
-        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
+        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)  # type: ignore
         anomaly_detection_clf = IsolationForest(n_jobs=1, contamination=0.005)
 
-
-        banksys = Banksys( inner_clf=clf, anomaly_detection_clf=anomaly_detection_clf, cards=cards, terminals=terminals,
-                           t_start= simulator.t_start, transactions=transactions, feature_names=FEATURE_NAMES,
-                           quantiles=QUANTILES, rules=RULES)
+        banksys = Banksys(
+            inner_clf=clf,
+            anomaly_detection_clf=anomaly_detection_clf,
+            cards=cards,
+            terminals=terminals,
+            t_start=simulator.t_start,
+            transactions=transactions,
+            feature_names=FEATURE_NAMES,
+            quantiles=QUANTILES,
+            rules=RULES,
+        )
 
         start = datetime.now()
         test_set = banksys.train_classifier(transactions)
         print(f"Training time: {datetime.now() - start}")
         banksys.save(args.banksys)
-        #TODO: banksys.evaluate_classifier(test_set)
+        # TODO: banksys.evaluate_classifier(test_set)
 
     env = SimpleCardSimEnv(banksys, timedelta(days=7), customer_location_is_known=False)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    agent_name = 'vae' # args.algorithm
-    match agent_name:
+    agent_name = "vae"  # args.algorithm
+    match args.algorithm:
         case "ppo":
             agent = get_ppo(env, device)
         case "vae":
             agent = get_vae(env, device)
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
-    train_simple(env, agent,agent_name, n_episodes=4000)
-
+    train_simple(env, agent, agent_name, n_episodes=4000)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ class Agent(ABC):
         """
 
     @abstractmethod
-    def update(self, t: Transition):
+    def update(self, t: Transition, step: int):
         """
         Update the agent's policy based on the transition.
         """

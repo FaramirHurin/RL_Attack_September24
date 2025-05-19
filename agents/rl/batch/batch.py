@@ -37,14 +37,12 @@ class Batch(ABC):
         """Normalize the tensor such that it has a mean of 0 and a std of 1."""
         return (tensor - tensor.mean()) / (tensor.std() + 1e-8)
 
+    @abstractmethod  # type: ignore
     @cached_property
-    def dt(self):
+    def dt(self) -> torch.Tensor:
         """
         Delta time (in days) between two consecutile observations.
         """
-        delay_days = self.actions[:, -2]
-        delay_hours = self.actions[:, -1]
-        return delay_days + delay_hours / 24.0
 
     def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0, normalize: bool = True):
         """
@@ -109,13 +107,14 @@ class Batch(ABC):
             advantages = self._normalize(advantages)
         return advantages
 
+    @abstractmethod
     def compute_gae(
         self,
         gamma: float,
         all_values: torch.Tensor,
         trace_decay: float = 0.95,
         normalize: bool = False,
-    ):
+    ) -> torch.Tensor:
         """
         Compute Generalized Advantage Estimation (GAE).
         Paper: https://arxiv.org/pdf/1506.02438
@@ -134,19 +133,6 @@ class Batch(ABC):
         Returns:
             Advantage estimates (batch_size,).
         """
-        values = all_values[:-1]
-        next_values = all_values[1:]
-        deltas = self.rewards + gamma * next_values * self.not_dones - values
-        gae = torch.zeros(self.reward_size, dtype=torch.float32).to(device=self.device)
-        advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
-        # Note: we want to discount the reward by the actual time between two observations
-        dt = self.dt
-        for t in range(self.size - 1, -1, -1):
-            gae = deltas[t] + gamma ** dt[t] * trace_decay * gae
-            advantages[t] = gae
-        if normalize:
-            advantages = self._normalize(advantages)
-        return advantages
 
     @overload
     def get_minibatch(self, minibatch_size: int, /) -> "Batch":
