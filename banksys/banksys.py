@@ -1,6 +1,6 @@
-from datetime import datetime
 import os
 import pickle
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -24,7 +24,6 @@ class Banksys:
     feature_names: list[str]
     training_features: list[str]
 
-
     def __init__(
         self,
         inner_clf,
@@ -34,10 +33,8 @@ class Banksys:
         t_start: datetime,
         attack_time: datetime,
         transactions: list[Transaction],
-        feature_names: list[str] = None,
-        quantiles: list[float] = None,
-
-
+        feature_names: list[str],
+        quantiles: list[float],
     ):
         self.attack_time = attack_time
 
@@ -45,20 +42,23 @@ class Banksys:
         transactions = sorted(transactions, key=lambda t: t.timestamp)
         #  Filter transactions that are older than t_start + n_days_warmup
         n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
-        self.train_transactions = [t for t in transactions if t.timestamp <= attack_time and
-                                   t.timestamp >= t_start + n_days_warmup]
+        self.train_transactions = [t for t in transactions if t.timestamp <= attack_time and t.timestamp >= t_start + n_days_warmup]
         self.test_transactions = [t for t in transactions if t.timestamp > attack_time]
 
-        self.clf = ClassificationSystem(banksys=self, clf=inner_clf, anomaly_detection_clf=anomaly_detection_clf,
-        features_for_quantiles=feature_names, quantiles=quantiles)
+        self.clf = ClassificationSystem(
+            banksys=self,
+            clf=inner_clf,
+            anomaly_detection_clf=anomaly_detection_clf,
+            features_for_quantiles=feature_names,
+            quantiles=quantiles,
+        )
 
         self.cards = cards
         self.terminals = terminals
         self.label_feature = "label"
         week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         self.feature_names = (
-            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names
-            + self.terminals[0].feature_names
+            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
 
         self.training_features = self._train_classifier(self.train_transactions)
@@ -67,7 +67,7 @@ class Banksys:
         for transaction in self.test_transactions:
             self.add_transaction(transaction)
 
-    def set_up_run(self, use_anomaly_detection:bool, rules:list, rules_values:dict, return_confusion:bool = False):
+    def set_up_run(self, use_anomaly_detection: bool, rules: list, rules_values: dict, return_confusion: bool = False):
         self.clf.use_anomaly_detection = use_anomaly_detection
         self.clf.set_rules(rules, rules_values)
 
@@ -77,7 +77,6 @@ class Banksys:
             return None
 
     def _train_classifier(self, tr_transactions: list[Transaction]):
-
         rows = []
         for t in tqdm(tr_transactions):
             self.add_transaction(t)
@@ -116,7 +115,7 @@ class Banksys:
         self.add_transaction(transaction)
         return label
 
-    def get_closest_terminal(self, x: float, y: float, atk_terminals:list[Terminal]) -> Terminal:
+    def get_closest_terminal(self, x: float, y: float, atk_terminals: list[Terminal]) -> Terminal:
         closest_terminal = None
         closest_distance = float("inf")
         for terminal in atk_terminals:

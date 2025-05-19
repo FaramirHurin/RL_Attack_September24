@@ -7,6 +7,10 @@ from .transaction import Transaction
 
 # Import isolation forest
 from sklearn.ensemble import IsolationForest
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from banksys import Banksys
 
 
 class StatisticalClassifier:
@@ -59,8 +63,7 @@ class ClassificationSystem:
         anomaly_detection_clf: IsolationForest,
         features_for_quantiles: list[str],
         quantiles: list[float],
-        banksys,
-        rules,
+        banksys: Banksys,
     ):
         self.ml_classifier = clf
         self.banksys = banksys
