@@ -1,5 +1,11 @@
+from .networks import LinearActorCritic, RecurrentActorCritic
 from .ppo import PPO
-from .networks import ActorCritic
+from .r_ppo import RPPO
 
 
-__all__ = ["PPO", "ActorCritic"]
+__all__ = [
+    "PPO",
+    "LinearActorCritic",
+    "RecurrentActorCritic",
+    "RPPO",
+]

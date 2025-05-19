@@ -1,7 +1,8 @@
-import torch
-from torch import distributions
+from typing import Optional
 
+import torch
 import torch.nn as nn
+from torch import distributions
 
 
 class PositiveDefiniteMatrixGenerator(nn.Module):
@@ -30,7 +31,7 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
         return positive_definite_matrix
 
 
-class ActorCritic(torch.nn.Module):
+class LinearActorCritic(torch.nn.Module):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super().__init__()
         self.n_actions = n_actions
@@ -109,34 +110,36 @@ class ActorCritic(torch.nn.Module):
         return self
 
 
+class RNN(torch.nn.Module):
+    def __init__(self, n_inputs: int, n_outputs: int, n_hidden: int):
+        super().__init__()
+        self.n_outputs = n_outputs
+        self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, 64), torch.nn.ReLU())
+        self.gru = torch.nn.GRU(input_size=64, hidden_size=n_hidden, batch_first=True)
+        self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
+
+    def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
+        # self.gru.flatten_parameters()
+        x = self.fc1.forward(obs)
+        x, hidden_states = self.gru.forward(x, hidden_states)
+        x = self.fc2.forward(x)
+        return x, hidden_states  # type: ignore[return-value]
+
+
 class RecurrentActorCritic(torch.nn.Module):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super().__init__()
         self.n_actions = n_actions
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
-        n_action_outputs = n_actions + n_actions**2
-        INNER_SIZE_ACTIONS = 32
-        INNER_SIZE_SEQUNTIAL = 32
-        self.actions_mean_std = torch.nn.Sequential(
-            torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
-            torch.nn.Tanh(),
-            torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
-            torch.nn.Tanh(),
-            torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
-        ).to(self.device)
+        self.n_action_outputs = n_actions + n_actions**2
+        self.actions_mean_std = RNN(n_inputs=state_size, n_outputs=self.n_action_outputs, n_hidden=32).to(self.device)
+        self.critic = RNN(n_inputs=state_size, n_outputs=1, n_hidden=32).to(self.device)
 
-        self.critic = torch.nn.Sequential(
-            torch.nn.LayerNorm(state_size),
-            torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
-            torch.nn.Tanh(),
-            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
-            torch.nn.Tanh(),
-            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, 1),
-        ).to(self.device)
-
-    def _action_distribution(self, state: torch.Tensor):
-        action_mean_std = self.actions_mean_std(state.to(self.device))
+    def _action_distribution(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
+        *dims, _ = state.shape
+        action_mean_std, hidden_states = self.actions_mean_std.forward(state.to(self.device), hidden_states)
+        action_mean_std = torch.reshape(action_mean_std, (-1, self.n_action_outputs))
         means = action_mean_std[:, : self.n_actions]
         std = torch.exp(action_mean_std[:, self.n_actions :])
         std = std.reshape(-1, self.n_actions, self.n_actions)
@@ -151,18 +154,20 @@ class RecurrentActorCritic(torch.nn.Module):
         # Scale the result by the original Frobenius norm
         normalized_cov_mat = result_normalized * norm
 
+        means = means.reshape(*dims, self.n_actions)
+        normalized_cov_mat = normalized_cov_mat.reshape(*dims, self.n_actions, self.n_actions)
         # print(torch.linalg.eigvals(cov_mat))
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
         # dist = distributions.Normal(means, std)
-        return dist
+        return dist, hidden_states
 
-    def policy(self, state: torch.Tensor):
-        dist = self._action_distribution(state)
-        return dist
+    def policy(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
+        dist, hidden_states = self._action_distribution(state, hidden_states)
+        return dist, hidden_states
 
-    def value(self, state: torch.Tensor):
-        value = self.critic.forward(state)
-        return value
+    def value(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
+        value, hidden_states = self.critic.forward(state, hidden_states)
+        return value.squeeze(-1), hidden_states
 
     def to(self, device: torch.device):
         self.device = device

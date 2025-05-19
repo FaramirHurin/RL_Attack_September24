@@ -4,9 +4,10 @@ import random
 from copy import deepcopy
 import numpy as np
 from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace, ActionSpace
+from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
 from .card_registry import CardRegistry
 from banksys import Terminal
+
 
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
@@ -27,17 +28,19 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             obs_shape = (6,)
         else:
             obs_shape = (4,)
-        action_space = ActionSpace(1, ContinuousSpace( low= np.array([0.01] + [0.0] * 5),
-                high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
-                labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
-            ))
+        action_space = ContinuousSpace(
+            low=np.array([0.01] + [0.0] * 5),
+            high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
+            labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
+        )
         super().__init__(
+            1,
             action_space=action_space,
             observation_shape=obs_shape,
             state_shape=obs_shape,
         )
         self.system = system
-        #self.saved_system = deepcopy(system)
+        # self.saved_system = deepcopy(system)
         self.t = system.attack_time
         self.t_start = deepcopy(system.attack_time)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
@@ -48,7 +51,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def reset(self):
         self.system.rollback(self.transactions)
         self.transactions = []
-        self.t = self.t_start
+        self.t = deepcopy(self.t_start)
         self.current_card = self.card_registry.release_card(self.t)
         obs = self.get_observation()
         state = self.get_state()

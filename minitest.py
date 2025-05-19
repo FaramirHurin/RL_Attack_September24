@@ -1,12 +1,12 @@
+import logging
+import os
 import random
 from datetime import datetime, timedelta
-import logging
 from typing import Literal
-import typed_argparse as tap
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import orjson
 import os
 from agents import Agent
@@ -97,7 +97,7 @@ def fix_episode_for_serialization(ep):
         "episode_len": ep.episode_len,
         "other": ep.other,
         "is_done": ep.is_done,
-        "is_truncated": ep.is_truncated
+        "is_truncated": ep.is_truncated,
     }
 
 
@@ -158,8 +158,8 @@ def get_vae(env: SimpleCardSimEnv, device: torch.device):
     )
 
 def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
-    network = ActorCritic(env.observation_size, env.n_actions, device)
-    agent = PPO(
+    network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
+    agent = RPPO(
         network,
         parameters_run["ppo_hyperparameters"]['discount'], #
         train_interval=parameters_run["ppo_hyperparameters"]["train_interval"],
@@ -173,10 +173,13 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     )
     return agent
 
+
+def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name: str, n_episodes: int = 500):
 def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_terminals, n_episodes: int = 500):
     scores = list[float]()
     episodes = list[Episode]()
 
+    i = 0
     for e in tqdm(range(n_episodes)):
         obs, state = env.reset()
         episode = Episode.new(obs, state, {"t_start": env.t_start, "card_id": env.current_card.id})
@@ -197,7 +200,7 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_termin
                 terminals.append(trx.terminal_id)
                 transactions.append(trx)
             t = Transition.from_step(obs, state, action, step)
-            agent.update(t)
+            agent.update(t, i)
             episode.add(t)
             episode.add_metrics({"t_end": env.t, "terminals": terminals})
             obs, state = step.obs, step.state
@@ -215,6 +218,8 @@ def train_simple(env: SimpleCardSimEnv, agent: Agent, agent_name:str, atk_termin
             print(f"Episode {e}: average length over last 100 episodes: {avg_length:.2f}")
 
     os.makedirs("logs", exist_ok=True)
+    filename = f"logs/tests/{agent_name}_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')}.json"
+    if agent_name == "vae":
     time = datetime.now().strftime('%Y-%m-%d_%H-%M-%S.%f')
 
     filename = f"logs/tests/{agent_name}_{time}.json"
@@ -240,9 +245,13 @@ def main(args: Args):
     try:
         banksys = Banksys.load(args.banksys)
     except FileNotFoundError:
-        print('Banksys not found, creating a new one')
+        print("Banksys not found, creating a new one")
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
+        # clf = RandomForestClassifier(n_jobs=-1)
+        # banksys = Banksys(cards, terminals, simulator.t_start, feature_names=FEATURE_NAMES,
+        #                   quantiles= [0.02, 0.98], rules=RULES)
+        # system = ClassificationSystem(clf, ["amount"], [0.02, 0.98], banksys=banksys, rules=RULES)
 
         clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)
         anomaly_detection_clf = OneClassSVM(nu=0.005)
@@ -259,6 +268,7 @@ def main(args: Args):
         start = datetime.now()
         print(f"Training time: {datetime.now() - start}")
         banksys.save(args.banksys)
+        # TODO: banksys.evaluate_classifier(test_set)
 
     confusion_matrix = banksys.set_up_run(use_anomaly_detection=parameters_run["use_anomaly_detection"],
                                           rules=parameters_run["rules_names"],
@@ -276,6 +286,7 @@ def main(args: Args):
             agent = get_vae(env, device)
         case other:
             raise ValueError(f"Unknown algorithm: {other}")
+    train_simple(env, agent, agent_name, n_episodes=4000)
     # Random sample terminals
     atk_terminals = random.sample(env.system.terminals, int(len(env.system.terminals)
                                                             * parameters_run["terminal_fract"])) #
