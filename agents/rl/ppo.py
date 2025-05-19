@@ -6,7 +6,7 @@ from marlenv import Transition
 from marlenv.utils import Schedule
 
 from .batch import Batch, TransitionBatch
-from .networks import ActorCritic
+from .networks import LinearActorCritic
 from agents import Agent
 
 
@@ -16,7 +16,7 @@ class PPO(Agent):
     PPO paper: https://arxiv.org/abs/1707.06347
     """
 
-    actor_critic: ActorCritic
+    actor_critic: LinearActorCritic
     batch_size: int
     c1: Schedule
     c2: Schedule
@@ -30,7 +30,7 @@ class PPO(Agent):
 
     def __init__(
         self,
-        actor_critic: ActorCritic,
+        actor_critic: LinearActorCritic,
         gamma: float,
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
@@ -97,12 +97,6 @@ class PPO(Agent):
             distribution = self.actor_critic.policy(obs_data)
         action = distribution.sample().squeeze(0)
         return action.numpy(force=True)
-
-    def value(self, observation: np.ndarray) -> float:
-        with torch.no_grad():
-            obs_data = torch.from_numpy(observation.data).unsqueeze(0).to(self.device, non_blocking=True)
-            values = self.actor_critic.value(obs_data)
-            return torch.mean(values).item()
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""

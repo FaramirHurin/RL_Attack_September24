@@ -1,8 +1,8 @@
-import torch
-import math
-from torch import distributions
+from typing import Optional
 
+import torch
 import torch.nn as nn
+from torch import distributions
 
 
 class PositiveDefiniteMatrixGenerator(nn.Module):
@@ -31,7 +31,7 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
         return positive_definite_matrix
 
 
-class ActorCritic(torch.nn.Module):
+class LinearActorCritic(torch.nn.Module):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super().__init__()
         self.n_actions = n_actions
@@ -110,28 +110,17 @@ class ActorCritic(torch.nn.Module):
 class RNN(torch.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_hidden: int):
         super().__init__()
-        self.hidden_states = None
-        self.saved_hidden_states = None
         self.n_outputs = n_outputs
         self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, 64), torch.nn.ReLU())
         self.gru = torch.nn.GRU(input_size=64, hidden_size=n_hidden, batch_first=True)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
-    def reset_hidden_states(self):
-        self.hidden_states = None
-
-    def restore_hidden_states(self):
-        self.hidden_states = self.saved_hidden_states
-
-    def save_hidden_states(self):
-        self.saved_hidden_states = self.hidden_states
-
-    def forward(self, obs: torch.Tensor):
+    def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
         # self.gru.flatten_parameters()
         x = self.fc1.forward(obs)
-        x, self.hidden_states = self.gru.forward(x, self.hidden_states)
+        x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)
-        return x
+        return x, hidden_states  # type: ignore[return-value]
 
 
 class RecurrentActorCritic(torch.nn.Module):
@@ -144,21 +133,9 @@ class RecurrentActorCritic(torch.nn.Module):
         self.actions_mean_std = RNN(n_inputs=state_size, n_outputs=self.n_action_outputs, n_hidden=32).to(self.device)
         self.critic = RNN(n_inputs=state_size, n_outputs=1, n_hidden=32).to(self.device)
 
-    def reset_hidden_states(self):
-        self.actions_mean_std.reset_hidden_states()
-        self.critic.reset_hidden_states()
-
-    def restore_hidden_states(self):
-        self.actions_mean_std.restore_hidden_states()
-        self.critic.restore_hidden_states()
-
-    def save_hidden_states(self):
-        self.actions_mean_std.save_hidden_states()
-        self.critic.save_hidden_states()
-
-    def _action_distribution(self, state: torch.Tensor):
+    def _action_distribution(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
         *dims, _ = state.shape
-        action_mean_std = self.actions_mean_std.forward(state.to(self.device))
+        action_mean_std, hidden_states = self.actions_mean_std.forward(state.to(self.device), hidden_states)
         action_mean_std = torch.reshape(action_mean_std, (-1, self.n_action_outputs))
         means = action_mean_std[:, : self.n_actions]
         std = torch.exp(action_mean_std[:, self.n_actions :])
@@ -179,15 +156,15 @@ class RecurrentActorCritic(torch.nn.Module):
         # print(torch.linalg.eigvals(cov_mat))
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
         # dist = distributions.Normal(means, std)
-        return dist
+        return dist, hidden_states
 
-    def policy(self, state: torch.Tensor):
-        dist = self._action_distribution(state)
-        return dist
+    def policy(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
+        dist, hidden_states = self._action_distribution(state, hidden_states)
+        return dist, hidden_states
 
-    def value(self, state: torch.Tensor):
-        value = self.critic.forward(state)
-        return value.squeeze(-1)
+    def value(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
+        value, hidden_states = self.critic.forward(state, hidden_states)
+        return value.squeeze(-1), hidden_states
 
     def to(self, device: torch.device):
         self.device = device

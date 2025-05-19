@@ -9,11 +9,11 @@ from .batch import Batch
 
 
 class EpisodeBatch(Batch):
-    def __init__(self, episodes: Sequence[Episode], device: Optional[torch.device] = None, do_padding: bool = True):
+    def __init__(self, episodes: Sequence[Episode], device: Optional[torch.device] = None, pad_episodes: bool = True):
         super().__init__(len(episodes), episodes[0].n_agents, device)
         self._max_episode_len = max(len(e) for e in episodes)
         self._base_episodes = episodes
-        if do_padding:
+        if pad_episodes:
             episodes = [e.padded(self._max_episode_len) for e in episodes]
         self.episodes = episodes
 
@@ -39,11 +39,9 @@ class EpisodeBatch(Batch):
                 pass
             case _:
                 raise ValueError(f"Invalid minibatch size {indices_or_size}")
-        return EpisodeBatch([self.episodes[i] for i in indices], self.device, do_padding=False)
-        if minibatch_size > self.size:
-            raise ValueError(f"Minibatch size {minibatch_size} is greater than the batch size {self.size}")
-        indices = np.random.choice(self.size, minibatch_size, replace=False)
-        return EpisodeBatch([self.episodes[i] for i in indices], self.device)
+        if len(indices) == 0:
+            print()
+        return EpisodeBatch([self.episodes[i] for i in indices], self.device, pad_episodes=False)
 
     def multi_objective(self):
         raise NotImplementedError()
@@ -67,7 +65,7 @@ class EpisodeBatch(Batch):
         advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
         # Note: we want to discount the reward by the actual time between two observations
         dt = self.dt
-        for t in range(self.size - 1, -1, -1):
+        for t in range(self._max_episode_len - 1, -1, -1):
             gae = deltas[:, t] + gamma ** dt[:, t] * trace_decay * gae
             advantages[:, t] = gae
         if normalize:

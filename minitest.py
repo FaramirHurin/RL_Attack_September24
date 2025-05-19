@@ -1,43 +1,35 @@
+import logging
+import os
 import random
 from datetime import datetime, timedelta
-import logging
 from typing import Literal
-import typed_argparse as tap
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import orjson
-import os
-from dataclasses import dataclass
-from sklearn.ensemble import RandomForestClassifier
-from functools import cached_property
-from agents import Agent
+import torch
+import typed_argparse as tap
 from imblearn.ensemble import BalancedRandomForestClassifier
-
-from banksys import Banksys, ClassificationSystem, Transaction, Card
-from environment import CardSimEnv, SimpleCardSimEnv, Action
-from agents.rl import ActorCritic, RecurrentActorCritic
-from agents import PPO, RPPO
-from Baselines.attack_generation import Attack_Generation, VaeAgent
-from cardsim import Cardsim
-from torch import nn
 from marlenv import Episode, Transition
 from marlenv.utils import Schedule
-from tqdm import tqdm
 from sklearn.ensemble import IsolationForest
+from torch import nn
+from tqdm import tqdm
 
-# Random integer seed from 0 to 9
+from agents import RPPO, Agent
+from agents.rl import RecurrentActorCritic
+from banksys import Banksys, Transaction
+from Baselines.attack_generation import VaeAgent
+from cardsim import Cardsim
+from environment import CardSimEnv, SimpleCardSimEnv
+
 seed = 0  # np.random.randint(0, 10)
 torch.manual_seed(seed)
 random.seed(seed)
 np.random.seed(seed)
 
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Set device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
 
 
 def fix_episode_for_serialization(ep):
@@ -156,7 +148,6 @@ def get_ppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
         network,
         0.99,
         train_interval=64,
-        minibatch_size=32,
         lr_actor=1e-4,
         lr_critic=4e-4,
         n_epochs=16,
