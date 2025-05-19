@@ -38,7 +38,7 @@ print(device)
 
 
 parameters_run = {
-    "agent_name": "ppo",  # ppo vae
+    "agent_name": "rppo",  # ppo vae rppo
     "len_episode": 4000,
     "know_client": False,
     "terminal_fract": 1,
@@ -55,6 +55,16 @@ parameters_run = {
         "entropy_c2": Schedule.linear(0.4, 0.1, 10000),
         "train_interval": 64,
         "minibatch_size": 32,
+        "discount": 0.99,
+        "seed": seed,
+    },
+    "rppo_hyperparameters": {
+        "lr_actor": 1e-4,
+        "lr_critic": 2e-4,
+        "n_epochs": 32,
+        "critic_c1": 0.5,
+        "entropy_c2": 0.01,
+        "train_interval": 64,
         "discount": 0.99,
         "seed": seed,
     },
@@ -309,6 +319,8 @@ def main(args: Args):
     match agent_name:
         case "ppo":
             agent = get_ppo(env, device)
+        case "rppo":
+            agent = get_rppo(env, device)
         case "vae":
             agent = get_vae(env, device)
         case other:
