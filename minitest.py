@@ -189,13 +189,13 @@ def get_rppo(env: CardSimEnv | SimpleCardSimEnv, device: torch.device):
     network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
     agent = RPPO(
         actor_critic=network,
-        gamma=parameters_run["ppo_hyperparameters"]["discount"],  #
-        train_interval=parameters_run["ppo_hyperparameters"]["train_interval"],
-        lr_actor=parameters_run["ppo_hyperparameters"]["lr_actor"],
-        lr_critic=parameters_run["ppo_hyperparameters"]["lr_critic"],
-        n_epochs=parameters_run["ppo_hyperparameters"]["n_epochs"],
-        critic_c1=parameters_run["ppo_hyperparameters"]["critic_c1"],
-        entropy_c2=parameters_run["ppo_hyperparameters"]["entropy_c2"],
+        gamma=parameters_run["rppo_hyperparameters"]["discount"],  #
+        train_interval=parameters_run["rppo_hyperparameters"]["train_interval"],
+        lr_actor=parameters_run["rppo_hyperparameters"]["lr_actor"],
+        lr_critic=parameters_run["rppo_hyperparameters"]["lr_critic"],
+        n_epochs=parameters_run["rppo_hyperparameters"]["n_epochs"],
+        critic_c1=parameters_run["rppo_hyperparameters"]["critic_c1"],
+        entropy_c2=parameters_run["rppo_hyperparameters"]["entropy_c2"],
         device=device,
     )
     return agent
