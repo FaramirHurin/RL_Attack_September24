@@ -13,6 +13,33 @@ if TYPE_CHECKING:
     from banksys import Banksys
 
 
+def max_trx_day(transaction: Transaction, transactions: list[Transaction], max_number: int = 7) -> bool:  # 7
+    same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
+    return len(same_day_transactions) > max_number
+
+
+def max_trx_hour(transaction: Transaction, transactions: list[Transaction], max_number: int = 4) -> bool:
+    same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
+    return len(same_hour_transactions) > max_number
+
+
+def max_trx_week(transaction: Transaction, transactions: list[Transaction], max_number: int = 20) -> bool:
+    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] == transaction.timestamp.isocalendar()[1]]
+    return len(same_week_transactions) > max_number
+
+
+def positive_amount(transaction: Transaction, transactions: list[Transaction], value: None = None) -> bool:
+    return transaction.amount < 0.01
+
+
+rules_dict = {
+    "max_trx_day": max_trx_day,
+    "max_trx_hour": max_trx_hour,
+    "max_trx_week": max_trx_week,
+    "positive_amount": positive_amount,
+}
+
+
 class StatisticalClassifier:
     """
     Classifier that classifies outliers as frauds.
@@ -63,7 +90,7 @@ class ClassificationSystem:
         anomaly_detection_clf: IsolationForest,
         features_for_quantiles: list[str],
         quantiles: list[float],
-        banksys: Banksys,
+        banksys: "Banksys",
     ):
         self.ml_classifier = clf
         self.banksys = banksys
