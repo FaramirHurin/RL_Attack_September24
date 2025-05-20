@@ -14,7 +14,7 @@ from tqdm import tqdm
 from banksys import Banksys, Transaction
 from cardsim import Cardsim
 from environment import SimpleCardSimEnv
-from parameters import Parameters, VAEParameters, PPOParameters, RPPOParameters
+from parameters import Parameters, PPOParameters
 
 # Random integer seed from 0 to 9
 seed = np.random.randint(0, 10)
@@ -119,8 +119,8 @@ def train(env: SimpleCardSimEnv, params: Parameters, directory: str):
 
 def init_environment(params: Parameters):
     try:
-        banksys = Banksys.load()
-    except FileNotFoundError:
+        banksys = Banksys.load(params.cardsim)
+    except (FileNotFoundError, ValueError):
         print("Banksys not found, creating a new one")
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(
@@ -136,7 +136,7 @@ def init_environment(params: Parameters):
             feature_names=FEATURE_NAMES,
             quantiles=params.quantiles_anomaly,
         )
-        banksys.save()
+        banksys.save(params.cardsim)
 
     banksys.set_up_run(rules_values=params.rules, use_anomaly=params.use_anomaly)
     env = SimpleCardSimEnv(
@@ -148,7 +148,7 @@ def init_environment(params: Parameters):
     return env
 
 
-def save_metrics(banksys: Banksys, directory: str):
+def test_and_save_metrics(banksys: Banksys, directory: str):
     from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, confusion_matrix
 
     os.makedirs(directory, exist_ok=True)
@@ -174,26 +174,15 @@ def save_metrics(banksys: Banksys, directory: str):
 
 
 def main():
-    agent_name = "ppo"
-    ppo_params = PPOParameters()
-    rppo_params = RPPOParameters()
-    vae_params = VAEParameters()
-    match agent_name:
-        case "ppo":
-            params = Parameters(ppo_params)
-        case "rppo":
-            params = Parameters(rppo_params)
-        case "vae":
-            params = Parameters(vae_params)
-        case other:
-            raise ValueError(f"Unknown algorithm: {other}")
-    params.use_anomaly = False
-    params.rules = {}
+    agent_params = PPOParameters()
+    # agent_params = RPPOParameters()
+    # agent_params = VAEParameters()
+    params = Parameters(agent_params, use_anomaly=False, rules={})
     env = init_environment(params)
     directory = os.path.join("logs", f"{params.agent_name}_{datetime.now().isoformat()}")
     save_parameters(directory, params)
-    save_metrics(env.system, directory)
-    # train(env, params, directory)
+    test_and_save_metrics(env.system, directory)
+    train(env, params, directory)
 
 
 if __name__ == "__main__":

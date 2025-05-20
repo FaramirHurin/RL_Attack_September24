@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -9,11 +10,11 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
-from banksys.banksys import Banksys
-from banksys.card import Card
-from banksys.terminal import Terminal
-from banksys.transaction import Transaction
-from agents import Agent
+if TYPE_CHECKING:
+    from banksys import Card, Transaction, Terminal
+    from banksys.banksys import Banksys
+
+from .agent import Agent
 
 COLUMNS = [
     "payer_id",
@@ -153,7 +154,7 @@ class Attack_Generation:
         return valid_samples
 
 
-class VaeAgent2(Agent):
+class VaeAgent(Agent):
     def __init__(
         self,
         device,
@@ -161,7 +162,7 @@ class VaeAgent2(Agent):
         hidden_dim: int,
         lr: float,
         trees: int,
-        banksys: Banksys,
+        banksys: "Banksys",
         terminal_codes: list,
         current_time: datetime,
         batch_size=32,
@@ -214,12 +215,11 @@ class VaeAgent2(Agent):
         """
         Preprocess the data and return a DataFrame with the transactions
         """
-        terminals: list[Terminal] = [terminal for terminal in self.banksys.terminals if terminal in self.terminals]
-
+        terminals = [terminal for terminal in self.banksys.terminals if terminal in self.terminals]
         transactions_df = self.get_trx_from_terminals(terminals, self.current_time)
 
         if self.know_client:
-            customers: list[Card] = self.banksys.cards
+            customers = self.banksys.cards
             transactions_df = self._trx_and_customers(transactions_df, customers)
         transactions_df["hour"] = transactions_df["timestamp"].dt.hour
         return transactions_df
@@ -264,14 +264,14 @@ class VaeAgent2(Agent):
         return trx.to_numpy()
 
     @staticmethod
-    def get_trx_from_terminals(terminals: list[Terminal], current_time: datetime) -> pd.DataFrame:
+    def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:
         """
         Get the transactions from the terminals
         :param terminals: list of terminals
         :param current_time: current time
         :return: DataFrame with the transactions
         """
-        transactions: list[Transaction] = []
+        transactions: list["Transaction"] = []
         for terminal in terminals:
             transactions += terminal.transactions
             # Add terminal coordinates to the transactions
@@ -283,7 +283,7 @@ class VaeAgent2(Agent):
         return transactions_df
 
     @staticmethod
-    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list[Card]) -> pd.DataFrame:
+    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Card"]) -> pd.DataFrame:
         """
         Preprocess the transactions and use s.
         :param transactionsDF: DataFrame with the transactions

@@ -1,17 +1,21 @@
+import logging
 import os
 import pickle
-import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 import numpy as np
+import orjson
 import pandas as pd
 from tqdm import tqdm
 
+from parameters import CardSimParameters
+
 from .card import Card
 from .classification import ClassificationSystem
+from .has_ordered_transactions import OrderedTransactionsRegistry
 from .terminal import Terminal
 from .transaction import Transaction
-from .has_ordered_transactions import OrderedTransactionsRegistry
 
 # TODO: when a card is blocked, we should remove all its future transactions
 
@@ -115,17 +119,29 @@ class Banksys:
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 
-    def save(self, filename: str = "cache/banksys.pkl"):
-        directory = os.path.dirname(filename)
+    def save(self, params: CardSimParameters, directory: str = "cache"):
         if not os.path.exists(directory):
             os.makedirs(directory)
-        with open(filename, "wb") as f:
+        with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
             pickle.dump(self, f)
+        with open(os.path.join(directory, "params.json"), "wb") as f:
+            f.write(orjson.dumps(params))
 
     @staticmethod
-    def load(location: str = "cache/banksys.pkl") -> "Banksys":
-        with open(location, "rb") as f:
+    def load(params: Optional[CardSimParameters] = None, directory: str = "cache") -> "Banksys":
+        """
+        Load the banksys from the given directory.
+
+        If `params` is given, it will check if the parameters match the saved ones.
+        """
+        if params is not None:
+            with open(os.path.join(directory, "params.json"), "rb") as f:
+                simulation_params = CardSimParameters(**orjson.loads(f.read()))
+            if simulation_params != params:
+                raise ValueError("Simulation parameters do not match the given parameters.")
+        with open(os.path.join(directory, "banksys.pkl"), "rb") as f:
             banksys = pickle.load(f)
+            assert isinstance(banksys, Banksys)
         return banksys
 
     def rollback(self, transactions: list[Transaction]):

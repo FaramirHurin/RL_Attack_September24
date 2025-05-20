@@ -1,4 +1,3 @@
-from banksys import Banksys, Transaction
 from .action import Action
 import random
 from copy import deepcopy
@@ -6,13 +5,18 @@ import numpy as np
 from datetime import timedelta
 from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
 from .card_registry import CardRegistry
-from banksys import Terminal
+from banksys import Terminal, Transaction
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from banksys import Banksys
 
 
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
-        system: Banksys,
+        system: "Banksys",
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
         customer_location_is_known: bool = False,

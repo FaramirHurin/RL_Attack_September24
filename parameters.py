@@ -2,20 +2,19 @@ from dataclasses import dataclass, asdict, field
 from typing import Literal, Optional
 from marlenv.utils import Schedule
 import torch
-from agents import PPO, RPPO, Agent
+from agents import PPO, RPPO, Agent, VaeAgent
 from agents.rl import LinearActorCritic, RecurrentActorCritic
-from Baselines.attack_generation import VaeAgent
 from environment import SimpleCardSimEnv
 
 
-@dataclass
+@dataclass(eq=True)
 class CardSimParameters:
     n_days: int = 50
     start_date: str = "2023-01-01"
     n_payers: int = 10_000
 
 
-@dataclass
+@dataclass(eq=True)
 class RPPOParameters:
     gamma: float = 0.99
     lr_actor: float = 5e-4
@@ -33,7 +32,7 @@ class RPPOParameters:
         return RPPO(network, **asdict(self), device=device)
 
 
-@dataclass
+@dataclass(eq=True)
 class PPOParameters(RPPOParameters):
     minibatch_size: int = 10
 
@@ -42,7 +41,7 @@ class PPOParameters(RPPOParameters):
         return PPO(network, **asdict(self), device=device)
 
 
-@dataclass
+@dataclass(eq=True)
 class VAEParameters:
     latent_dim: int = 10
     hidden_dim: int = 120
@@ -72,7 +71,7 @@ class VAEParameters:
         )
 
 
-@dataclass
+@dataclass(eq=True)
 class Parameters:
     agent: PPOParameters | RPPOParameters | VAEParameters
     cardsim: CardSimParameters = field(default_factory=CardSimParameters)
