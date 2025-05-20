@@ -2,7 +2,7 @@ from dataclasses import dataclass, asdict, field
 from typing import Literal, Optional
 from marlenv.utils import Schedule
 import torch
-from agents import PPO, RPPO, Agent, VaeAgent
+from agents import RPPO, Agent, VaeAgent, PPO
 from agents.rl import LinearActorCritic, RecurrentActorCritic
 from environment import SimpleCardSimEnv
 
@@ -27,9 +27,15 @@ class RPPOParameters:
     gae_lambda: float = 0.95
     grad_norm_clipping: Optional[float] = None
 
+    def as_dict(self):
+        kwargs = asdict(self)
+        kwargs["critic_c1"] = self.critic_c1
+        kwargs["entropy_c2"] = self.entropy_c2
+        return kwargs
+
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
         network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
-        return RPPO(network, **asdict(self), device=device)
+        return RPPO(network, **self.as_dict(), device=device)
 
 
 @dataclass(eq=True)
@@ -38,7 +44,7 @@ class PPOParameters(RPPOParameters):
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
         network = LinearActorCritic(env.observation_size, env.n_actions, device)
-        return PPO(network, **asdict(self), device=device)
+        return PPO(network, **self.as_dict(), device=device)
 
 
 @dataclass(eq=True)

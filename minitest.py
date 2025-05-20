@@ -14,7 +14,7 @@ from tqdm import tqdm
 from banksys import Banksys, Transaction
 from cardsim import Cardsim
 from environment import SimpleCardSimEnv
-from parameters import Parameters, PPOParameters
+from parameters import PPOParameters, Parameters, RPPOParameters, VAEParameters
 
 # Random integer seed from 0 to 9
 seed = np.random.randint(0, 10)
@@ -181,7 +181,7 @@ def main():
     env = init_environment(params)
     directory = os.path.join("logs", f"{params.agent_name}_{datetime.now().isoformat()}")
     save_parameters(directory, params)
-    test_and_save_metrics(env.system, directory)
+    # test_and_save_metrics(env.system, directory)
     train(env, params, directory)
 
 
