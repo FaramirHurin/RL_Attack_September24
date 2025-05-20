@@ -84,7 +84,7 @@ class RPPO(Agent):
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
         all_parameters = list(self.actor_critic.parameters())
         params = [
-            {"params": self.actor_critic.actions_mean_std.parameters(), "lr": lr_actor, "name": "actor parameters"},
+            {"params": self.actor_critic.actor.parameters(), "lr": lr_actor, "name": "actor parameters"},
             {"params": self.actor_critic.critic.parameters(), "lr": lr_critic, "name": "critic parameters"},
         ]
         return params, all_parameters
