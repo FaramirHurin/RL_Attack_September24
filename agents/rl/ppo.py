@@ -183,7 +183,7 @@ class PPO(Agent):
         """
         Seed the algorithm for reproducibility (e.g. during testing).
 
-        Seed `ranom`, `numpy`, and `torch` libraries by default.
+        Seed `random`, `numpy`, and `torch` libraries by default.
         """
         import random
         import numpy as np

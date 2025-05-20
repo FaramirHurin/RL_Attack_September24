@@ -3,6 +3,7 @@ import os
 import pickle
 from datetime import datetime, timedelta
 from typing import Optional
+import random
 
 import numpy as np
 import orjson
@@ -35,11 +36,13 @@ class Banksys:
         transactions: list[Transaction],
         feature_names: list[str],
         quantiles: list[float],
+        attackable_terminal_factor: float = 1.0,
     ):
         self.clf = ClassificationSystem(banksys=self, features_for_quantiles=feature_names, quantiles=quantiles)
         self.cards = cards
         self.terminals = terminals
         self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
+        self.attackable_terminals = random.sample(terminals, round(len(terminals) * attackable_terminal_factor))
 
         self.registry = OrderedTransactionsRegistry(transactions)
         aggregation_duration = max(*cards[0].aggregation_windows, *terminals[0].days_aggregation)
@@ -104,10 +107,10 @@ class Banksys:
         self.add_transaction(transaction)
         return label
 
-    def get_closest_terminal(self, x: float, y: float, atk_terminals: list[Terminal]) -> Terminal:
+    def get_closest_terminal(self, x: float, y: float) -> Terminal:
         closest_terminal = None
         closest_distance = float("inf")
-        for terminal in atk_terminals:
+        for terminal in self.attackable_terminals:
             distance = (terminal.x - x) ** 2 + (terminal.y - y) ** 2
             if distance < closest_distance:
                 closest_terminal = terminal
