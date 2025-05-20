@@ -1096,7 +1096,8 @@ class Cardsim:
                     terminal_id=payee_id,
                     card_id=payer_id,
                     is_online=is_remote,
-                    label=is_fraud,
+                    is_fraud=is_fraud,
+                    predicted_label=None,
                 )
             )
         self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")

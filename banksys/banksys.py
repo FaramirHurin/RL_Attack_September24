@@ -93,8 +93,8 @@ class Banksys:
         terminal_features = terminal.features(transaction.timestamp)
         card_features = card.features(transaction.timestamp)
         if with_label:
-            assert transaction.label is not None, "Label must be set for the transaction used in the agredated features"
-            return np.concatenate([transaction.features, terminal_features, card_features, [transaction.label]])
+            assert transaction.is_fraud is not None, "Label must be set for the transaction used in the agredated features"
+            return np.concatenate([transaction.features, terminal_features, card_features, [transaction.is_fraud]])
         return np.concatenate([transaction.features, terminal_features, card_features])
 
     def make_features_df(self, transaction: Transaction, with_label: bool):
@@ -108,10 +108,8 @@ class Banksys:
         """
         Process the transaction and return whether it is fraudulent or not.
         """
-        # trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
-        # trx = pd.DataFrame(trx_features, columns=self.feature_names)
         label = self.clf.predict(transaction)
-        transaction.label = label
+        transaction.predicted_label = label
         self.add_transaction(transaction)
         return label
 
@@ -155,19 +153,15 @@ class Banksys:
         """
         Compute the confusion matrix for the transactions.
         """
-        tp = 0
-        tn = 0
-        fp = 0
-        fn = 0
-        for transaction in transactions:
-            trx_features = self.make_features_np(transaction, with_label=False).reshape(1, -1)
-            trx = pd.DataFrame(trx_features, columns=self.feature_names)
-            label = transaction.label
-            prediction = self.clf.predict(trx, transaction)
+        from sklearn.metrics import confusion_matrix
 
-            tp += prediction and label
-            tn += not prediction and not label
-            fp += prediction and not label
-            fn += not prediction and label
-
-        return np.array([[tp, fn], [fp, tn]])
+        features = []
+        labels = []
+        for transaction in tqdm(transactions):
+            features.append(self.make_features_np(transaction, with_label=False))
+            labels.append(transaction.is_fraud)
+        features = np.array(features)
+        labels = np.array(labels)
+        df = pd.DataFrame(features, columns=self.feature_names)
+        predicted_labels = self.clf.predict(df)
+        return confusion_matrix(labels, predicted_labels)

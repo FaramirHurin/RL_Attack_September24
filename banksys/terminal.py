@@ -48,7 +48,7 @@ class Terminal(HasOrderedTransactions):
             nb.append(len(trx_days))
 
             # Compute risk
-            positive_transactions = [transaction for transaction in trx_days if transaction.label == 1]
+            positive_transactions = [transaction for transaction in trx_days if transaction.predicted_label == 1]
             if len(positive_transactions) == 0:
                 risk.append(0)
             else:

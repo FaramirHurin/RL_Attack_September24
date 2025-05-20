@@ -99,8 +99,12 @@ class RuleBasedClassifier:
         return False
 
     def predict_dataframe(self, df: pd.DataFrame):
-        raise NotImplementedError("Rule-based classifier does not support DataFrame input.")
-        return df.apply(lambda row: self.predict_transaction(row), axis=1).to_numpy()
+        self.banksys.attack_time
+        transactions = [Transaction.from_row(row, self.banksys.attack_time) for _, row in df.iterrows()]
+        labels = []
+        for transaction in transactions:
+            labels.append(self.predict_transaction(transaction))
+        return np.array(labels)
 
     @overload
     def predict(self, transaction: Transaction, /) -> bool: ...

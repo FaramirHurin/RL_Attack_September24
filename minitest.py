@@ -133,7 +133,7 @@ def plot_transactions(transactions: list[Transaction]):
     for t in transactions:
         if t.card_id not in COLOURS:
             COLOURS[t.card_id] = np.random.rand(3)
-        if t.label:
+        if t.predicted_label:
             fraud_dates.append(t.timestamp)
             fraud_amounts.append(t.amount)
             fraud_colours.append(COLOURS[t.card_id])
@@ -297,9 +297,16 @@ def main(args: Args):
     confusion_matrix = banksys.set_up_run(
         rules=parameters_run["rules_names"],
         rules_values=parameters_run["rules_values"],
-        return_confusion=False,
+        return_confusion=True,
     )
+    if confusion_matrix is not None:
+        from sklearn.metrics import ConfusionMatrixDisplay
+        import matplotlib.pyplot as plt
+
+        ConfusionMatrixDisplay(confusion_matrix).plot()
+        plt.show()
     print(confusion_matrix)
+    exit(0)
 
     env = SimpleCardSimEnv(
         banksys,

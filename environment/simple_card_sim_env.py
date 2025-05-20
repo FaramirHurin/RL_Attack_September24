@@ -92,16 +92,16 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             trx = None
         else:
             terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y, atk_terminals).id
-            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online)
-            is_fraud = self.system.process_transaction(trx)
+            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
+            fraud_is_detected = self.system.process_transaction(trx)
             self.transactions.append(trx)
-            if is_fraud:
+            if fraud_is_detected:
                 reward = 0.0
             else:
                 reward = action.amount
-            done = is_fraud
+            done = fraud_is_detected
         state = self.compute_state()
-        return Step(Observation(state, self.available_actions()), State(state), reward, done, False), trx
+        return Step(Observation(state, self.available_actions()), State(state), reward, done), trx
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

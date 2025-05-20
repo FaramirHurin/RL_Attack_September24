@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+import pandas as pd
 
 N_MINUTES_IN_DAY = 24 * 60
 
@@ -11,15 +12,28 @@ class Transaction:
     terminal_id: int
     is_online: bool
     card_id: int
-    label: bool | None
+    is_fraud: bool
+    """Whether the transaction actually is a fraud or not."""
+    predicted_label: bool | None
+    """Whether the transaction has been classified as a fraud or not. `None` if not classified yet."""
 
-    def __init__(self, amount: float, timestamp: datetime, terminal_id: int, card_id: int, is_online: bool, label: bool | None = None):
+    def __init__(
+        self,
+        amount: float,
+        timestamp: datetime,
+        terminal_id: int,
+        card_id: int,
+        is_online: bool,
+        is_fraud: bool,
+        predicted_label: bool | None = None,
+    ):
         self.amount = amount
         self.timestamp = timestamp
         self.terminal_id = terminal_id
         self.is_online = is_online
         self.card_id = card_id
-        self.label = label
+        self.is_fraud = is_fraud
+        self.predicted_label = predicted_label
 
     @property
     def features(self):
@@ -55,3 +69,14 @@ class Transaction:
         self.payee_x = payee_x
         self.payee_y = payee_y
         return self
+
+    @staticmethod
+    def from_row(row: pd.Series, t_0: datetime):
+        return Transaction(
+            amount=row["amount"],
+            timestamp=t_0,
+            terminal_id=row["terminal_id"],
+            card_id=row["card_id"],
+            is_online=row["is_online"],
+            is_fraud=row["is_fraud"],
+        )

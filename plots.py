@@ -34,5 +34,5 @@ class LogItem:
             action = Action.from_numpy(transition.action)
             t = t + action.timedelta
             res.append(Transaction(action.amount, t, self.terminal_ids[i], self.card_id, action.is_online, False))
-        res[-1].label = True
+        res[-1].predicted_label = True
         return res
