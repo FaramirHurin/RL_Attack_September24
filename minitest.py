@@ -164,7 +164,11 @@ def main():
     # agent_params = VAEParameters()
     params = Parameters(agent_params, use_anomaly=False, rules={})
     env = init_environment(params)
-    directory = os.path.join("logs", f"{params.agent_name}_{datetime.now().isoformat()}")
+    # Sanitize the timestamp
+    safe_timestamp = datetime.now().isoformat().replace(":", "-")
+
+    # Create the directory path
+    directory = os.path.join("logs", f"{params.agent_name}_{safe_timestamp}")
     save_parameters(directory, params)
     # test_and_save_metrics(env.system, directory)
     train(env, params, directory)
