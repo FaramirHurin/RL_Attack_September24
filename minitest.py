@@ -16,6 +16,9 @@ from cardsim import Cardsim
 from environment import SimpleCardSimEnv
 from parameters import PPOParameters, Parameters, RPPOParameters, VAEParameters
 
+# Import Action
+from environment.action import Action
+
 # Random integer seed from 0 to 9
 seed = np.random.randint(0, 10)
 torch.manual_seed(seed)
@@ -174,12 +177,16 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
 
 
 def main():
-    agent_params = PPOParameters()
+    # agent_params = PPOParameters()
     # agent_params = RPPOParameters()
-    # agent_params = VAEParameters()
+    agent_params = VAEParameters()
     params = Parameters(agent_params, use_anomaly=False, rules={})
     env = init_environment(params)
-    directory = os.path.join("logs", f"{params.agent_name}_{datetime.now().isoformat()}")
+    # Sanitize the timestamp
+    safe_timestamp = datetime.now().isoformat().replace(":", "-")
+
+    # Create the directory path
+    directory = os.path.join("logs", f"{params.agent_name}_{safe_timestamp}")
     save_parameters(directory, params)
     # test_and_save_metrics(env.system, directory)
     train(env, params, directory)

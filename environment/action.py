@@ -39,7 +39,7 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        is_online, amount, terminal_x, terminal_y,  delay_days, delay_hours = array
+        is_online, amount, terminal_x, terminal_y,  delay_days, delay_hours = array.flatten()
         is_online = is_online > 0.5
         to_return = Action(
             amount=np.round(float(amount), 2),
