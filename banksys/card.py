@@ -40,7 +40,6 @@ class Card(HasOrderedTransactions):
         AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in self.days_aggregation]
 
         to_return = ["customer_x", "customer_y"] + AGGREGATE_NB + AGGREGATE_RISK
-
         return to_return
 
     def features(self, current_time: datetime):

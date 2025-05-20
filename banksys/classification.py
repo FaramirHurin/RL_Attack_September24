@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, overload
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -50,31 +50,71 @@ class StatisticalClassifier:
         self.quantiles = quantiles
         self.quantiles_df = None
 
-    def fit(self, x: pd.DataFrame):
-        # Select the quantiles of all the considered_features in X
-        self.quantiles_df = x[self.considered_features].quantile(q=self.quantiles)
+    def fit(self, transactions_df: pd.DataFrame):
+        assert all(f in transactions_df.columns for f in self.considered_features)
+        self.quantiles_df = transactions_df[self.considered_features].quantile(q=self.quantiles)
 
-    def predict(self, x: pd.DataFrame):
-        assert self.quantiles_df is not None, "StatisticalClassifier not fitted yet"
-        return x[self.considered_features].isin(self.quantiles_df).all(axis=1).to_numpy()
+    def predict_transaction(self, transaction: Transaction) -> bool:
+        assert self.quantiles_df is not None, "The classifier has not been fitted yet."
+        for feature in self.considered_features:
+            value = getattr(transaction, feature)
+            mmin, mmax = self.quantiles_df[feature]
+            if not mmin <= value <= mmax:
+                return True
+        return False
+
+    def predict_dataframe(self, df: pd.DataFrame) -> npt.NDArray[np.bool]:
+        assert self.quantiles_df is not None, "The classifier has not been fitted yet."
+        return df[self.considered_features].isin(self.quantiles_df).all(axis=1).to_numpy()
+
+    @overload
+    def predict(self, transaction: Transaction, /) -> bool: ...
+    @overload
+    def predict(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]: ...
+
+    def predict(self, df_or_transaction, /):
+        match df_or_transaction:
+            case Transaction() as transaction:
+                return self.predict_transaction(transaction)
+            case pd.DataFrame() as df:
+                return self.predict_dataframe(df)
+        raise ValueError("Invalid input type. Expected Transaction or DataFrame.")
 
 
 class RuleBasedClassifier:
-    def __init__(self, rules: list[Callable[[Transaction, list[Transaction]], bool]], banksys, rule_values: dict):
+    def __init__(self, rules: list[Callable[[Transaction, list[Transaction], float], bool]], banksys: "Banksys", rule_values: dict):
         self.rules = dict(zip(rule_values.keys(), rules))
         self.rule_values = rule_values
         self.banksys = banksys
 
-    def predict(self, transaction: Transaction) -> np.ndarray:
+    def predict_transaction(self, transaction: Transaction):
         card = self.banksys.cards[transaction.card_id]
-        transactions = [trx for trx in card.transactions if trx.timestamp < transaction.timestamp]
+        i = card._find_index(transaction.timestamp)
+        transactions = card.transactions[:i]
         for rule_name in self.rules.keys():
             rule = self.rules[rule_name]
             value = self.rule_values[rule_name]
             if rule(transaction, transactions, value):
-                DEBUG = True
                 return True
         return False
+
+    def predict_dataframe(self, df: pd.DataFrame):
+        raise NotImplementedError("Rule-based classifier does not support DataFrame input.")
+        return df.apply(lambda row: self.predict_transaction(row), axis=1).to_numpy()
+
+    @overload
+    def predict(self, transaction: Transaction, /) -> bool: ...
+
+    @overload
+    def predict(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]: ...
+
+    def predict(self, transaction_or_df, /):
+        match transaction_or_df:
+            case Transaction():
+                return self.predict_transaction(transaction_or_df)
+            case pd.DataFrame():
+                return self.predict_dataframe(transaction_or_df)
+        raise ValueError("Invalid input type. Expected Transaction or DataFrame.")
 
 
 class ClassificationSystem:
@@ -96,32 +136,50 @@ class ClassificationSystem:
         self.anomaly_detection_classifier = anomaly_detection_clf
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
 
-        self.use_anomaly_detection = True
-
     def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
+        self.ml_classifier.n_jobs = -1  # type: ignore[assignment]
+        self.anomaly_detection_classifier.n_jobs = -1  # type: ignore[assignment]
+
         self.ml_classifier.fit(transactions, is_fraud)
         self.anomaly_detection_classifier.fit(transactions)
         self.statistical_classifier.fit(transactions)
+
+        self.ml_classifier.n_jobs = 1  # type: ignore[assignment]
+        self.anomaly_detection_classifier.n_jobs = 1  # type: ignore[assignment]
 
     def set_rules(self, rules_names: list, rules_values: dict):
         rules = [rules_dict[rule] for rule in rules_names]
         self.rule_classifier = RuleBasedClassifier(rules, self.banksys, rules_values)
 
-    def predict(self, transactions_df: pd.DataFrame, transaction: Transaction) -> npt.NDArray[np.bool_]:
-        # transactions_df = pd.DataFrame(transactions)
+    @overload
+    def predict(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]: ...
+    @overload
+    def predict(self, transaction: Transaction, /) -> bool: ...
 
-        classification_prediction = self.ml_classifier.predict(transactions_df)
-        statistical_prediction = self.statistical_classifier.predict(transactions_df)
-        rule_based_prediction = self.rule_classifier.predict(transaction)  #
+    def _predict_transaction(self, transaction: Transaction, /):
+        if self.rule_classifier.predict_transaction(transaction):
+            return True
+        if self.statistical_classifier.predict_transaction(transaction):
+            return True
+        df = self.banksys.make_features_df(transaction, False)
+        is_fraud = bool(self.ml_classifier.predict(df).item())
+        if is_fraud:
+            return True
+        res = self.anomaly_detection_classifier.predict(df).item()
+        is_fraud = res == -1
+        return is_fraud
 
-        #
-        to_return = int(classification_prediction or statistical_prediction or rule_based_prediction)
-        if self.use_anomaly_detection:
-            anomaly_prediction = self.anomaly_detection_classifier.predict(transactions_df) == -1
-            to_return = int(to_return or anomaly_prediction)
-        if to_return:
-            debug = True
+    def _predict_dataframe(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]:
+        l1 = self.rule_classifier.predict_dataframe(df)
+        l2 = self.ml_classifier.predict(df).astype(np.bool)
+        l3 = self.statistical_classifier.predict_dataframe(df)
+        l4 = self.anomaly_detection_classifier.predict(df) == -1
+        return l1 | l2 | l3 | l4
 
-        return to_return
-
-
+    def predict(self, transaction_or_df, /):
+        match transaction_or_df:
+            case Transaction() as t:
+                return self._predict_transaction(t)
+            case pd.DataFrame() as df:
+                return self._predict_dataframe(df)
+        raise ValueError("Invalid input type. Expected `Transaction` or `DataFrame`.")

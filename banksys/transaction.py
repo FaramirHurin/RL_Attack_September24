@@ -6,8 +6,6 @@ N_MINUTES_IN_DAY = 24 * 60
 
 @dataclass
 class Transaction:
-    # FEATURE_NAMES = ["amount", "hour_ratio", "is_online"] + [f"day_of_week_{i}" for i in range(7)]
-
     amount: float
     timestamp: datetime
     terminal_id: int

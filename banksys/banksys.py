@@ -60,27 +60,22 @@ class Banksys:
         self.feature_names = (
             ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
         )
-
         self.training_features = self._train_classifier(self.train_transactions)
-
         # Add test set
         for transaction in self.test_transactions:
             self.add_transaction(transaction)
 
-    def set_up_run(self, use_anomaly_detection: bool, rules: list, rules_values: dict, return_confusion: bool = False):
-        self.clf.use_anomaly_detection = use_anomaly_detection
+    def set_up_run(self, rules: list, rules_values: dict, return_confusion: bool = False):
         self.clf.set_rules(rules, rules_values)
-
         if return_confusion:
             return self._confusion_matrix(self.test_transactions)
-        else:
-            return None
+        return None
 
     def _train_classifier(self, tr_transactions: list[Transaction]):
         rows = []
         for t in tqdm(tr_transactions):
             self.add_transaction(t)
-            features = self._make_features(t, with_label=True)
+            features = self.make_features_np(t, with_label=True)
             rows.append(features)
 
         trainign_DF = pd.DataFrame(rows, columns=self.feature_names + ["label"])
@@ -90,27 +85,32 @@ class Banksys:
         x_train = trainign_DF[training_features]
         y_train = trainign_DF[self.label_feature].to_numpy()
         self.clf.fit(x_train, y_train)
-
         return training_features
 
-    def _make_features(self, transaction: Transaction, with_label: bool) -> np.ndarray:
+    def make_features_np(self, transaction: Transaction, with_label: bool):
         terminal = self.terminals[transaction.terminal_id]
         card = self.cards[transaction.card_id]
         terminal_features = terminal.features(transaction.timestamp)
         card_features = card.features(transaction.timestamp)
-
         if with_label:
             assert transaction.label is not None, "Label must be set for the transaction used in the agredated features"
             return np.concatenate([transaction.features, terminal_features, card_features, [transaction.label]])
         return np.concatenate([transaction.features, terminal_features, card_features])
 
+    def make_features_df(self, transaction: Transaction, with_label: bool):
+        features = self.make_features_np(transaction, with_label=with_label)
+        feature_names = self.feature_names
+        if with_label:
+            feature_names = feature_names + ["label"]
+        return pd.DataFrame(features.reshape(1, -1), columns=feature_names)
+
     def process_transaction(self, transaction: Transaction) -> bool:
         """
         Process the transaction and return whether it is fraudulent or not.
         """
-        trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
-        trx = pd.DataFrame(trx_features, columns=self.feature_names)
-        label = self.clf.predict(trx, transaction)
+        # trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
+        # trx = pd.DataFrame(trx_features, columns=self.feature_names)
+        label = self.clf.predict(transaction)
         transaction.label = label
         self.add_transaction(transaction)
         return label
@@ -160,7 +160,7 @@ class Banksys:
         fp = 0
         fn = 0
         for transaction in transactions:
-            trx_features = self._make_features(transaction, with_label=False).reshape(1, -1)
+            trx_features = self.make_features_np(transaction, with_label=False).reshape(1, -1)
             trx = pd.DataFrame(trx_features, columns=self.feature_names)
             label = transaction.label
             prediction = self.clf.predict(trx, transaction)

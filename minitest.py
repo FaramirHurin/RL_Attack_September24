@@ -38,13 +38,12 @@ print(device)
 
 
 parameters_run = {
-    "agent_name": "vae",  # ppo vae rppo
+    "agent_name": "ppo",  # ppo vae rppo
     "len_episode": 4000,
     "know_client": False,
     "terminal_fract": 1,
     "seed": seed,
     "quantiles_anomaly": [0.01, 0.99],
-    "use_anomaly_detection": True,
     "rules_names": ["max_trx_hour", "max_trx_week", "max_trx_day", "positive_amount"],
     "rules_values": {"max_trx_hour": 4, "max_trx_week": 20, "max_trx_day": 7, "positive_amount": 0.01},
     "ppo_hyperparameters": {
@@ -296,7 +295,6 @@ def main(args: Args):
         banksys.save(args.banksys)
 
     confusion_matrix = banksys.set_up_run(
-        use_anomaly_detection=parameters_run["use_anomaly_detection"],
         rules=parameters_run["rules_names"],
         rules_values=parameters_run["rules_values"],
         return_confusion=False,
