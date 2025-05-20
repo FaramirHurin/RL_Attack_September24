@@ -116,7 +116,6 @@ class RNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
     def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
-        # self.gru.flatten_parameters()
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)

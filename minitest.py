@@ -159,8 +159,8 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
 
 
 def main():
-    agent_params = PPOParameters()
-    # agent_params = RPPOParameters()
+    # agent_params = PPOParameters()
+    agent_params = RPPOParameters()
     # agent_params = VAEParameters()
     params = Parameters(agent_params, use_anomaly=False, rules={})
     env = init_environment(params)

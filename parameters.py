@@ -40,7 +40,7 @@ class RPPOParameters:
         eps_clip: float = 0.2,
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
-        train_interval: int = 128,
+        train_interval: int = 64,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
     ):
