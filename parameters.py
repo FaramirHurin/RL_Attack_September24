@@ -1,7 +1,8 @@
 import random
 from dataclasses import asdict, dataclass, field
 from typing import Literal, Optional
-
+from cardsim import Cardsim
+from datetime import timedelta
 import numpy as np
 import torch
 from marlenv.utils import Schedule
@@ -172,7 +173,8 @@ class Parameters:
         random.seed(self.seed)
         np.random.seed(self.seed)
 
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device) -> Agent:
+    def get_agent(self, env: SimpleCardSimEnv) -> Agent:
+        device = self.device()
         match self.agent:
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.know_client, self.quantiles_anomaly[0])
@@ -180,3 +182,29 @@ class Parameters:
                 return self.agent.get_agent(env, device)
             case _:
                 raise ValueError("Unknown agent type")
+
+    def create_banksys(self):
+        from banksys import Banksys
+
+        simulator = Cardsim()
+        cards, terminals, transactions = simulator.simulate(
+            n_days=self.cardsim.n_days,
+            n_payers=self.cardsim.n_payers,
+            start_date=self.cardsim.start_date,
+        )
+        banksys = Banksys(
+            cards=cards,
+            terminals=terminals,
+            training_duration=timedelta(days=self.n_days_training),
+            transactions=transactions,
+            feature_names=["amount"],
+            quantiles=self.quantiles_anomaly,
+            attackable_terminal_factor=self.terminal_fract,
+        )
+        return banksys
+
+    def device(self) -> torch.device:
+        if not torch.cuda.is_available():
+            return torch.device("cpu")
+        device = f"cuda:{self.seed % torch.cuda.device_count()}"
+        return torch.device(device)

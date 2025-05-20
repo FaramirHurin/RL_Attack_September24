@@ -252,14 +252,13 @@ class VaeAgent(Agent):
 
         # Compute delay hours and delay days for all transactions
         small_df = small_df.copy()
-        small_df["delay_hours"] = small_df['hour'].astype(int) - observation[-2]\
-                                  + (observation[-2]  >= small_df['hour'].astype(int))* 24
+        small_df["delay_hours"] = small_df["hour"].astype(int) - observation[-2] + (observation[-2] >= small_df["hour"].astype(int)) * 24
 
         # Sort small_df by delay_hours and select the closest
         small_df = small_df.sort_values(by="delay_hours", ascending=True)
-        #Reset index
+        # Reset index
         small_df = small_df.reset_index(drop=True)
-        trx = small_df.loc[0, ["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]
+        trx = small_df.loc[0, ["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]  # type: ignore
         trx["delay_day"] = 0
         # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
