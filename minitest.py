@@ -10,10 +10,8 @@ import numpy as np
 import orjson
 import torch
 import typed_argparse as tap
-from imblearn.ensemble import BalancedRandomForestClassifier
 from marlenv import Episode, Transition
 from marlenv.utils import Schedule
-from sklearn.svm import OneClassSVM
 from torch import nn
 from tqdm import tqdm
 
@@ -30,7 +28,7 @@ torch.manual_seed(seed)
 random.seed(seed)
 np.random.seed(seed)
 
-logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -271,20 +269,10 @@ def main(args: Args):
         simulator = Cardsim()
         cards, terminals, transactions = simulator.simulate(n_days=50)
 
-        clf = BalancedRandomForestClassifier(30, n_jobs=1, sampling_strategy=0.2)  # type: ignore
-        anomaly_detection_clf = OneClassSVM(nu=0.005)
-
-        # simulator._start + 30 days
-        TRAINING_DAYS = 30
-        attack_time = simulator.t_start + timedelta(days=TRAINING_DAYS)
-
         banksys = Banksys(
-            inner_clf=clf,
-            anomaly_detection_clf=anomaly_detection_clf,
             cards=cards,
             terminals=terminals,
-            t_start=simulator.t_start,
-            attack_time=attack_time,
+            training_duration=timedelta(days=30),
             transactions=transactions,
             feature_names=FEATURE_NAMES,
             quantiles=parameters_run["quantiles_anomaly"],
@@ -303,10 +291,10 @@ def main(args: Args):
         from sklearn.metrics import ConfusionMatrixDisplay
         import matplotlib.pyplot as plt
 
-        ConfusionMatrixDisplay(confusion_matrix).plot()
+        d = ConfusionMatrixDisplay(confusion_matrix)
+        d.plot()
         plt.show()
     print(confusion_matrix)
-    exit(0)
 
     env = SimpleCardSimEnv(
         banksys,

@@ -2,11 +2,14 @@ from typing import Callable, overload
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+import polars as pl
 from sklearn.ensemble import RandomForestClassifier
+from imblearn.ensemble import BalancedRandomForestClassifier
+from sklearn.svm import OneClassSVM
 from .transaction import Transaction
+import logging
 
 # Import isolation forest
-from sklearn.ensemble import IsolationForest
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -99,8 +102,9 @@ class RuleBasedClassifier:
         return False
 
     def predict_dataframe(self, df: pd.DataFrame):
-        self.banksys.attack_time
-        transactions = [Transaction.from_row(row, self.banksys.attack_time) for _, row in df.iterrows()]
+        # Does not matter whether we put is_fraud=True or False here because we are not using it
+        data = pl.from_pandas(df)
+        transactions = [Transaction.from_features(False, **kwargs) for kwargs in data.iter_rows(named=True)]
         labels = []
         for transaction in transactions:
             labels.append(self.predict_transaction(transaction))
@@ -125,31 +129,31 @@ class ClassificationSystem:
     ml_classifier: RandomForestClassifier
     rule_classifier: RuleBasedClassifier
     statistical_classifier: StatisticalClassifier
-    anomaly_detection_classifier: IsolationForest
+    anomaly_detection_classifier: OneClassSVM
+    banksys: "Banksys"
 
     def __init__(
         self,
-        clf: RandomForestClassifier,
-        anomaly_detection_clf: IsolationForest,
         features_for_quantiles: list[str],
         quantiles: list[float],
         banksys: "Banksys",
     ):
-        self.ml_classifier = clf
+        self.ml_classifier = BalancedRandomForestClassifier(n_jobs=1, sampling_strategy=0.2)  # type: ignore[assignment]
         self.banksys = banksys
-        self.anomaly_detection_classifier = anomaly_detection_clf
+        self.anomaly_detection_classifier = OneClassSVM(nu=0.005)
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
+        self.rule_classifier = RuleBasedClassifier([], self.banksys, {})
 
     def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
+        logging.info("Fitting random forest")
         self.ml_classifier.n_jobs = -1  # type: ignore[assignment]
-        self.anomaly_detection_classifier.n_jobs = -1  # type: ignore[assignment]
-
         self.ml_classifier.fit(transactions, is_fraud)
-        self.anomaly_detection_classifier.fit(transactions)
-        self.statistical_classifier.fit(transactions)
-
         self.ml_classifier.n_jobs = 1  # type: ignore[assignment]
-        self.anomaly_detection_classifier.n_jobs = 1  # type: ignore[assignment]
+        logging.info("Fitting anomaly classifier")
+        self.anomaly_detection_classifier.fit(transactions)
+        logging.info("Fitting statistical classifier")
+        self.statistical_classifier.fit(transactions)
+        logging.info("Done !")
 
     def set_rules(self, rules_names: list, rules_values: dict):
         rules = [rules_dict[rule] for rule in rules_names]

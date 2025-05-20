@@ -1,6 +1,7 @@
 import os
 import pickle
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -10,82 +11,92 @@ from .card import Card
 from .classification import ClassificationSystem
 from .terminal import Terminal
 from .transaction import Transaction
+from .has_ordered_transactions import OrderedTransactionsRegistry
 
 # TODO: when a card is blocked, we should remove all its future transactions
 
 
 class Banksys:
-    train_transactions: list[Transaction]
     clf: ClassificationSystem
+    attack_start: datetime
     terminals: list[Terminal]
     cards: list[Card]
-    attack_time: datetime
-    label_feature: str
     feature_names: list[str]
-    training_features: list[str]
 
     def __init__(
         self,
-        inner_clf,
-        anomaly_detection_clf,
         cards: list[Card],
         terminals: list[Terminal],
-        t_start: datetime,
-        attack_time: datetime,
+        training_duration: timedelta,
         transactions: list[Transaction],
         feature_names: list[str],
         quantiles: list[float],
     ):
-        self.attack_time = attack_time
-
-        # Sort transactions by timestamp
-        transactions = sorted(transactions, key=lambda t: t.timestamp)
-        #  Filter transactions that are older than t_start + n_days_warmup
-        n_days_warmup = max(*cards[0].days_aggregation, *terminals[0].days_aggregation)
-        self.train_transactions = [t for t in transactions if t.timestamp <= attack_time and t.timestamp >= t_start + n_days_warmup]
-        self.test_transactions = [t for t in transactions if t.timestamp > attack_time]
-
-        self.clf = ClassificationSystem(
-            banksys=self,
-            clf=inner_clf,
-            anomaly_detection_clf=anomaly_detection_clf,
-            features_for_quantiles=feature_names,
-            quantiles=quantiles,
-        )
-
+        self.clf = ClassificationSystem(banksys=self, features_for_quantiles=feature_names, quantiles=quantiles)
         self.cards = cards
         self.terminals = terminals
-        self.label_feature = "label"
-        week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        self.feature_names = (
-            ["amount", "hour_ratio"] + week_days + ["is_online"] + self.cards[0].feature_names + self.terminals[0].feature_names
-        )
-        self.training_features = self._train_classifier(self.train_transactions)
-        # Add test set
-        for transaction in self.test_transactions:
-            self.add_transaction(transaction)
+        self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
+
+        registry = OrderedTransactionsRegistry(transactions)
+        aggregation_duration = max(*cards[0].aggregation_windows, *terminals[0].days_aggregation)
+        training_start = registry[0].timestamp + aggregation_duration
+        training_end = training_start + training_duration
+
+        self._warmup(registry.get_before(training_start))
+        self._train(registry.get_between(training_start, training_end))
+        self._simulate(registry.get_after(training_end))
+
+        self.attack_start = training_end
+        # train_transactions = registry.get_before(training_end)
+        # self._train_classifier(train_transactions)
+        # # Add test set
+        # for transaction in test_transactions:
+        #     self.add_transaction(transaction)
+
+    def _warmup(self, transactions: list[Transaction]):
+        logging.info("Warming up the system for aggregation")
+        for t in tqdm(transactions, unit="trx"):
+            self.add_transaction(t)
+
+    def _train(self, transactions: list[Transaction]):
+        logging.info("Training the system")
+        rows = []
+        labels = []
+        for t in tqdm(transactions, unit="trx"):
+            self.add_transaction(t)
+            features = self.make_features_np(t, with_label=False)
+            rows.append(features)
+            labels.append(t.is_fraud)
+        df = pd.DataFrame(rows, columns=self.feature_names)
+        labels = np.array(labels, dtype=np.bool)
+        self.clf.fit(df, labels)
+
+    def _simulate(self, transactions: list[Transaction]):
+        logging.info("Simulating the system until the end")
+        for t in tqdm(transactions, unit="trx"):
+            self.add_transaction(t)
 
     def set_up_run(self, rules: list, rules_values: dict, return_confusion: bool = False):
         self.clf.set_rules(rules, rules_values)
-        if return_confusion:
-            return self._confusion_matrix(self.test_transactions)
-        return None
+        # if return_confusion:
+        #     return self._confusion_matrix(self.test_transactions)
+        # return None
 
-    def _train_classifier(self, tr_transactions: list[Transaction]):
-        rows = []
-        for t in tqdm(tr_transactions):
-            self.add_transaction(t)
-            features = self.make_features_np(t, with_label=True)
-            rows.append(features)
+    # def _train_classifier(self, tr_transactions: list[Transaction]):
+    #     rows = []
+    #     for t in tqdm(tr_transactions):
+    #         self.add_transaction(t)
+    #         features = self.make_features_np(t, with_label=True)
+    #         rows.append(features)
 
-        trainign_DF = pd.DataFrame(rows, columns=self.feature_names + ["label"])
+    #     trainign_DF = pd.DataFrame(rows, columns=self.feature_names + ["label"])
 
-        # Define the features and label
-        training_features = [col for col in trainign_DF.columns if col != "label"]
-        x_train = trainign_DF[training_features]
-        y_train = trainign_DF[self.label_feature].to_numpy()
-        self.clf.fit(x_train, y_train)
-        return training_features
+    #     # Define the features and label
+    #     training_features = [col for col in trainign_DF.columns if col != "label"]
+    #     x_train = trainign_DF[training_features]
+    #     y_train = trainign_DF[self.label_feature].to_numpy()
+    #     self.clf.fit(x_train, y_train)
+    #     return training_features
 
     def make_features_np(self, transaction: Transaction, with_label: bool):
         terminal = self.terminals[transaction.terminal_id]
@@ -106,7 +117,7 @@ class Banksys:
 
     def process_transaction(self, transaction: Transaction) -> bool:
         """
-        Process the transaction and return whether it is fraudulent or not.
+        Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         """
         label = self.clf.predict(transaction)
         transaction.predicted_label = label
