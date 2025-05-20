@@ -1,43 +1,24 @@
 import logging
 import os
-import random
 from datetime import datetime, timedelta
-from typing import Literal
 
 import numpy as np
 import orjson
 import torch
-import typed_argparse as tap
 from marlenv import Episode, Transition
 from tqdm import tqdm
 
 from banksys import Banksys, Transaction
 from cardsim import Cardsim
 from environment import SimpleCardSimEnv
-from parameters import PPOParameters, Parameters, RPPOParameters, VAEParameters
-
-# Import Action
-from environment.action import Action
-
-# Random integer seed from 0 to 9
-seed = np.random.randint(0, 10)
-torch.manual_seed(seed)
-random.seed(seed)
-np.random.seed(seed)
+from parameters import Parameters, PPOParameters, RPPOParameters, VAEParameters
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 
 FEATURE_NAMES = ["amount"]
-
-
-class Args(tap.TypedArgs):
-    algorithm: Literal["vae", "ppo"] = tap.arg("--algo", default="ppo")
-    banksys: str = tap.arg("--banksys", default="cache/banksys.pkl")
 
 
 def fix_episode_for_serialization(ep: Episode):
@@ -84,11 +65,10 @@ def save_episodes(episodes: list[Episode], directory: str):
 
 def train(env: SimpleCardSimEnv, params: Parameters, directory: str):
     agent = params.get_agent(env, device)
-    atk_terminals = random.sample(env.system.terminals, len(env.system.terminals) * params.terminal_fract)
     scores = list[float]()
     episodes = list[Episode]()
     with tqdm(range(params.n_episodes)) as pbar:
-        i = 0
+        step_num = 0
         avg_score = 0.0
         for e in pbar:
             obs, state = env.reset()
@@ -96,16 +76,17 @@ def train(env: SimpleCardSimEnv, params: Parameters, directory: str):
             transactions = list[Transaction]()
             terminals = list[int]()
             while not episode.is_finished:
+                step_num += 1
                 action = agent.choose_action(obs.data)
-                step, trx = env.step(action, atk_terminals)
+                step, trx = env.step(action)
                 if trx is not None:
                     terminals.append(trx.terminal_id)
                     transactions.append(trx)
                 t = Transition.from_step(obs, state, action, step)
-                agent.update(t, i)
+                agent.update(t, step_num)
                 episode.add(t)
-                episode.add_metrics({"t_end": env.t, "terminals": terminals})
                 obs, state = step.obs, step.state
+            episode.add_metrics({"t_end": env.t, "terminals": terminals})
             scores.append(episode.score[0])
             episodes.append(episode)
             # Update tqdm description with average score
@@ -138,6 +119,7 @@ def init_environment(params: Parameters):
             transactions=transactions,
             feature_names=FEATURE_NAMES,
             quantiles=params.quantiles_anomaly,
+            attackable_terminal_factor=params.terminal_fract,
         )
         banksys.save(params.cardsim)
 
@@ -152,7 +134,7 @@ def init_environment(params: Parameters):
 
 
 def test_and_save_metrics(banksys: Banksys, directory: str):
-    from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, confusion_matrix
+    from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
     os.makedirs(directory, exist_ok=True)
     predicted, actual = banksys.test()
@@ -178,8 +160,8 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
 
 def main():
     # agent_params = PPOParameters()
-    # agent_params = RPPOParameters()
-    agent_params = VAEParameters()
+    agent_params = RPPOParameters()
+    # agent_params = VAEParameters()
     params = Parameters(agent_params, use_anomaly=False, rules={})
     env = init_environment(params)
     # Sanitize the timestamp

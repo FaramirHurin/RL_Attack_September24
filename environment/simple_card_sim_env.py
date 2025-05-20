@@ -1,13 +1,15 @@
-from .action import Action
 import random
 from copy import deepcopy
-import numpy as np
 from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
-from .card_registry import CardRegistry
-from banksys import Terminal, Transaction
-
 from typing import TYPE_CHECKING
+
+import numpy as np
+from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
+
+from banksys import Transaction
+
+from .action import Action
+from .card_registry import CardRegistry
 
 if TYPE_CHECKING:
     from banksys import Banksys
@@ -84,7 +86,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             features += [x, y]
         return np.array(features, dtype=np.float32)
 
-    def step(self, np_action: np.ndarray, atk_terminals: list[Terminal]):
+    def step(self, np_action: np.ndarray):
         """
         Perform the given action at the given time.
         """
@@ -96,7 +98,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             reward = 0.0
             trx = None
         else:
-            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y, atk_terminals).id
+            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
             trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
             fraud_is_detected = self.system.process_transaction(trx)
             self.transactions.append(trx)
