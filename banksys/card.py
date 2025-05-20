@@ -4,29 +4,29 @@ from datetime import datetime
 from datetime import timedelta
 
 from .transaction import Transaction
-from .has_ordered_transactions import HasOrderedTransactions
+from .has_ordered_transactions import OrderedTransactionsRegistry
 
 
 # In case there is an equality in the priority queue, it compares
 # the cards. Therefore, we want the order to be defined.
 @dataclass(order=True)
-class Card(HasOrderedTransactions):
+class Card(OrderedTransactionsRegistry):
     id: int
     is_credit: bool
     customer_x: float
     customer_y: float
     transactions: list[Transaction]
     """Transactions, ordered by timestamp"""
-    days_aggregation: tuple[timedelta, ...]
+    aggregation_windows: tuple[timedelta, ...]
 
     def __init__(
-        self, id: int, is_credit: bool, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))
+        self, id: int, is_credit: bool, x: float, y: float, aggregation_windows: tuple[timedelta, ...] = (timedelta(1), timedelta(7))
     ):
         self.id = id
         self.is_credit = is_credit
         self.customer_x = x
         self.customer_y = y
-        self.days_aggregation = days_aggregation
+        self.aggregation_windows = aggregation_windows
         super().__init__()
 
     @property
@@ -36,18 +36,17 @@ class Card(HasOrderedTransactions):
         avg = "AVG_AMOUNT_"
         suffix = "DAY_WINDOW"
 
-        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.days_aggregation]
-        AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in self.days_aggregation]
+        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.aggregation_windows]
+        AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in self.aggregation_windows]
 
         to_return = ["customer_x", "customer_y"] + AGGREGATE_NB + AGGREGATE_RISK
-
         return to_return
 
     def features(self, current_time: datetime):
         # TODO: add the mean/median terminal location ?
         nb = list[float]()
         avg = list[float]()
-        for n_days in self.days_aggregation:
+        for n_days in self.aggregation_windows:
             start_index = self._find_index(current_time - n_days)
             stop_index = self._find_index(current_time)
             # Select transactions from the last n_days

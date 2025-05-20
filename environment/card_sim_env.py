@@ -1,19 +1,23 @@
-from banksys import Banksys, Transaction, Card
 from .action import Action
 import random
 import numpy as np
 from datetime import timedelta
 from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
+
 from .card_registry import CardRegistry
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from banksys import Banksys, Transaction, Card
 
 
 class CardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
-        system: Banksys,
+        system: "Banksys",
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
-        customer_location_is_known: bool = False, #TODO Move it somewhere else?
+        customer_location_is_known: bool = False,  # TODO Move it somewhere else?
     ):
         """
         Args:
@@ -37,7 +41,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        self.t = system.earliest_attackable_moment
+        self.t = system.attack_time
         """Current time in the simulation."""
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known

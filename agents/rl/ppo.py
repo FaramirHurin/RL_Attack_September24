@@ -86,7 +86,7 @@ class PPO(Agent):
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
         all_parameters = list(self.actor_critic.parameters())
         params = [
-            {"params": self.actor_critic.actions_mean_std.parameters(), "lr": lr_actor, "name": "actor parameters"},
+            {"params": self.actor_critic.actor.parameters(), "lr": lr_actor, "name": "actor parameters"},
             {"params": self.actor_critic.critic.parameters(), "lr": lr_critic, "name": "critic parameters"},
         ]
         return params, all_parameters
@@ -109,7 +109,6 @@ class PPO(Agent):
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):
-        # batch.normalize_rewards()
         self.c1.update(step)
         self.c2.update(step)
         with torch.no_grad():
@@ -184,7 +183,7 @@ class PPO(Agent):
         """
         Seed the algorithm for reproducibility (e.g. during testing).
 
-        Seed `ranom`, `numpy`, and `torch` libraries by default.
+        Seed `random`, `numpy`, and `torch` libraries by default.
         """
         import random
         import numpy as np

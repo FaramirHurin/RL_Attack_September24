@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -9,11 +10,11 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
-from banksys.banksys import Banksys
-from banksys.card import Card
-from banksys.terminal import Terminal
-from banksys.transaction import Transaction
-from agents import Agent
+if TYPE_CHECKING:
+    from banksys import Card, Transaction, Terminal
+    from banksys.banksys import Banksys
+
+from .agent import Agent
 
 COLUMNS = [
     "payer_id",
@@ -157,12 +158,11 @@ class VaeAgent(Agent):
     def __init__(
         self,
         device,
-        criterion,
         latent_dim: int,
         hidden_dim: int,
         lr: float,
         trees: int,
-        banksys: Banksys,
+        banksys: "Banksys",
         terminal_codes: list,
         current_time: datetime,
         batch_size=32,
@@ -190,7 +190,7 @@ class VaeAgent(Agent):
         q_low = transactions_df["amount"].quantile(0.02)
         q_hi = transactions_df["amount"].quantile(0.98)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
-        labels = transactions_df["label"].values
+        labels = transactions_df["is_fraud"].values
         transactions_df = transactions_df[self.columns]
 
         # Normalize the data
@@ -200,7 +200,7 @@ class VaeAgent(Agent):
 
         self.attack_generator = Attack_Generation(
             device=device,
-            criterion=criterion,
+            criterion=torch.nn.MSELoss(),
             y=labels,
             latent_dim=latent_dim,
             hidden_dim=hidden_dim,
@@ -215,12 +215,11 @@ class VaeAgent(Agent):
         """
         Preprocess the data and return a DataFrame with the transactions
         """
-        terminals: list[Terminal] = [terminal for terminal in self.banksys.terminals if terminal in self.terminals]
-
+        terminals = [terminal for terminal in self.banksys.terminals if terminal in self.terminals]
         transactions_df = self.get_trx_from_terminals(terminals, self.current_time)
 
         if self.know_client:
-            customers: list[Card] = self.banksys.cards
+            customers = self.banksys.cards
             transactions_df = self._trx_and_customers(transactions_df, customers)
         transactions_df["hour"] = transactions_df["timestamp"].dt.hour
         return transactions_df
@@ -234,7 +233,7 @@ class VaeAgent(Agent):
          [is_online, amount, terminal_x, terminal_y, delay_hours, delay_day, payee_x, payee_y]
         """
         # Generate a batch of transactions
-        batch = self.attack_generator._generate_batch(3000)
+        batch = self.attack_generator._generate_batch(1000)
         # Turn it to the original scale and to dataframe
         batch = self.scaler.inverse_transform(batch)
         # Sort batch by second column (amount)
@@ -250,29 +249,32 @@ class VaeAgent(Agent):
             batch["payee_y"] = batch["payee_y"].astype(int)
         batch = batch.sort_values(by="amount", ascending=True)
         small_df = batch.iloc[: int(self.quantile * len(batch)), :]
-        index = np.random.randint(0, len(small_df))
-        trx = small_df.iloc[index, :]
 
-        # If hour > observation.hour, same day and new hour. Otherwise, next day and new hour
-        trx = trx.copy()  # Make an explicit copy to avoid SettingWithCopyWarning
-        trx["delay_hours"] = int((observation[-2] + trx["hour"]) % 24)
+        # Compute delay hours and delay days for all transactions
+        small_df = small_df.copy()
+        small_df["delay_hours"] = small_df['hour'].astype(int) - observation[-2]\
+                                  + (observation[-2]  >= small_df['hour'].astype(int))* 24
+
+        # Sort small_df by delay_hours and select the closest
+        small_df = small_df.sort_values(by="delay_hours", ascending=True)
+        #Reset index
+        small_df = small_df.reset_index(drop=True)
+        trx = small_df.loc[0, ["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]
         trx["delay_day"] = 0
-
-        # Drop trx['hour']
-        trx = trx.drop("hour")
-        # Reorder Series to match the order of the Action class
+        # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
+
         return trx.to_numpy()
 
     @staticmethod
-    def get_trx_from_terminals(terminals: list[Terminal], current_time: datetime) -> pd.DataFrame:
+    def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:
         """
         Get the transactions from the terminals
         :param terminals: list of terminals
         :param current_time: current time
         :return: DataFrame with the transactions
         """
-        transactions: list[Transaction] = []
+        transactions: list["Transaction"] = []
         for terminal in terminals:
             transactions += terminal.transactions
             # Add terminal coordinates to the transactions
@@ -284,7 +286,7 @@ class VaeAgent(Agent):
         return transactions_df
 
     @staticmethod
-    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list[Card]) -> pd.DataFrame:
+    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Card"]) -> pd.DataFrame:
         """
         Preprocess the transactions and use s.
         :param transactionsDF: DataFrame with the transactions

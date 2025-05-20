@@ -1,20 +1,28 @@
-from banksys import Banksys, Transaction
-from .action import Action
 import random
 from copy import deepcopy
-import numpy as np
 from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
+from typing import TYPE_CHECKING
+
+import numpy as np
+from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
+
+from banksys import Transaction
+
+from .action import Action
 from .card_registry import CardRegistry
+
+if TYPE_CHECKING:
+    from banksys import Banksys
 
 
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
-        system: Banksys,
+        system: "Banksys",
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
         customer_location_is_known: bool = False,
+        normalize_location: bool = False,
     ):
         """
         Args:
@@ -23,6 +31,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             n_parallel: The number of parallel transactions to be processed.
             customer_location_is_known: Whether the customer's location is known.
         """
+        self.normalize_location = normalize_location
         if customer_location_is_known:
             obs_shape = (6,)
         else:
@@ -39,9 +48,8 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        # self.saved_system = deepcopy(system)
-        self.t = system.earliest_attackable_moment
-        self.t_start = deepcopy(system.earliest_attackable_moment)
+        self.t = system.attack_start
+        self.t_start = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.current_card = self.card_registry.release_card(self.t)
@@ -72,10 +80,10 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         time_ratio = self.card_registry.get_time_ratio(self.current_card, self.t)
         features = [time_ratio, self.current_card.is_credit, self.t.hour, self.t.day]
         if self.customer_location_is_known:
-            features += [
-                self.current_card.customer_x,
-                self.current_card.customer_y,
-            ]
+            x, y = self.current_card.customer_x, self.current_card.customer_y
+            if self.normalize_location:
+                x, y = x / 200, y / 200
+            features += [x, y]
         return np.array(features, dtype=np.float32)
 
     def step(self, np_action: np.ndarray):
@@ -91,16 +99,16 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             trx = None
         else:
             terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
-            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online)
-            is_fraud = self.system.process_transaction(trx)
+            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
+            fraud_is_detected = self.system.process_transaction(trx)
             self.transactions.append(trx)
-            if is_fraud:
+            if fraud_is_detected:
                 reward = 0.0
             else:
                 reward = action.amount
-            done = is_fraud
+            done = fraud_is_detected
         state = self.compute_state()
-        return Step(Observation(state, self.available_actions()), State(state), reward, done, False), trx
+        return Step(Observation(state, self.available_actions()), State(state), reward, done), trx
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

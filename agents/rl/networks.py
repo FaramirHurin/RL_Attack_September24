@@ -38,9 +38,9 @@ class LinearActorCritic(torch.nn.Module):
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
         n_action_outputs = n_actions + n_actions**2
-        INNER_SIZE_ACTIONS = 32
-        INNER_SIZE_SEQUNTIAL = 32
-        self.actions_mean_std = torch.nn.Sequential(
+        INNER_SIZE_ACTIONS = 64
+        INNER_SIZE_SEQUNTIAL = 64
+        self.actor = torch.nn.Sequential(
             # torch.nn.BatchNorm1d(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
@@ -59,7 +59,7 @@ class LinearActorCritic(torch.nn.Module):
         ).to(self.device)
 
     def _action_distribution(self, state: torch.Tensor):
-        action_mean_std = self.actions_mean_std.forward(state.to(self.device))
+        action_mean_std = self.actor.forward(state.to(self.device))
         *dims, action_outputs = action_mean_std.shape
         action_mean_std = action_mean_std.view(-1, action_outputs)
         means = action_mean_std[:, : self.n_actions]
@@ -86,7 +86,7 @@ class LinearActorCritic(torch.nn.Module):
 
     @property
     def actor_parameters(self):
-        return list(self.actions_mean_std.parameters())
+        return list(self.actor.parameters())
 
     @property
     def critic_parameters(self):
@@ -102,7 +102,7 @@ class LinearActorCritic(torch.nn.Module):
 
     def to(self, device: torch.device):
         self.device = device
-        self.actions_mean_std.to(device)
+        self.actor.to(device)
         self.critic.to(device)
         return self
 
@@ -111,12 +111,11 @@ class RNN(torch.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_hidden: int):
         super().__init__()
         self.n_outputs = n_outputs
-        self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, 64), torch.nn.ReLU())
-        self.gru = torch.nn.GRU(input_size=64, hidden_size=n_hidden, batch_first=True)
+        self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, n_hidden), torch.nn.ReLU())
+        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=True)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
     def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
-        # self.gru.flatten_parameters()
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)
@@ -130,12 +129,12 @@ class RecurrentActorCritic(torch.nn.Module):
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
         self.n_action_outputs = n_actions + n_actions**2
-        self.actions_mean_std = RNN(n_inputs=state_size, n_outputs=self.n_action_outputs, n_hidden=32).to(self.device)
-        self.critic = RNN(n_inputs=state_size, n_outputs=1, n_hidden=32).to(self.device)
+        self.actor = RNN(n_inputs=state_size, n_outputs=self.n_action_outputs, n_hidden=64).to(self.device)
+        self.critic = RNN(n_inputs=state_size, n_outputs=1, n_hidden=64).to(self.device)
 
     def _action_distribution(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
         *dims, _ = state.shape
-        action_mean_std, hidden_states = self.actions_mean_std.forward(state.to(self.device), hidden_states)
+        action_mean_std, hidden_states = self.actor.forward(state.to(self.device), hidden_states)
         action_mean_std = torch.reshape(action_mean_std, (-1, self.n_action_outputs))
         means = action_mean_std[:, : self.n_actions]
         std = torch.exp(action_mean_std[:, self.n_actions :])
@@ -168,6 +167,6 @@ class RecurrentActorCritic(torch.nn.Module):
 
     def to(self, device: torch.device):
         self.device = device
-        self.actions_mean_std.to(device)
+        self.actor.to(device)
         self.critic.to(device)
         return self
