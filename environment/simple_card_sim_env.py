@@ -16,6 +16,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
         customer_location_is_known: bool = False,
+        normalize_location: bool = False,
     ):
         """
         Args:
@@ -24,6 +25,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             n_parallel: The number of parallel transactions to be processed.
             customer_location_is_known: Whether the customer's location is known.
         """
+        self.normalize_location = normalize_location
         if customer_location_is_known:
             obs_shape = (6,)
         else:
@@ -40,7 +42,6 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        # self.saved_system = deepcopy(system)
         self.t = system.attack_start
         self.t_start = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
@@ -73,10 +74,10 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         time_ratio = self.card_registry.get_time_ratio(self.current_card, self.t)
         features = [time_ratio, self.current_card.is_credit, self.t.hour, self.t.day]
         if self.customer_location_is_known:
-            features += [
-                self.current_card.customer_x,
-                self.current_card.customer_y,
-            ]
+            x, y = self.current_card.customer_x, self.current_card.customer_y
+            if self.normalize_location:
+                x, y = x / 200, y / 200
+            features += [x, y]
         return np.array(features, dtype=np.float32)
 
     def step(self, np_action: np.ndarray, atk_terminals: list[Terminal]):

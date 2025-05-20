@@ -157,7 +157,6 @@ class VaeAgent(Agent):
     def __init__(
         self,
         device,
-        criterion,
         latent_dim: int,
         hidden_dim: int,
         lr: float,
@@ -190,7 +189,7 @@ class VaeAgent(Agent):
         q_low = transactions_df["amount"].quantile(0.02)
         q_hi = transactions_df["amount"].quantile(0.98)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
-        labels = transactions_df["label"].values
+        labels = transactions_df["is_fraud"].values
         transactions_df = transactions_df[self.columns]
 
         # Normalize the data
@@ -200,7 +199,7 @@ class VaeAgent(Agent):
 
         self.attack_generator = Attack_Generation(
             device=device,
-            criterion=criterion,
+            criterion=torch.nn.MSELoss(),
             y=labels,
             latent_dim=latent_dim,
             hidden_dim=hidden_dim,

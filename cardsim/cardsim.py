@@ -1031,7 +1031,7 @@ class Cardsim:
 
     def simulate(
         self,
-        n_payers: int = 10000,
+        n_payers: int = 10_000,
         n_days: int = 365,
         start_date: str = "2023-01-01",
     ):

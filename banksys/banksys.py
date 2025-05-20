@@ -37,21 +37,15 @@ class Banksys:
         self.terminals = terminals
         self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
 
-        registry = OrderedTransactionsRegistry(transactions)
+        self.registry = OrderedTransactionsRegistry(transactions)
         aggregation_duration = max(*cards[0].aggregation_windows, *terminals[0].days_aggregation)
-        training_start = registry[0].timestamp + aggregation_duration
+        training_start = self.registry[0].timestamp + aggregation_duration
         training_end = training_start + training_duration
 
-        self._warmup(registry.get_before(training_start))
-        self._train(registry.get_between(training_start, training_end))
-        self._simulate(registry.get_after(training_end))
-
+        self._warmup(self.registry.get_before(training_start))
+        self._train(self.registry.get_between(training_start, training_end))
+        self._simulate(self.registry.get_after(training_end))
         self.attack_start = training_end
-        # train_transactions = registry.get_before(training_end)
-        # self._train_classifier(train_transactions)
-        # # Add test set
-        # for transaction in test_transactions:
-        #     self.add_transaction(transaction)
 
     def _warmup(self, transactions: list[Transaction]):
         logging.info("Warming up the system for aggregation")
@@ -76,27 +70,9 @@ class Banksys:
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
 
-    def set_up_run(self, rules: list, rules_values: dict, return_confusion: bool = False):
-        self.clf.set_rules(rules, rules_values)
-        # if return_confusion:
-        #     return self._confusion_matrix(self.test_transactions)
-        # return None
-
-    # def _train_classifier(self, tr_transactions: list[Transaction]):
-    #     rows = []
-    #     for t in tqdm(tr_transactions):
-    #         self.add_transaction(t)
-    #         features = self.make_features_np(t, with_label=True)
-    #         rows.append(features)
-
-    #     trainign_DF = pd.DataFrame(rows, columns=self.feature_names + ["label"])
-
-    #     # Define the features and label
-    #     training_features = [col for col in trainign_DF.columns if col != "label"]
-    #     x_train = trainign_DF[training_features]
-    #     y_train = trainign_DF[self.label_feature].to_numpy()
-    #     self.clf.fit(x_train, y_train)
-    #     return training_features
+    def set_up_run(self, rules_values: dict, use_anomaly: bool):
+        self.clf.set_rules(rules_values)
+        self.clf.use_anomaly = use_anomaly
 
     def make_features_np(self, transaction: Transaction, with_label: bool):
         terminal = self.terminals[transaction.terminal_id]
@@ -160,14 +136,13 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def _confusion_matrix(self, transactions: list[Transaction]):
+    def test(self):
         """
         Compute the confusion matrix for the transactions.
         """
-        from sklearn.metrics import confusion_matrix
-
         features = []
         labels = []
+        transactions = self.registry.get_after(self.attack_start)
         for transaction in tqdm(transactions):
             features.append(self.make_features_np(transaction, with_label=False))
             labels.append(transaction.is_fraud)
@@ -175,4 +150,4 @@ class Banksys:
         labels = np.array(labels)
         df = pd.DataFrame(features, columns=self.feature_names)
         predicted_labels = self.clf.predict(df)
-        return confusion_matrix(labels, predicted_labels)
+        return predicted_labels, labels
