@@ -6,7 +6,7 @@ import os
 from marlenv.utils.schedule import ConstantSchedule, LinearSchedule, Schedule
 
 from banksys import Banksys
-from minitest import init_environment, train, save_parameters, save_episodes
+from runner import run
 from parameters import CardSimParameters, Parameters, RPPOParameters
 
 
@@ -26,7 +26,7 @@ def param_to_logdir(params: Parameters):
         return os.path.join(
             "logs",
             f"{params.agent_name}-{c1_str}-{c2_str}-{agent_params.n_epochs}-{agent_params.train_interval}-{len(params.rules) > 0}-{params.use_anomaly}",
-            f"{params.seed}",
+            f"{params.seed_value}",
         )
     raise NotImplementedError()
 
@@ -40,17 +40,14 @@ def experiment(c1: float, c2: Schedule, n_epochs: int, train_interval: int, with
             train_interval=train_interval,
         ),
         use_anomaly=with_anomaly,
-        seed=seed,
+        seed_value=seed,
         cardsim=CardSimParameters(n_days=100, n_payers=20_000),
     )
     if not with_rules:
         params.rules = {}
-    env = init_environment(params)
-    logdir = param_to_logdir(params)
-    os.makedirs(logdir, exist_ok=True)
-    save_parameters(logdir, params)
-    episodes = train(env, params)
-    save_episodes(episodes, logdir)
+    params.logdir = param_to_logdir(params)
+    os.makedirs(params.logdir, exist_ok=True)
+    run(params)
 
 
 def parameter_search_rppo():

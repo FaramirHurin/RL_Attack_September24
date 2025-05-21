@@ -2,16 +2,20 @@ import logging
 import os
 from datetime import datetime, timedelta
 
+import dotenv
 import numpy as np
 import orjson
 from marlenv import Episode, Transition
 from tqdm import tqdm
+from agents import Agent
 
 from banksys import Banksys, Transaction
 from environment import SimpleCardSimEnv
-from parameters import Parameters, PPOParameters, RPPOParameters, VAEParameters, CardSimParameters
+from parameters import CardSimParameters, Parameters, PPOParameters, RPPOParameters, VAEParameters
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+dotenv.load_dotenv()  # Load the "private" .env file
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def save_parameters(directory: str, parameters: Parameters):
@@ -27,11 +31,10 @@ def save_episodes(episodes: list[Episode], directory: str):
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
-def train(env: SimpleCardSimEnv, params: Parameters):
-    agent = params.get_agent(env)
+def train(env: SimpleCardSimEnv, agent: Agent, n_episodes: int):
     scores = list[float]()
     episodes = list[Episode]()
-    with tqdm(range(params.n_episodes)) as pbar:
+    with tqdm(range(n_episodes)) as pbar:
         step_num = 0
         avg_score = 0.0
         for e in pbar:
@@ -65,24 +68,6 @@ def train(env: SimpleCardSimEnv, params: Parameters):
     return episodes
 
 
-def init_environment(params: Parameters):
-    try:
-        banksys = Banksys.load(params.cardsim)
-    except (FileNotFoundError, ValueError):
-        print("Banksys not found, creating a new one")
-        banksys = params.create_banksys()
-        banksys.save(params.cardsim)
-
-    banksys.set_up_run(rules_values=params.rules, use_anomaly=params.use_anomaly)
-    env = SimpleCardSimEnv(
-        banksys,
-        timedelta(days=params.avg_card_block_delay_days),
-        customer_location_is_known=params.know_client,
-        normalize_location=params.agent_name in ("ppo", "rppo"),
-    )
-    return env
-
-
 def test_and_save_metrics(banksys: Banksys, directory: str):
     from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
@@ -112,9 +97,9 @@ def main():
     # agent_params = PPOParameters()
     agent_params = RPPOParameters()
     # agent_params = VAEParameters()
-    params = Parameters(agent_params, use_anomaly=False, rules={}, seed=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000))
-    env = init_environment(params)
-    exit()
+    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000))
+    env = params.create_env()
+    agent = params.create_agent(env)
     # Sanitize the timestamp
     safe_timestamp = datetime.now().isoformat().replace(":", "-")
 
@@ -122,7 +107,7 @@ def main():
     directory = os.path.join("logs", f"{params.agent_name}_{safe_timestamp}")
     save_parameters(directory, params)
     # test_and_save_metrics(env.system, directory)
-    train(env, params, directory)
+    train(env, agent, params.n_episodes)
 
 
 if __name__ == "__main__":

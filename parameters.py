@@ -1,14 +1,17 @@
 import random
-from dataclasses import asdict, dataclass, field
-from typing import Literal, Optional
-from cardsim import Cardsim
-from datetime import timedelta
+from dataclasses import asdict, dataclass, replace
+from datetime import timedelta, datetime
+import os
+import orjson
+from typing import Optional
+
 import numpy as np
 import torch
 from marlenv.utils import Schedule
 
-from agents import PPO, RPPO, Agent, VaeAgent
+from agents import Agent
 from agents.rl import LinearActorCritic, RecurrentActorCritic
+from cardsim import Cardsim
 from environment import SimpleCardSimEnv
 
 
@@ -67,6 +70,8 @@ class RPPOParameters:
         return kwargs
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
+        from agents import RPPO
+
         network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
         return RPPO(network, **self.as_dict(), device=device)
 
@@ -104,6 +109,8 @@ class PPOParameters(RPPOParameters):
         self.minibatch_size = minibatch_size
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
+        from agents import PPO
+
         network = LinearActorCritic(env.observation_size, env.n_actions, device)
         return PPO(network, **self.as_dict(), device=device)
 
@@ -120,6 +127,8 @@ class VAEParameters:
     supervised: bool = False
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device, know_client: bool, quantile: float):
+        from agents import VaeAgent
+
         return VaeAgent(
             device=device,
             latent_dim=self.latent_dim,
@@ -140,41 +149,66 @@ class VAEParameters:
 @dataclass(eq=True)
 class Parameters:
     agent: PPOParameters | RPPOParameters | VAEParameters
-    cardsim: CardSimParameters = field(default_factory=CardSimParameters)
-    agent_name: Literal["ppo", "vae", "rppo"] = "ppo"
-    n_episodes: int = 4000
-    know_client: bool = False
-    terminal_fract: float = 1.0
-    seed: int = 0
-    use_anomaly: bool = True
-    n_days_training: int = 30
-    avg_card_block_delay_days: int = 7
-    quantiles_anomaly: list[float] = field(default_factory=lambda: [0.01, 0.99])
-    rules: dict[str, float] = field(
-        default_factory=lambda: {
+    cardsim: CardSimParameters
+    n_episodes: int
+    know_client: bool
+    terminal_fract: float
+    seed_value: int
+    use_anomaly: bool
+    n_days_training: int
+    avg_card_block_delay_days: int
+    quantiles_anomaly: list[float]
+    rules: dict[str, float]
+    logdir: str
+
+    def __init__(
+        self,
+        agent: PPOParameters | RPPOParameters | VAEParameters,
+        cardsim: CardSimParameters = CardSimParameters(),
+        n_episodes: int = 4000,
+        know_client: bool = False,
+        terminal_fract: float = 1.0,
+        seed_value: int = 0,
+        use_anomaly: bool = True,
+        n_days_training: int = 30,
+        avg_card_block_delay_days: int = 7,
+        quantiles_anomaly: list[float] = [0.01, 0.99],
+        rules: dict[str, float] = {
             "max_trx_hour": 6,
             "max_trx_week": 40,
             "max_trx_day": 15,
-        }
-    )
+        },
+        logdir: Optional[str] = None,
+        save: bool = True,
+    ):
+        self.agent = agent
+        self.cardsim = cardsim
+        self.n_episodes = n_episodes
+        self.know_client = know_client
+        self.terminal_fract = terminal_fract
+        self.seed_value = seed_value
+        self.use_anomaly = use_anomaly
+        self.n_days_training = n_days_training
+        self.avg_card_block_delay_days = avg_card_block_delay_days
+        self.quantiles_anomaly = quantiles_anomaly
+        self.rules = rules
+        if logdir is None:
+            logdir = self.default_logdir()
+        self.logdir = logdir
+        if save:
+            self.save()
 
-    def __post_init__(self):
-        match self.agent:
-            case PPOParameters():
-                self.agent_name = "ppo"
-            case RPPOParameters():
-                self.agent_name = "rppo"
-            case VAEParameters():
-                self.agent_name = "vae"
-            case _:
-                raise ValueError("Unknown agent type")
-        # Seed the experiment
-        torch.manual_seed(self.seed)
-        random.seed(self.seed)
-        np.random.seed(self.seed)
+    def seed(self):
+        """
+        Seed the random number generator.
+        """
+        random.seed(self.seed_value)
+        np.random.seed(self.seed_value)
+        torch.manual_seed(self.seed_value)
 
-    def get_agent(self, env: SimpleCardSimEnv) -> Agent:
-        device = self.device()
+    def create_agent(self, env: SimpleCardSimEnv) -> Agent:
+        self.seed()
+        device = self.get_device_by_seed()
         match self.agent:
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.know_client, self.quantiles_anomaly[0])
@@ -182,6 +216,36 @@ class Parameters:
                 return self.agent.get_agent(env, device)
             case _:
                 raise ValueError("Unknown agent type")
+
+    def create_env(self):
+        from banksys import Banksys
+
+        try:
+            banksys = Banksys.load(self.cardsim, self.banksys_dir)
+        except (FileNotFoundError, ValueError):
+            print("Banksys not found, creating a new one")
+            banksys = self.create_banksys()
+            banksys.save(self.cardsim)
+
+        banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
+        env = SimpleCardSimEnv(
+            banksys,
+            timedelta(days=self.avg_card_block_delay_days),
+            customer_location_is_known=self.know_client,
+            normalize_location=self.agent_name in ("ppo", "rppo"),
+        )
+        env.seed(self.seed_value)
+        return env
+
+    @property
+    def banksys_dir(self):
+        return os.path.join(
+            "cache",
+            "banksys",
+            f"{self.cardsim.n_payers}-payers",
+            f"{self.cardsim.n_days}-days",
+            f"start-{self.cardsim.start_date}",
+        )
 
     def create_banksys(self):
         from banksys import Banksys
@@ -201,10 +265,43 @@ class Parameters:
             quantiles=self.quantiles_anomaly,
             attackable_terminal_factor=self.terminal_fract,
         )
+        banksys.save(self.cardsim, self.banksys_dir)
         return banksys
 
-    def device(self) -> torch.device:
+    def get_device_by_seed(self) -> torch.device:
         if not torch.cuda.is_available():
             return torch.device("cpu")
-        device = f"cuda:{self.seed % torch.cuda.device_count()}"
+        device = f"cuda:{self.seed_value % torch.cuda.device_count()}"
         return torch.device(device)
+
+    def save(self):
+        os.makedirs(self.logdir, exist_ok=True)
+        file_path = os.path.join(self.logdir, "params.json")
+        print(file_path)
+        with open(file_path, "wb") as f:
+            f.write(orjson.dumps(self))
+
+    @property
+    def agent_name(self):
+        match self.agent:
+            case PPOParameters():
+                return "ppo"
+            case RPPOParameters():
+                return "rppo"
+            case VAEParameters():
+                return "vae"
+            case _:
+                raise ValueError("Unknown agent type")
+
+    def default_logdir(self):
+        timestamp = datetime.now().isoformat().replace(":", "-")
+        return os.path.join("logs", self.agent_name, timestamp)
+
+    def repeat(self, n: int):
+        """
+        Repeat the parameters n times, with different seeds.
+        """
+        for i in range(n):
+            logdir = os.path.join(self.logdir, f"seed-{self.seed_value + i}")
+            os.makedirs(logdir, exist_ok=True)
+            yield replace(self, seed_value=self.seed_value + i, save=False, logdir=logdir)
