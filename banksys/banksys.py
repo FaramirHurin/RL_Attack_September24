@@ -2,7 +2,7 @@ import logging
 import os
 import pickle
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import random
 
 import numpy as np
@@ -10,13 +10,14 @@ import orjson
 import pandas as pd
 from tqdm import tqdm
 
-from parameters import CardSimParameters
-
 from .card import Card
 from .classification import ClassificationSystem
 from .has_ordered_transactions import OrderedTransactionsRegistry
 from .terminal import Terminal
 from .transaction import Transaction
+
+if TYPE_CHECKING:
+    from parameters import CardSimParameters
 
 # TODO: when a card is blocked, we should remove all its future transactions
 
@@ -122,7 +123,7 @@ class Banksys:
         self.terminals[transaction.terminal_id].add_transaction(transaction)
         self.cards[transaction.card_id].add_transaction(transaction)
 
-    def save(self, params: CardSimParameters, directory: str = "cache"):
+    def save(self, params: "CardSimParameters", directory: str = "cache"):
         if not os.path.exists(directory):
             os.makedirs(directory)
         with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
@@ -131,12 +132,14 @@ class Banksys:
             f.write(orjson.dumps(params))
 
     @staticmethod
-    def load(params: Optional[CardSimParameters] = None, directory: str = "cache") -> "Banksys":
+    def load(params: Optional["CardSimParameters"] = None, directory: str = "cache") -> "Banksys":
         """
         Load the banksys from the given directory.
 
         If `params` is given, it will check if the parameters match the saved ones.
         """
+        from parameters import CardSimParameters
+
         if params is not None:
             with open(os.path.join(directory, "params.json"), "rb") as f:
                 simulation_params = CardSimParameters(**orjson.loads(f.read()))
