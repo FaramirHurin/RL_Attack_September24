@@ -262,8 +262,9 @@ class VaeAgent(Agent):
         trx["delay_day"] = 0
         # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
-
-        return trx.to_numpy()
+        trx = trx.to_numpy()
+        trx = trx.astype(np.float32)
+        return trx
 
     @staticmethod
     def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:
