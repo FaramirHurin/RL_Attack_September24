@@ -111,7 +111,8 @@ class Batch(ABC):
     def compute_gae(
         self,
         gamma: float,
-        all_values: torch.Tensor,
+        values: torch.Tensor,
+        next_values: torch.Tensor,
         trace_decay: float = 0.95,
         normalize: bool = False,
     ) -> torch.Tensor:

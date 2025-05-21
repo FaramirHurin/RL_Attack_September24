@@ -57,6 +57,6 @@ def run(params: Parameters):
 
 
 if __name__ == "__main__":
-    params = Parameters(VAEParameters(), n_episodes=4000)
-    for p in params.repeat(1):
+    params = Parameters(VAEParameters(latent_dim=20, trees=40), n_episodes=4000)
+    for p in params.repeat(10):
         run(p)

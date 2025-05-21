@@ -28,12 +28,11 @@ class TransitionBatch(Batch):
     def compute_gae(
         self,
         gamma: float,
-        all_values: torch.Tensor,
+        values: torch.Tensor,
+        next_values: torch.Tensor,
         trace_decay: float = 0.95,
         normalize: bool = False,
     ):
-        values = all_values[:-1]
-        next_values = all_values[1:]
         deltas = self.rewards + gamma * next_values * self.not_dones - values
         gae = torch.zeros(self.reward_size, dtype=torch.float32).to(device=self.device)
         advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)

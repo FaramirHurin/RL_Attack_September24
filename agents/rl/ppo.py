@@ -104,8 +104,10 @@ class PPO(Agent):
         policy = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions)
         all_values = self.actor_critic.value(batch.all_obs)
-        advantages = batch.compute_gae(self.gamma, all_values)
-        returns = advantages + all_values[:-1]
+        values = all_values[:-1]
+        next_values = all_values[1:]
+        advantages = batch.compute_gae(self.gamma, values, next_values, trace_decay=self.gae_lambda)
+        returns = advantages + values
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):

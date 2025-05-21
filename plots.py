@@ -33,6 +33,10 @@ class LogItem:
     def card_id(self) -> int:
         return self.episode.metrics["card_id"]
 
+    @property
+    def n_transactions(self):
+        return len(self.terminal_ids)
+
     @cached_property
     def transactions(self):
         res = list[Transaction]()
@@ -73,11 +77,12 @@ class Logs:
         return sum(e.amount_stolen for e in self.items)
 
     @cached_property
+    def n_transactions_over_time(self):
+        return [e.n_transactions for e in self.items]
+
+    @cached_property
     def amount_over_time(self):
-        amounts = list[float]()
-        for e in self.items:
-            amounts.append(e.amount_stolen)
-        return amounts
+        return [e.amount_stolen for e in self.items]
 
     def __iter__(self):
         return iter(self.items)
@@ -94,8 +99,15 @@ class Experiment:
             if not entry.startswith("seed-"):
                 continue
             episodes_path = os.path.join(directory, entry, "episodes.json")
-            results[entry] = Logs.from_file(episodes_path)
+            try:
+                results[entry] = Logs.from_file(episodes_path)
+            except FileNotFoundError:
+                pass
         return Experiment(results)
+
+    @cached_property
+    def n_transactions_over_time(self):
+        return np.array([e.n_transactions_over_time for e in self.logs.values()])
 
     @cached_property
     def amounts_over_time(self):

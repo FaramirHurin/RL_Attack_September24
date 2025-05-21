@@ -70,9 +70,11 @@ class RPPOParameters:
         return kwargs
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
-        from agents import RPPO
+        # from agents import RPPO
+        from agents.rl.r_ppo2 import RPPO_2 as RPPO
+        from agents.rl.networks import FalseRecurrentActorCritic
 
-        network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
+        network = FalseRecurrentActorCritic(env.observation_size, env.n_actions, device)
         return RPPO(network, **self.as_dict(), device=device)
 
 
@@ -206,9 +208,10 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv) -> Agent:
+    def create_agent(self, env: SimpleCardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
-        device = self.get_device_by_seed()
+        if device is None:
+            device = self.get_device_by_seed()
         match self.agent:
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.know_client, self.quantiles_anomaly[0])

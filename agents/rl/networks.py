@@ -170,3 +170,79 @@ class RecurrentActorCritic(torch.nn.Module):
         self.actor.to(device)
         self.critic.to(device)
         return self
+
+
+class FalseRecurrentActorCritic(torch.nn.Module):
+    def __init__(self, state_size: int, n_actions: int, device: torch.device):
+        super().__init__()
+        self.n_actions = n_actions
+        self.device = device
+        # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
+        n_action_outputs = n_actions + n_actions**2
+        INNER_SIZE_ACTIONS = 64
+        INNER_SIZE_SEQUNTIAL = 64
+        self.actor = torch.nn.Sequential(
+            # torch.nn.BatchNorm1d(state_size),
+            torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
+        ).to(self.device)
+
+        self.critic = torch.nn.Sequential(
+            torch.nn.LayerNorm(state_size),
+            torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
+            torch.nn.Tanh(),
+            torch.nn.Linear(INNER_SIZE_SEQUNTIAL, 1),
+        ).to(self.device)
+
+    def _action_distribution(self, state: torch.Tensor):
+        action_mean_std = self.actor.forward(state.to(self.device))
+        *dims, action_outputs = action_mean_std.shape
+        action_mean_std = action_mean_std.view(-1, action_outputs)
+        means = action_mean_std[:, : self.n_actions]
+        std = torch.exp(action_mean_std[:, self.n_actions :])
+        std = std.reshape(-1, self.n_actions, self.n_actions)
+        std = torch.clamp(std, min=-1e3, max=1e3)
+
+        # Calculate the Frobenius norm of the original matrix
+        norm = torch.norm(std, p="fro", dim=(1, 2), keepdim=True)
+        # Normalize the matrix by dividing by its Frobenius norm
+        std_normalized_local = std / (norm + 1e-8)
+        # Perform the matrix multiplication of the normalized matrix and its transpose
+        result_normalized = std_normalized_local @ std_normalized_local.mT + torch.eye(self.n_actions).unsqueeze(0).to(self.device)
+        # Scale the result by the original Frobenius norm
+        normalized_cov_mat = result_normalized * norm
+
+        # Reshape
+        means = means.reshape(*dims, self.n_actions)
+        normalized_cov_mat = normalized_cov_mat.reshape(*dims, self.n_actions, self.n_actions)
+        # print(torch.linalg.eigvals(cov_mat))
+        dist = distributions.MultivariateNormal(means, normalized_cov_mat)
+        # dist = distributions.Normal(means, std)
+        return dist
+
+    @property
+    def actor_parameters(self):
+        return list(self.actor.parameters())
+
+    @property
+    def critic_parameters(self):
+        return list(self.critic.parameters())
+
+    def policy(self, state: torch.Tensor, hx=None):
+        dist = self._action_distribution(state)
+        return dist, None
+
+    def value(self, state: torch.Tensor, hx=None):
+        value = self.critic.forward(state)
+        return value.squeeze(-1), hx
+
+    def to(self, device: torch.device):
+        self.device = device
+        self.actor.to(device)
+        self.critic.to(device)
+        return self
