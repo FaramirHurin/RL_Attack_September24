@@ -53,7 +53,7 @@ def vae_loss(recon_x, x, mu, logvar, epoch, beta=0.005):
 
 class VAE(nn.Module):
     def __init__(self, input_dim, latent_dim, hidden_dim):
-        super(VAE, self).__init__()
+        super().__init__()
         # Encoder
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc_mu = nn.Linear(hidden_dim, latent_dim)  # mean
@@ -101,7 +101,6 @@ class Attack_Generation:
     ):
         self.device = device
         self.model = VAE(input_dim=training_data.shape[1], latent_dim=latent_dim, hidden_dim=hidden_dim).to(self.device)
-        self.model.to(self.device)
         self.criterion = criterion
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
@@ -144,7 +143,7 @@ class Attack_Generation:
     def _generate_batch(self, num_samples: int = 1) -> np.ndarray:
         self.model.eval()
         with torch.no_grad():
-            z = torch.randn(num_samples, self.latent_dim).to(self.device)
+            z = torch.randn(num_samples, self.latent_dim, device=self.device)
             samples = self.model.decoder(z).cpu().numpy()
         if self.supervised:
             undetected = self.detector.predict(samples) == 0
@@ -262,8 +261,9 @@ class VaeAgent(Agent):
         trx["delay_day"] = 0
         # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
-
-        return trx.to_numpy()
+        trx = trx.to_numpy()
+        trx = trx.astype(np.float32)
+        return trx
 
     @staticmethod
     def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:

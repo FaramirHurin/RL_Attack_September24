@@ -3,14 +3,15 @@ from dataclasses import asdict, dataclass, replace
 from datetime import timedelta, datetime
 import os
 import orjson
-from typing import Optional
+import shutil
+from typing import Literal, Optional
+import logging
 
 import numpy as np
 import torch
 from marlenv.utils import Schedule
 
 from agents import Agent
-from agents.rl import LinearActorCritic, RecurrentActorCritic
 from cardsim import Cardsim
 from environment import SimpleCardSimEnv
 
@@ -23,7 +24,7 @@ class CardSimParameters:
 
 
 @dataclass(eq=True)
-class RPPOParameters:
+class PPOParameters:
     gamma: float
     lr_actor: float
     lr_critic: float
@@ -32,11 +33,16 @@ class RPPOParameters:
     critic_c1: Schedule
     entropy_c2: Schedule
     train_interval: int
+    minibatch_size: int
     gae_lambda: float
     grad_norm_clipping: Optional[float]
+    train_on: Literal["transition", "episode"]
+    is_recurrent: bool
 
     def __init__(
         self,
+        is_recurrent: bool = False,
+        train_on: Literal["transition", "episode"] = "transition",
         gamma: float = 0.99,
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
@@ -45,9 +51,15 @@ class RPPOParameters:
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
         train_interval: int = 64,
+        minibatch_size: int = 32,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
     ):
+        self.is_recurrent = is_recurrent
+        if self.is_recurrent and not train_on == "episode":
+            logging.warning("Recurrent PPO is only supported for episode training. Switching to episode training.")
+            train_on = "episode"
+        self.train_on = train_on
         self.gamma = gamma
         self.lr_actor = lr_actor
         self.lr_critic = lr_critic
@@ -60,6 +72,7 @@ class RPPOParameters:
             entropy_c2 = Schedule.constant(entropy_c2)
         self.entropy_c2 = entropy_c2
         self.train_interval = train_interval
+        self.minibatch_size = minibatch_size
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
 
@@ -70,49 +83,23 @@ class RPPOParameters:
         return kwargs
 
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
-        from agents import RPPO
+        # from agents import RPPO
+        from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
+        from agents.rl.ppo import PPO
+        from agents.rl.networks import RecurrentActorCritic, LinearActorCritic
 
-        network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
-        return RPPO(network, **self.as_dict(), device=device)
-
-
-@dataclass(eq=True)
-class PPOParameters(RPPOParameters):
-    minibatch_size: int
-
-    def __init__(
-        self,
-        gamma: float = 0.99,
-        lr_actor: float = 5e-4,
-        lr_critic: float = 1e-3,
-        n_epochs: int = 20,
-        eps_clip: float = 0.2,
-        critic_c1: Schedule | float = 0.5,
-        entropy_c2: Schedule | float = 0.01,
-        train_interval: int = 64,
-        gae_lambda: float = 0.95,
-        grad_norm_clipping: Optional[float] = None,
-        minibatch_size: int = 32,
-    ):
-        super().__init__(
-            gamma=gamma,
-            lr_actor=lr_actor,
-            lr_critic=lr_critic,
-            n_epochs=n_epochs,
-            eps_clip=eps_clip,
-            critic_c1=critic_c1,
-            entropy_c2=entropy_c2,
-            train_interval=train_interval,
-            gae_lambda=gae_lambda,
-            grad_norm_clipping=grad_norm_clipping,
-        )
-        self.minibatch_size = minibatch_size
-
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
-        from agents import PPO
-
-        network = LinearActorCritic(env.observation_size, env.n_actions, device)
-        return PPO(network, **self.as_dict(), device=device)
+        match self.train_on:
+            case "transition":
+                memory = TransitionMemory(self.train_interval)
+            case "episode":
+                memory = EpisodeMemory(self.train_interval)
+            case _:
+                raise ValueError(f"Unknown value for `train_on`: {self.train_on}")
+        if self.is_recurrent:
+            network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
+        else:
+            network = LinearActorCritic(env.observation_size, env.n_actions, device)
+        return PPO(network, memory, **self.as_dict(), device=device)
 
 
 @dataclass(eq=True)
@@ -148,7 +135,7 @@ class VAEParameters:
 
 @dataclass(eq=True)
 class Parameters:
-    agent: PPOParameters | RPPOParameters | VAEParameters
+    agent: PPOParameters | VAEParameters
     cardsim: CardSimParameters
     n_episodes: int
     know_client: bool
@@ -163,12 +150,12 @@ class Parameters:
 
     def __init__(
         self,
-        agent: PPOParameters | RPPOParameters | VAEParameters,
+        agent: PPOParameters | VAEParameters,
         cardsim: CardSimParameters = CardSimParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
         terminal_fract: float = 1.0,
-        seed_value: int = 0,
+        seed_value: Optional[int] = None,
         use_anomaly: bool = True,
         n_days_training: int = 30,
         avg_card_block_delay_days: int = 7,
@@ -186,6 +173,8 @@ class Parameters:
         self.n_episodes = n_episodes
         self.know_client = know_client
         self.terminal_fract = terminal_fract
+        if seed_value is None:
+            seed_value = hash(datetime.now().isoformat()) % 2**32
         self.seed_value = seed_value
         self.use_anomaly = use_anomaly
         self.n_days_training = n_days_training
@@ -206,13 +195,14 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv) -> Agent:
+    def create_agent(self, env: SimpleCardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
-        device = self.get_device_by_seed()
+        if device is None:
+            device = self.get_device_by_seed()
         match self.agent:
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.know_client, self.quantiles_anomaly[0])
-            case PPOParameters() | RPPOParameters():
+            case PPOParameters():
                 return self.agent.get_agent(env, device)
             case _:
                 raise ValueError("Unknown agent type")
@@ -275,6 +265,11 @@ class Parameters:
         return torch.device(device)
 
     def save(self):
+        if self.logdir in ("test", "debug", "logs/test", "log/tests", "log/debug"):
+            try:
+                shutil.rmtree(self.logdir)
+            except FileNotFoundError:
+                pass
         os.makedirs(self.logdir, exist_ok=True)
         file_path = os.path.join(self.logdir, "params.json")
         print(file_path)
@@ -285,9 +280,9 @@ class Parameters:
     def agent_name(self):
         match self.agent:
             case PPOParameters():
+                if self.agent.is_recurrent:
+                    return "rppo"
                 return "ppo"
-            case RPPOParameters():
-                return "rppo"
             case VAEParameters():
                 return "vae"
             case _:

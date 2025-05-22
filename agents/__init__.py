@@ -3,13 +3,12 @@ from . import genetic
 from . import rl
 from .vae import VaeAgent
 
-from .rl import PPO, RPPO
+from .rl import PPO
 
 __all__ = [
     "Agent",
     "genetic",
     "rl",
     "PPO",
-    "RPPO",
     "VaeAgent",
 ]

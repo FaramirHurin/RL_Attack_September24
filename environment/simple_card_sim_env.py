@@ -91,6 +91,9 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         Perform the given action at the given time.
         """
         action = Action.from_numpy(np_action)
+        if self.normalize_location:
+            action.terminal_x *= 200
+            action.terminal_y *= 200
         self.t += action.timedelta
         if self.card_registry.has_expired(self.current_card, self.t):
             self.card_registry.clear(self.current_card)

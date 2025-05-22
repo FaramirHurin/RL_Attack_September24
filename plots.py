@@ -5,6 +5,8 @@ from functools import cached_property
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import orjson
 from marlenv import Episode
 
 from banksys import Transaction
@@ -31,6 +33,10 @@ class LogItem:
     def card_id(self) -> int:
         return self.episode.metrics["card_id"]
 
+    @property
+    def n_transactions(self):
+        return len(self.terminal_ids)
+
     @cached_property
     def transactions(self):
         res = list[Transaction]()
@@ -38,9 +44,77 @@ class LogItem:
         for i, transition in enumerate(self.episode.transitions()):
             action = Action.from_numpy(transition.action)
             t = t + action.timedelta
-            res.append(Transaction(action.amount, t, self.terminal_ids[i], self.card_id, action.is_online, False))
+            res.append(Transaction(action.amount, t, self.terminal_ids[i], self.card_id, action.is_online, True, predicted_label=False))
         res[-1].predicted_label = True
         return res
+
+    @cached_property
+    def amount_stolen(self):
+        return self.episode.score[0]
+
+
+@dataclass
+class Logs:
+    items: list[LogItem]
+
+    @staticmethod
+    def from_file(file_path: str):
+        with open(file_path, "rb") as f:
+            episodes = orjson.loads(f.read())
+        logs = list[LogItem]()
+        for e_dict in episodes[:4000]:
+            assert isinstance(e_dict, dict)
+            # e_dict.pop("score", None)
+            for key, value in e_dict.items():
+                if isinstance(value, list):
+                    e_dict[key] = [np.array(items) for items in value]
+            e_dict = Episode(**e_dict)
+            logs.append(LogItem(e_dict))
+        return Logs(logs)
+
+    @cached_property
+    def total_amount(self) -> float:
+        return sum(e.amount_stolen for e in self.items)
+
+    @cached_property
+    def n_transactions_over_time(self):
+        return [e.n_transactions for e in self.items]
+
+    @cached_property
+    def amount_over_time(self):
+        return [e.amount_stolen for e in self.items]
+
+    def __iter__(self):
+        return iter(self.items)
+
+
+@dataclass
+class Experiment:
+    logs: dict[str, Logs]
+
+    @staticmethod
+    def from_directory(directory: str):
+        results = dict[str, Logs]()
+        for entry in os.listdir(directory):
+            if not entry.startswith("seed-"):
+                continue
+            episodes_path = os.path.join(directory, entry, "episodes.json")
+            try:
+                results[entry] = Logs.from_file(episodes_path)
+            except FileNotFoundError:
+                pass
+        return Experiment(results)
+
+    @cached_property
+    def n_transactions_over_time(self):
+        return np.array([e.n_transactions_over_time for e in self.logs.values()])
+
+    @cached_property
+    def amounts_over_time(self):
+        return np.array([e.amount_over_time for e in self.logs.values()])
+
+    def __iter__(self):
+        return iter(self.logs.values())
 
 
 def plot_transactions(transactions: list[Transaction]):

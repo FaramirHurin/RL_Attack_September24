@@ -51,26 +51,31 @@ class EpisodeBatch(Batch):
         res = np.array([e[key] for e in self.episodes], dtype=np.float32)
         return torch.from_numpy(res).to(self.device)
 
-    def compute_gae(
+    def compute_gae_(
         self,
         gamma: float,
-        all_values: torch.Tensor,
+        values: torch.Tensor,
+        next_values: torch.Tensor,
         trace_decay: float = 0.95,
         normalize: bool = False,
     ):
-        values = all_values[:, :-1] * self.masks
-        next_values = all_values[:, 1:] * self.masks
-        deltas = self.rewards + gamma * next_values * self.not_dones - values
-        gae = torch.zeros(self.size, dtype=torch.float32).to(device=self.device)
+        deltas = self.rewards + gamma * next_values - values
+        if self.rewards.dim() > 1:
+            gae = torch.zeros(self.size, dtype=torch.float32).to(device=self.device)
+        else:
+            gae = torch.zeros(self.reward_size, dtype=torch.float32).to(device=self.device)
         advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
         # Note: we want to discount the reward by the actual time between two observations
         dt = self.dt
         for t in range(self._max_episode_len - 1, -1, -1):
-            gae = deltas[:, t] + gamma ** dt[:, t] * trace_decay * gae
-            advantages[:, t] = gae
+            gae = deltas[t] + gamma ** dt[t] * trace_decay * gae
+            advantages[t] = gae
         if normalize:
             advantages = self._normalize(advantages)
         return advantages
+
+    def _initialize_gae(self):
+        return torch.zeros(self.size, dtype=torch.float32).to(device=self.device), self._max_episode_len
 
     @cached_property
     def dt(self):
@@ -95,80 +100,80 @@ class EpisodeBatch(Batch):
     @cached_property
     def obs(self):
         obs = np.array([e.obs for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(obs).to(self.device)
+        return torch.from_numpy(obs).to(self.device).transpose(0, 1)
 
     @cached_property
     def next_obs(self):
         obs = np.array([e.next_obs for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(obs).to(self.device)
+        return torch.from_numpy(obs).to(self.device).transpose(0, 1)
 
     @cached_property
     def all_obs(self):
         all_obs_ = np.array([e.all_observations for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(all_obs_).to(self.device)
+        return torch.from_numpy(all_obs_).to(self.device).transpose(0, 1)
 
     @cached_property
     def extras(self):
         extras = np.array([e.extras for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(extras).to(self.device)
+        return torch.from_numpy(extras).to(self.device).transpose(0, 1)
 
     @cached_property
     def next_extras(self):
         extras_ = np.array([e.next_extras for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(extras_).to(self.device)
+        return torch.from_numpy(extras_).to(self.device).transpose(0, 1)
 
     @cached_property
     def states_extras(self):
         extras_ = np.array([e.states_extras for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(extras_).to(self.device)
+        return torch.from_numpy(extras_).to(self.device).transpose(0, 1)
 
     @cached_property
     def next_states_extras(self):
         extras_ = np.array([e.next_states_extras for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(extras_).to(self.device)
+        return torch.from_numpy(extras_).to(self.device).transpose(0, 1)
 
     @cached_property
     def all_extras(self):
         all_extras_ = np.array([e.all_extras for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(all_extras_).to(self.device)
+        return torch.from_numpy(all_extras_).to(self.device).transpose(0, 1)
 
     @cached_property
     def available_actions(self):
         available_actions = np.array([e.available_actions for e in self.episodes], dtype=np.bool)
-        return torch.from_numpy(available_actions).to(self.device)
+        return torch.from_numpy(available_actions).to(self.device).transpose(0, 1)
 
     @cached_property
     def next_available_actions(self):
         available_actions_ = np.array([e.next_available_actions for e in self.episodes], dtype=np.bool)
-        return torch.from_numpy(available_actions_).to(self.device)
+        return torch.from_numpy(available_actions_).to(self.device).transpose(0, 1)
 
     @cached_property
     def states(self):
         states = np.array([e.states for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(states).to(self.device)
+        return torch.from_numpy(states).to(self.device).transpose(0, 1)
 
     @cached_property
     def next_states(self):
         states_ = np.array([e.next_states for e in self.episodes], dtype=np.float32)
-        return torch.from_numpy(states_).to(self.device)
+        return torch.from_numpy(states_).to(self.device).transpose(0, 1)
 
     @cached_property
     def actions(self):
         dtype = self.episodes[0].actions[0].dtype
         actions = torch.from_numpy(np.array([e.actions for e in self.episodes], dtype=dtype)).to(self.device)
-        return actions
+        return actions.transpose(0, 1)
 
     @cached_property
     def rewards(self):
         rewards = torch.from_numpy(np.array([e.rewards for e in self.episodes], dtype=np.float32)).to(self.device)
-        return rewards.squeeze(-1)
+        return rewards.squeeze(-1).transpose(0, 1)
 
     @cached_property
     def dones(self):
         dones = torch.from_numpy(np.array([e.dones for e in self.episodes], dtype=np.bool)).to(self.device)
-        return dones.squeeze(-1)
+        return dones.squeeze(-1).transpose(0, 1)
 
     @cached_property
     def masks(self):
         masks = torch.from_numpy(np.array([e.mask for e in self.episodes], dtype=np.float32)).to(self.device)
-        return masks.squeeze(-1)
+        return masks.squeeze(-1).transpose(0, 1)

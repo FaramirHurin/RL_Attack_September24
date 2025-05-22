@@ -1,5 +1,5 @@
 from typing import Optional
-
+from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 from torch import distributions
@@ -31,7 +31,37 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
         return positive_definite_matrix
 
 
-class LinearActorCritic(torch.nn.Module):
+class ActorCritic(torch.nn.Module, ABC):
+    def reset(self):
+        """
+        Reset at the end of an episode.
+        """
+
+    @abstractmethod
+    def policy(self, states: torch.Tensor) -> torch.distributions.Distribution: ...
+    @abstractmethod
+    def value(self, states: torch.Tensor) -> torch.Tensor: ...
+
+    def batch_policy(self, states: torch.Tensor):
+        return self.policy(states)
+
+    def batch_value(self, states: torch.Tensor):
+        return self.value(states)
+
+    def save_hidden_states(self):
+        pass
+
+    def restore_hidden_states(self):
+        pass
+
+    @abstractmethod
+    def actor_parameters(self) -> list[torch.nn.Parameter]: ...
+
+    @abstractmethod
+    def critic_parameters(self) -> list[torch.nn.Parameter]: ...
+
+
+class LinearActorCritic(ActorCritic):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super().__init__()
         self.n_actions = n_actions
@@ -84,11 +114,9 @@ class LinearActorCritic(torch.nn.Module):
         # dist = distributions.Normal(means, std)
         return dist
 
-    @property
     def actor_parameters(self):
         return list(self.actor.parameters())
 
-    @property
     def critic_parameters(self):
         return list(self.critic.parameters())
 
@@ -122,9 +150,12 @@ class RNN(torch.nn.Module):
         return x, hidden_states  # type: ignore[return-value]
 
 
-class RecurrentActorCritic(torch.nn.Module):
+class RecurrentActorCritic(ActorCritic):
     def __init__(self, state_size: int, n_actions: int, device: torch.device):
         super().__init__()
+        self.hidden_states_actor = None
+        self.hidden_states_critic = None
+        self.saved_hidden_states = None, None
         self.n_actions = n_actions
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
@@ -157,16 +188,42 @@ class RecurrentActorCritic(torch.nn.Module):
         # dist = distributions.Normal(means, std)
         return dist, hidden_states
 
-    def policy(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
-        dist, hidden_states = self._action_distribution(state, hidden_states)
-        return dist, hidden_states
+    def save_hidden_states(self):
+        self.saved_hidden_states = self.hidden_states_actor, self.hidden_states_critic
 
-    def value(self, state: torch.Tensor, hidden_states: Optional[torch.Tensor] = None):
-        value, hidden_states = self.critic.forward(state, hidden_states)
-        return value.squeeze(-1), hidden_states
+    def restore_hidden_states(self):
+        self.hidden_states_actor, self.hidden_states_critic = self.saved_hidden_states
+
+    def reset(self):
+        self.hidden_states_actor = None
+        self.hidden_states_critic = None
+
+    def policy(self, state: torch.Tensor):
+        dist, self.hidden_states_actor = self._action_distribution(state, self.hidden_states_actor)
+        return dist
+
+    def value(self, state: torch.Tensor):
+        value, self.hidden_states_critic = self.critic.forward(state, self.hidden_states_critic)
+        return value.squeeze(-1)
 
     def to(self, device: torch.device):
         self.device = device
         self.actor.to(device)
         self.critic.to(device)
         return self
+
+    def actor_parameters(self):
+        return list(self.actor.parameters())
+
+    def critic_parameters(self):
+        return list(self.critic.parameters())
+
+
+class FalseRecurrentActorCritic(LinearActorCritic):
+    def policy(self, state: torch.Tensor, hx=None):
+        dist = self._action_distribution(state)
+        return dist, None
+
+    def value(self, state: torch.Tensor, hx=None):
+        value = self.critic.forward(state)
+        return value.squeeze(-1), hx
