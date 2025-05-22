@@ -107,7 +107,6 @@ class Batch(ABC):
             advantages = self._normalize(advantages)
         return advantages
 
-    @abstractmethod
     def compute_gae(
         self,
         gamma: float,
@@ -133,6 +132,26 @@ class Batch(ABC):
 
         Returns:
             Advantage estimates (batch_size,).
+        """
+        deltas = self.rewards + gamma * next_values - values
+        gae, t_max = self._initialize_gae()
+        advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
+        # Note: we want to discount the reward by the actual time between two observations
+        dt = self.dt
+        for t in range(t_max - 1, -1, -1):
+            not_done = self.not_dones[t]
+            gae = deltas[t] + not_done * gamma ** dt[t] * trace_decay * gae
+            advantages[t] = gae
+        if normalize:
+            advantages = self._normalize(advantages)
+        return advantages
+
+    @abstractmethod
+    def _initialize_gae(self) -> tuple[torch.Tensor, int]:
+        """
+        Returns:
+         - the initial GAE (all zeros with the appropriate shape)
+         - t_max
         """
 
     @overload

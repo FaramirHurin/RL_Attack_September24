@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 import torch
@@ -9,7 +9,7 @@ from .batch import Batch
 
 
 class TransitionBatch(Batch):
-    def __init__(self, transitions: list[Transition], device: Optional[torch.device] = None):
+    def __init__(self, transitions: Sequence[Transition], device: Optional[torch.device] = None):
         self.transitions = transitions
         self.is_continuous = transitions[0].action.dtype in (np.float32, np.float64)
         self.is_discrete = not self.is_continuous
@@ -25,7 +25,7 @@ class TransitionBatch(Batch):
                 *(1 for _ in self.importance_sampling_weights.shape), self.reward_size
             )
 
-    def compute_gae(
+    def compute_gae_(
         self,
         gamma: float,
         values: torch.Tensor,
@@ -44,6 +44,9 @@ class TransitionBatch(Batch):
         if normalize:
             advantages = self._normalize(advantages)
         return advantages
+
+    def _initialize_gae(self):
+        return torch.zeros(self.reward_size, dtype=torch.float32).to(device=self.device), self.size
 
     @cached_property
     def dt(self):

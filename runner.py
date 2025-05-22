@@ -1,7 +1,6 @@
 from tqdm import tqdm
-from parameters import Parameters, RPPOParameters, PPOParameters, VAEParameters
+from parameters import Parameters, PPOParameters, VAEParameters
 from marlenv import Episode, Transition
-from marlenv.utils import Schedule
 from banksys import Transaction
 import numpy as np
 import logging
@@ -57,6 +56,6 @@ def run(params: Parameters):
 
 
 if __name__ == "__main__":
-    params = Parameters(VAEParameters(latent_dim=20, trees=40), n_episodes=4000)
-    for p in params.repeat(10):
+    params = Parameters(PPOParameters(), n_episodes=4000)
+    for p in params.repeat(1):
         run(p)

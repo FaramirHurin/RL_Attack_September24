@@ -1,21 +1,20 @@
 from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Generic, Iterable, Literal
-from typing_extensions import TypeVar
+from typing import Deque, Generic, Iterable, Literal, Optional
 
 import numpy as np
+import torch
 from marlenv import Episode, Transition
+from typing_extensions import TypeVar
 
 from .batch import Batch, EpisodeBatch, TransitionBatch
 
-
 T = TypeVar("T")
-B = TypeVar("B", bound=Batch, default=Batch)
 
 
 @dataclass
-class ReplayMemory(Generic[T, B], ABC):
+class ReplayMemory(Generic[T], ABC):
     """Parent class of any ReplayMemory"""
 
     max_size: int
@@ -34,14 +33,14 @@ class ReplayMemory(Generic[T, B], ABC):
         """Add an item (transition, episode, ...) to the memory"""
         self._memory.append(item)
 
-    def sample(self, batch_size: int) -> B:
+    def sample(self, batch_size: int, device: Optional[torch.device] = None) -> Batch:
         """Sample the memory to retrieve a `Batch`"""
         indices = np.random.randint(0, len(self), batch_size)
-        return self.get_batch(indices)
+        return self.get_batch(indices, device)
 
-    def as_batch(self):
-        """Return the memory as a `Batch`"""
-        return self.get_batch(range(len(self)))
+    def as_batch(self, device: Optional[torch.device] = None) -> Batch:
+        """Return the whole memory as a `Batch`"""
+        return self.get_batch(range(len(self)), device)
 
     def can_sample(self, batch_size: int) -> bool:
         """Return whether the memory contains enough items to sample a batch of the given size"""
@@ -55,7 +54,7 @@ class ReplayMemory(Generic[T, B], ABC):
         return len(self) == self.max_size
 
     @abstractmethod
-    def get_batch(self, indices: Iterable[int]) -> B:
+    def get_batch(self, indices: Iterable[int], device: Optional[torch.device] = None) -> Batch:
         """Create a `Batch` from the given indices"""
 
     def __len__(self) -> int:
@@ -66,27 +65,40 @@ class ReplayMemory(Generic[T, B], ABC):
 
 
 @dataclass
-class TransitionMemory(ReplayMemory[Transition, TransitionBatch]):
+class TransitionMemory(ReplayMemory[Transition]):
     """Replay Memory that stores Transitions"""
 
     def __init__(self, max_size: int):
         super().__init__(max_size, "transition")
 
-    def get_batch(self, indices: Iterable[int]):
+    def get_batch(self, indices: Iterable[int], device: Optional[torch.device] = None):
         transitions = [self._memory[i] for i in indices]
-        return TransitionBatch(transitions)
+        return TransitionBatch(transitions, device=device)
+
+    def as_batch(self, device: torch.device):
+        return TransitionBatch(self._memory, device=device)
 
 
 @dataclass
-class EpisodeMemory(ReplayMemory[Episode, EpisodeBatch]):
+class EpisodeMemory(ReplayMemory[Episode]):
     """Replay Memory that stores and samples full Episodes"""
 
     def __init__(self, max_size: int):
         super().__init__(max_size, "episode")
+        self.current_episode = None
 
-    def get_batch(self, indices: Iterable[int]):
+    def add(self, transition: Transition):
+        if self.current_episode is None:
+            self.current_episode = Episode.from_transitions([transition])
+        else:
+            self.current_episode.add(transition)
+        if self.current_episode.is_finished:
+            self._memory.append(self.current_episode)
+            self.current_episode = None
+
+    def get_batch(self, indices: Iterable[int], device: Optional[torch.device] = None):
         episodes = [self._memory[i] for i in indices]
-        return EpisodeBatch(episodes)
+        return EpisodeBatch(episodes, device=device)
 
-    def as_batch(self, device):
-        return EpisodeBatch(self._memory, device)
+    def as_batch(self, device: torch.device):
+        return EpisodeBatch(self._memory, device=device)
