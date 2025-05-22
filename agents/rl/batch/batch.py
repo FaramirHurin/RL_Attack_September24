@@ -44,6 +44,9 @@ class Batch(ABC):
         Delta time (in days) between two consecutile observations.
         """
 
+    def normalize_rewards(self):
+        self.rewards = self._normalize(self.rewards)
+
     def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0, normalize: bool = True):
         """
         Compute the returns using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.

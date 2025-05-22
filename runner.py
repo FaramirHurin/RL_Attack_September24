@@ -1,13 +1,14 @@
 import logging
 import os
 from typing import Optional
+from time import sleep
 
 import numpy as np
 import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
-
+import multiprocessing as mp
 from banksys import Transaction, Card
 from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters
 import dotenv
@@ -71,6 +72,7 @@ class PoolRunner:
             self.spawn_card_and_buffer_action()
 
         # Main loop
+        episodes = list[Episode]()
         step_num = 0
         episode_num = 0
         scores = list[float]()
@@ -88,6 +90,7 @@ class PoolRunner:
             if current_episode.is_finished:
                 self.cleanup_card(card)
                 scores.append(current_episode.score[0])
+                episodes.append(current_episode)
                 pbar.update()
                 pbar.set_description(f"{self.env.t.date().isoformat()} avg score={np.mean(scores[-100:]):.2f}")
                 episode_num += 1
@@ -97,6 +100,7 @@ class PoolRunner:
             else:
                 action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
                 self.env.buffer_action(action, card)
+        return episodes
 
 
 def run(params: Parameters):
@@ -107,7 +111,7 @@ def run(params: Parameters):
     episodes = list[Episode]()
     pbar = tqdm(range(params.n_episodes), desc="Training")
     step_num = 0
-    for e in pbar:
+    for episode_num in pbar:
         obs, state = env.reset()
         hx = None
         episode = Episode.new(obs, state, {"t_start": env.t_start, "card_id": env.current_card.id})
@@ -125,31 +129,46 @@ def run(params: Parameters):
             episode.add(t)
             obs, state = step.obs, step.state
         episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})
+        agent.update_episode(episode, step_num, episode_num)
         scores.append(episode.score[0])
         episodes.append(episode)
         # Update tqdm description with average score
-        if len(scores) >= 100:
-            avg_score = np.mean(scores[-100:])
-            pbar.set_description(f"avg score={avg_score:.2f}")
-            if e % 100 == 0:
-                avg_length = np.mean([len(ep) for ep in episodes[-100:]])
-                logging.info(f"{e}: avg score={avg_score:.2f}, avg_length={avg_length:.2f} (last 100)")
-        else:
-            pbar.set_description("Avg score (last 100): N/A")
+        pbar.set_description(f"{env.t.date().isoformat()} avg score={np.mean(scores[-100:]):.2f}")
     pbar.close()
     save_episodes(episodes, params.logdir)
 
 
+def truc(params: Parameters):
+    try:
+        runner = PoolRunner(params)
+        episodes = runner.run()
+        save_episodes(episodes, runner.params.logdir)
+        del runner
+    except Exception as e:
+        logging.error(f"Error occurred while running experiment: {e}")
+
+
 def main():
     params = Parameters(
-        PPOParameters(is_recurrent=False, train_on="transition"),
-        cardsim=CardSimParameters(n_days=365 * 5),
-        logdir="logs/test",
+        agent=PPOParameters(is_recurrent=True, train_on="episode", n_epochs=20, minibatch_size=16, train_interval=32),
+        # agent=VAEParameters(),
+        cardsim=CardSimParameters(n_days=365),
+        logdir="logs/rppo",
         card_pool_size=50,
-        terminal_fract=0.1,
+        terminal_fract=1.0,
+        seed_value=0,
+        rules={},
     )
-    run(params)
-    # PoolRunner(params).run()
+    # run(params)
+
+    pool = mp.Pool(5)
+    pool.map(truc, params.repeat(10))
+    sleep(1)
+    pool.join()
+    pool.terminate()
+    pool.close()
+    # for param in params.repeat(10):
+    #    PoolRunner(param).run()
 
 
 if __name__ == "__main__":

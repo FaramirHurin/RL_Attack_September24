@@ -103,6 +103,7 @@ class Experiment:
                 results[entry] = Logs.from_file(episodes_path)
             except FileNotFoundError:
                 pass
+        print(f"Loaded {len(results)} logs from {directory}")
         return Experiment(results)
 
     @cached_property

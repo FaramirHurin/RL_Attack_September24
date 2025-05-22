@@ -13,7 +13,7 @@ from marlenv.utils import Schedule
 
 from agents import Agent
 from cardsim import Cardsim
-from environment import SimpleCardSimEnv, PooledCardSimEnv
+from environment import SimpleCardSimEnv, CardSimEnv
 
 
 @dataclass(eq=True)
@@ -82,7 +82,7 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
-    def get_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: torch.device):
+    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
         from agents.rl.ppo import PPO
@@ -113,7 +113,7 @@ class VAEParameters:
     quantile: float = 0.99
     supervised: bool = False
 
-    def get_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: torch.device, know_client: bool, quantile: float):
+    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
         return VaeAgent(
@@ -198,7 +198,7 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: Optional[torch.device] = None) -> Agent:
+    def create_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
         if device is None:
             device = self.get_device_by_seed()
@@ -218,7 +218,6 @@ class Parameters:
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
-            banksys.save(self.cardsim)
 
         banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
         env = SimpleCardSimEnv(
@@ -238,10 +237,9 @@ class Parameters:
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
-            banksys.save(self.cardsim)
 
         banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
-        env = PooledCardSimEnv(
+        env = CardSimEnv(
             banksys,
             timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,

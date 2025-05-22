@@ -263,7 +263,7 @@ class VaeAgent(Agent):
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
         trx = trx.to_numpy()
         trx = trx.astype(np.float32)
-        return trx
+        return trx, None
 
     @staticmethod
     def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:

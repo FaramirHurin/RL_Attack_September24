@@ -87,11 +87,12 @@ class PPO(Agent):
         all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
-        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda)
+        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=True)
         returns = advantages + values
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):
+        batch.normalize_rewards()
         self.c1.update(step)
         self.c2.update(step)
         with torch.no_grad():

@@ -45,26 +45,26 @@ class Banksys:
         self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
         self.attackable_terminals = random.sample(terminals, round(len(terminals) * attackable_terminal_factor))
 
-        self.registry = OrderedTransactionsRegistry(transactions)
+        registry = OrderedTransactionsRegistry(transactions)
         aggregation_duration = max(*cards[0].aggregation_windows, *terminals[0].days_aggregation)
-        training_start = self.registry[0].timestamp + aggregation_duration
+        training_start = registry[0].timestamp + aggregation_duration
         training_end = training_start + training_duration
 
         self.attack_start = training_end
-        self.attack_end = self.registry[-1].timestamp
+        self.attack_end = registry[-1].timestamp
         assert self.attack_start < self.attack_end, "The duration of the simulation is too short to allow for an attack"
 
-        self._warmup(self.registry.get_before(training_start))
-        self._train(self.registry.get_between(training_start, training_end))
-        self._simulate(self.registry.get_after(training_end))
+        self._warmup(registry.get_before(training_start))
+        self._train(registry.get_between(training_start, training_end))
+        self._simulate(registry.get_after(training_end))
 
     def _warmup(self, transactions: list[Transaction]):
-        logging.info("Warming up the system for aggregation")
+        logging.info(f"Warming up the system for aggregation until {transactions[-1].timestamp.date().isoformat()}")
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
 
     def _train(self, transactions: list[Transaction]):
-        logging.info("Training the system")
+        logging.info(f"Training the system until {self.attack_start.date().isoformat()}")
         rows = []
         labels = []
         for t in tqdm(transactions, unit="trx"):
@@ -77,7 +77,7 @@ class Banksys:
         self.clf.fit(df, labels)
 
     def _simulate(self, transactions: list[Transaction]):
-        logging.info("Simulating the system until the end")
+        logging.info(f"Simulating the system until {self.attack_end.date().isoformat()}")
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
 
@@ -161,13 +161,12 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def test(self):
+    def test(self, transactions: list[Transaction]):
         """
-        Compute the confusion matrix for the transactions.
+        Compute the confusion matrix for the given transactions.
         """
         features = []
         labels = []
-        transactions = self.registry.get_after(self.attack_start)
         for transaction in tqdm(transactions):
             features.append(self.make_features_np(transaction, with_label=False))
             labels.append(transaction.is_fraud)

@@ -49,14 +49,14 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs_shape,
         )
         self.system = system
-        self.t = system.attack_start
+        self.t = deepcopy(system.attack_start)
         self.t_start = deepcopy(system.attack_start)
         if card_registry is None:
             card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.card_registry = card_registry
         self.customer_location_is_known = customer_location_is_known
         self.current_card = self.card_registry.release_card(self.t)
-        self.transactions = list[Transaction]()
+        # self.transactions = list[Transaction]()
 
     def reset(self):
         # self.system.rollback(self.transactions)
@@ -95,6 +95,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             action.terminal_x *= 200
             action.terminal_y *= 200
         self.t += action.timedelta
+        assert self.t <= self.system.attack_end, f"Simulation time {self.t} exceeds attack end time {self.system.attack_end}"
         if self.card_registry.has_expired(self.current_card, self.t):
             self.card_registry.clear(self.current_card)
             done = True
@@ -104,7 +105,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
             trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
             fraud_is_detected = self.system.process_transaction(trx)
-            self.transactions.append(trx)
+            # self.transactions.append(trx)
             if fraud_is_detected:
                 reward = 0.0
             else:
