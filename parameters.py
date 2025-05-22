@@ -85,7 +85,6 @@ class PPOParameters:
     def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
-        from agents.rl.ppo2 import PPO_2
         from agents.rl.ppo import PPO
         from agents.rl.networks import RecurrentActorCritic, LinearActorCritic
 
@@ -100,8 +99,7 @@ class PPOParameters:
             network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
         else:
             network = LinearActorCritic(env.observation_size, env.n_actions, device)
-        return PPO_2(network, memory, **self.as_dict(), device=device)
-        # return PPO(network, **self.as_dict(), device=device)
+        return PPO(network, memory, **self.as_dict(), device=device)
 
 
 @dataclass(eq=True)
@@ -157,7 +155,7 @@ class Parameters:
         n_episodes: int = 4000,
         know_client: bool = False,
         terminal_fract: float = 1.0,
-        seed_value: int = 0,
+        seed_value: Optional[int] = None,
         use_anomaly: bool = True,
         n_days_training: int = 30,
         avg_card_block_delay_days: int = 7,
@@ -175,6 +173,8 @@ class Parameters:
         self.n_episodes = n_episodes
         self.know_client = know_client
         self.terminal_fract = terminal_fract
+        if seed_value is None:
+            seed_value = hash(datetime.now().isoformat()) % 2**32
         self.seed_value = seed_value
         self.use_anomaly = use_anomaly
         self.n_days_training = n_days_training

@@ -48,6 +48,12 @@ class ActorCritic(torch.nn.Module, ABC):
     def batch_value(self, states: torch.Tensor):
         return self.value(states)
 
+    def save_hidden_states(self):
+        pass
+
+    def restore_hidden_states(self):
+        pass
+
     @abstractmethod
     def actor_parameters(self) -> list[torch.nn.Parameter]: ...
 
@@ -149,6 +155,7 @@ class RecurrentActorCritic(ActorCritic):
         super().__init__()
         self.hidden_states_actor = None
         self.hidden_states_critic = None
+        self.saved_hidden_states = None, None
         self.n_actions = n_actions
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
@@ -180,6 +187,12 @@ class RecurrentActorCritic(ActorCritic):
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
         # dist = distributions.Normal(means, std)
         return dist, hidden_states
+
+    def save_hidden_states(self):
+        self.saved_hidden_states = self.hidden_states_actor, self.hidden_states_critic
+
+    def restore_hidden_states(self):
+        self.hidden_states_actor, self.hidden_states_critic = self.saved_hidden_states
 
     def reset(self):
         self.hidden_states_actor = None

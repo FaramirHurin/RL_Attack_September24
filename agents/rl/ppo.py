@@ -1,61 +1,57 @@
 from typing import Literal, Optional
-
 import numpy as np
 import torch
 from marlenv import Transition
 from marlenv.utils import Schedule
 
-from .batch import Batch, TransitionBatch
-from .networks import LinearActorCritic
 from agents import Agent
+
+from .batch import Batch, TransitionBatch, EpisodeBatch
+from .replay_memory import ReplayMemory
+from .networks import ActorCritic
 
 
 class PPO(Agent):
-    """
-    Proximal Policy Optimization (PPO) training algorithm.
-    PPO paper: https://arxiv.org/abs/1707.06347
-    """
-
-    actor_critic: LinearActorCritic
+    actor_critic: ActorCritic
+    memory: ReplayMemory
     batch_size: int
+    minibatch_size: int
     c1: Schedule
     c2: Schedule
     eps_clip: float
     gae_lambda: float
     gamma: float
     lr: float
-    minibatch_size: int
     n_epochs: int
     grad_norm_clipping: Optional[float]
 
     def __init__(
         self,
-        actor_critic: LinearActorCritic,
-        gamma: float,
+        actor_critic: ActorCritic,
+        memory: ReplayMemory,
+        gamma: float = 0.99,
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
         n_epochs: int = 20,
         eps_clip: float = 0.2,
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
-        train_interval: int = 128,
-        minibatch_size: int = 10,
+        train_interval: int = 64,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
+        minibatch_size: int = 32,
         device: torch.device = torch.device("cpu"),
         **kwargs,
     ):
         super().__init__()
         self._device = device
         self.batch_size = train_interval
-        if minibatch_size is None:
-            minibatch_size = train_interval
-        self.minibatch_size = minibatch_size
-        self.actor_critic = actor_critic
+        self.actor_critic = actor_critic.to(device)
         self.gamma = gamma
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
-        self._memory = list[Transition]()
+        self.minibatch_size = minibatch_size
+        self._memory = memory
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
@@ -72,8 +68,8 @@ class PPO(Agent):
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
         all_parameters = list(self.actor_critic.parameters())
         params = [
-            {"params": self.actor_critic.actor.parameters(), "lr": lr_actor, "name": "actor parameters"},
-            {"params": self.actor_critic.critic.parameters(), "lr": lr_critic, "name": "critic parameters"},
+            {"params": self.actor_critic.actor_parameters(), "lr": lr_actor, "name": "actor parameters"},
+            {"params": self.actor_critic.critic_parameters(), "lr": lr_critic, "name": "critic parameters"},
         ]
         return params, all_parameters
 
@@ -81,35 +77,42 @@ class PPO(Agent):
         with torch.no_grad():
             obs_data = torch.from_numpy(observation).unsqueeze(0).to(self.device, non_blocking=True)
             distribution = self.actor_critic.policy(obs_data)
-        action = distribution.sample().squeeze(0)
-        return action.numpy(force=True)
+        np_action = distribution.sample().squeeze(0).numpy(force=True)
+        return np_action
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         policy = self.actor_critic.policy(batch.obs)
-        log_probs = policy.log_prob(batch.actions)
+        log_probs = policy.log_prob(batch.actions) * batch.masks
         all_values = self.actor_critic.value(batch.all_obs)
-        values = all_values[:-1]
-        next_values = all_values[1:]
-        advantages = batch.compute_gae(self.gamma, values, next_values, trace_decay=self.gae_lambda)
+        values = all_values[:-1] * batch.masks
+        next_values = all_values[1:] * batch.not_dones
+        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda)
         returns = advantages + values
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):
+        self.actor_critic.save_hidden_states()
         self.c1.update(step)
         self.c2.update(step)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
 
         for _ in range(self.n_epochs):
-            indices = np.random.choice(self.batch_size, self.minibatch_size, replace=False)
+            self.actor_critic.reset()
+            indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
-            mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
-
+            match batch:
+                case TransitionBatch():
+                    mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
+                case EpisodeBatch():
+                    mini_log_probs, mini_returns, mini_advantages = log_probs[:, indices], returns[:, indices], advantages[:, indices]
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
             mini_values = self.actor_critic.value(minibatch.obs)
-            critic_loss = torch.nn.functional.mse_loss(mini_values, mini_returns)
+            mini_values = mini_values * minibatch.masks
+            td_error = mini_values - mini_returns
+            critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
@@ -120,21 +123,26 @@ class PPO(Agent):
             surrogate1 = mini_advantages * ratios
             surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
             # Minus because we want to maximize the objective
-            actor_loss = -torch.min(surrogate1, surrogate2).mean()
+            actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
 
             # S[\pi_0](s_t) in the paper (equation (9))
-            entropy_loss = torch.mean(mini_policy.entropy())
+            entropy = mini_policy.entropy()
+            masked_entropy = entropy * minibatch.masks
+            entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
 
             self.optimizer.zero_grad()
             # Equation (9) in the paper
             loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
             loss.backward()
             self.optimizer.step()
+        self.actor_critic.restore_hidden_states()
 
     def update(self, t: Transition, step: int):
-        self._memory.append(t)
-        if len(self._memory) >= self.batch_size:
-            batch = TransitionBatch(self._memory).to(self.device)
+        self._memory.add(t)
+        if t.is_terminal:
+            self.actor_critic.reset()
+        if self._memory.is_full:
+            batch = self._memory.as_batch(self.device)
             self.train(batch, step)
             self._memory.clear()
 
@@ -170,9 +178,10 @@ class PPO(Agent):
         """
         Seed the algorithm for reproducibility (e.g. during testing).
 
-        Seed `random`, `numpy`, and `torch` libraries by default.
+        Seed `ranom`, `numpy`, and `torch` libraries by default.
         """
         import random
+
         import numpy as np
 
         random.seed(seed)
