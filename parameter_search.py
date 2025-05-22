@@ -7,7 +7,7 @@ from marlenv.utils.schedule import ConstantSchedule, LinearSchedule, Schedule
 
 from banksys import Banksys
 from runner import run
-from parameters import CardSimParameters, Parameters, RPPOParameters
+from parameters import CardSimParameters, Parameters
 
 
 def schedule_to_str(schedule: Schedule):

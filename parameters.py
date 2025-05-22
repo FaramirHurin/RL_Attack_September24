@@ -13,7 +13,7 @@ from marlenv.utils import Schedule
 
 from agents import Agent
 from cardsim import Cardsim
-from environment import SimpleCardSimEnv
+from environment import SimpleCardSimEnv, PooledCardSimEnv
 
 
 @dataclass(eq=True)
@@ -82,7 +82,7 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
+    def get_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
         from agents.rl.ppo import PPO
@@ -113,7 +113,7 @@ class VAEParameters:
     quantile: float = 0.99
     supervised: bool = False
 
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device, know_client: bool, quantile: float):
+    def get_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
         return VaeAgent(
@@ -143,6 +143,7 @@ class Parameters:
     seed_value: int
     use_anomaly: bool
     n_days_training: int
+    card_pool_size: int
     avg_card_block_delay_days: int
     quantiles_anomaly: list[float]
     rules: dict[str, float]
@@ -158,6 +159,7 @@ class Parameters:
         seed_value: Optional[int] = None,
         use_anomaly: bool = True,
         n_days_training: int = 30,
+        card_pool_size: int = 10,
         avg_card_block_delay_days: int = 7,
         quantiles_anomaly: list[float] = [0.01, 0.99],
         rules: dict[str, float] = {
@@ -181,6 +183,7 @@ class Parameters:
         self.avg_card_block_delay_days = avg_card_block_delay_days
         self.quantiles_anomaly = quantiles_anomaly
         self.rules = rules
+        self.card_pool_size = card_pool_size
         if logdir is None:
             logdir = self.default_logdir()
         self.logdir = logdir
@@ -195,7 +198,7 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv, device: Optional[torch.device] = None) -> Agent:
+    def create_agent(self, env: SimpleCardSimEnv | PooledCardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
         if device is None:
             device = self.get_device_by_seed()
@@ -219,6 +222,26 @@ class Parameters:
 
         banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
         env = SimpleCardSimEnv(
+            banksys,
+            timedelta(days=self.avg_card_block_delay_days),
+            customer_location_is_known=self.know_client,
+            normalize_location=self.agent_name in ("ppo", "rppo"),
+        )
+        env.seed(self.seed_value)
+        return env
+
+    def create_pooled_env(self):
+        from banksys import Banksys
+
+        try:
+            banksys = Banksys.load(self.cardsim, self.banksys_dir)
+        except (FileNotFoundError, ValueError):
+            print("Banksys not found, creating a new one")
+            banksys = self.create_banksys()
+            banksys.save(self.cardsim)
+
+        banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
+        env = PooledCardSimEnv(
             banksys,
             timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,

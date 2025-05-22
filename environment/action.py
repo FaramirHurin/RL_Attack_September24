@@ -1,6 +1,7 @@
 from dataclasses import dataclass, astuple
 import numpy as np
 from datetime import timedelta
+from banksys import Card
 import random
 
 
@@ -39,7 +40,7 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        is_online, amount, terminal_x, terminal_y,  delay_days, delay_hours = array.flatten()
+        is_online, amount, terminal_x, terminal_y, delay_days, delay_hours = array.flatten()
         is_online = is_online > 0.5
         to_return = Action(
             amount=np.round(float(amount), 2),
@@ -53,3 +54,36 @@ class Action:
 
     def to_numpy(self):
         return np.array(astuple(self), dtype=np.float32)
+
+
+class PooledAction(Action):
+    def __init__(
+        self,
+        amount: float,
+        terminal_x: float,
+        terminal_y: float,
+        is_online: bool,
+        delay_days: int,
+        delay_hours: float,
+        card: Card,
+    ):
+        super().__init__(amount, terminal_x, terminal_y, is_online, delay_days, delay_hours)
+        self.card = card
+
+    @staticmethod
+    def from_numpy(array: np.ndarray, card: Card):
+        """Convert a numpy array to a PooledAction object."""
+        action = Action.from_numpy(array)
+        return PooledAction.from_action(action, card)
+
+    @staticmethod
+    def from_action(action: Action, card: Card):
+        return PooledAction(
+            action.amount,
+            action.terminal_x,
+            action.terminal_y,
+            action.is_online,
+            action.delay_days,
+            action.delay_hours,
+            card,
+        )

@@ -32,27 +32,19 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
 
 
 class ActorCritic(torch.nn.Module, ABC):
-    def reset(self):
-        """
-        Reset at the end of an episode.
-        """
+    @abstractmethod
+    def policy(
+        self,
+        states: torch.Tensor,
+        hx: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.distributions.Distribution, Optional[torch.Tensor]]: ...
 
     @abstractmethod
-    def policy(self, states: torch.Tensor) -> torch.distributions.Distribution: ...
-    @abstractmethod
-    def value(self, states: torch.Tensor) -> torch.Tensor: ...
-
-    def batch_policy(self, states: torch.Tensor):
-        return self.policy(states)
-
-    def batch_value(self, states: torch.Tensor):
-        return self.value(states)
-
-    def save_hidden_states(self):
-        pass
-
-    def restore_hidden_states(self):
-        pass
+    def value(
+        self,
+        states: torch.Tensor,
+        hx: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]: ...
 
     @abstractmethod
     def actor_parameters(self) -> list[torch.nn.Parameter]: ...
@@ -120,13 +112,13 @@ class LinearActorCritic(ActorCritic):
     def critic_parameters(self):
         return list(self.critic.parameters())
 
-    def policy(self, state: torch.Tensor):
+    def policy(self, state: torch.Tensor, *args, **kwargs):
         dist = self._action_distribution(state)
-        return dist
+        return dist, None
 
-    def value(self, state: torch.Tensor) -> torch.Tensor:
+    def value(self, state: torch.Tensor, *args, **kwargs):
         value = self.critic.forward(state)
-        return value.squeeze(-1)
+        return torch.squeeze(value, -1), None
 
     def to(self, device: torch.device):
         self.device = device
@@ -143,11 +135,11 @@ class RNN(torch.nn.Module):
         self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=True)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
-    def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor]) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)
-        return x, hidden_states  # type: ignore[return-value]
+        return x, hidden_states
 
 
 class RecurrentActorCritic(ActorCritic):
@@ -183,9 +175,7 @@ class RecurrentActorCritic(ActorCritic):
 
         means = means.reshape(*dims, self.n_actions)
         normalized_cov_mat = normalized_cov_mat.reshape(*dims, self.n_actions, self.n_actions)
-        # print(torch.linalg.eigvals(cov_mat))
         dist = distributions.MultivariateNormal(means, normalized_cov_mat)
-        # dist = distributions.Normal(means, std)
         return dist, hidden_states
 
     def save_hidden_states(self):
@@ -198,13 +188,13 @@ class RecurrentActorCritic(ActorCritic):
         self.hidden_states_actor = None
         self.hidden_states_critic = None
 
-    def policy(self, state: torch.Tensor):
-        dist, self.hidden_states_actor = self._action_distribution(state, self.hidden_states_actor)
-        return dist
+    def policy(self, state: torch.Tensor, hx: Optional[torch.Tensor] = None):
+        dist, hx = self._action_distribution(state, hx)
+        return dist, hx
 
-    def value(self, state: torch.Tensor):
-        value, self.hidden_states_critic = self.critic.forward(state, self.hidden_states_critic)
-        return value.squeeze(-1)
+    def value(self, state: torch.Tensor, hx: Optional[torch.Tensor] = None):
+        value, hx = self.critic.forward(state, hx)
+        return value.squeeze(-1), hx
 
     def to(self, device: torch.device):
         self.device = device
@@ -217,13 +207,3 @@ class RecurrentActorCritic(ActorCritic):
 
     def critic_parameters(self):
         return list(self.critic.parameters())
-
-
-class FalseRecurrentActorCritic(LinearActorCritic):
-    def policy(self, state: torch.Tensor, hx=None):
-        dist = self._action_distribution(state)
-        return dist, None
-
-    def value(self, state: torch.Tensor, hx=None):
-        value = self.critic.forward(state)
-        return value.squeeze(-1), hx

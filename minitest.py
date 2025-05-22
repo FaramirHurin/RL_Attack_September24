@@ -50,7 +50,7 @@ def train(env: SimpleCardSimEnv, agent: Agent, n_episodes: int):
                     terminals.append(trx.terminal_id)
                     transactions.append(trx)
                 t = Transition.from_step(obs, state, action, step)
-                agent.update(t, step_num)
+                agent.update_transition(t, step_num)
                 episode.add(t)
                 obs, state = step.obs, step.state
             episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})

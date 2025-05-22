@@ -50,10 +50,13 @@ class Banksys:
         training_start = self.registry[0].timestamp + aggregation_duration
         training_end = training_start + training_duration
 
+        self.attack_start = training_end
+        self.attack_end = self.registry[-1].timestamp
+        assert self.attack_start < self.attack_end, "The duration of the simulation is too short to allow for an attack"
+
         self._warmup(self.registry.get_before(training_start))
         self._train(self.registry.get_between(training_start, training_end))
         self._simulate(self.registry.get_after(training_end))
-        self.attack_start = training_end
 
     def _warmup(self, transactions: list[Transaction]):
         logging.info("Warming up the system for aggregation")

@@ -1,7 +1,7 @@
 from typing import Literal, Optional
 import numpy as np
 import torch
-from marlenv import Transition
+from marlenv import Transition, Episode
 from marlenv.utils import Schedule
 
 from agents import Agent
@@ -51,7 +51,7 @@ class PPO(Agent):
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
         self.minibatch_size = minibatch_size
-        self._memory = memory
+        self.memory = memory
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
@@ -73,18 +73,18 @@ class PPO(Agent):
         ]
         return params, all_parameters
 
-    def choose_action(self, observation: np.ndarray):
+    def choose_action(self, observation: np.ndarray, hx: torch.Tensor | None):
         with torch.no_grad():
             obs_data = torch.from_numpy(observation).unsqueeze(0).to(self.device, non_blocking=True)
-            distribution = self.actor_critic.policy(obs_data)
+            distribution, hx = self.actor_critic.policy(obs_data, hx)
         np_action = distribution.sample().squeeze(0).numpy(force=True)
-        return np_action
+        return np_action, hx
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
-        policy = self.actor_critic.policy(batch.obs)
+        policy, _ = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions) * batch.masks
-        all_values = self.actor_critic.value(batch.all_obs)
+        all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
         advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda)
@@ -92,14 +92,12 @@ class PPO(Agent):
         return returns, advantages, log_probs
 
     def train(self, batch: Batch, step: int):
-        self.actor_critic.save_hidden_states()
         self.c1.update(step)
         self.c2.update(step)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
 
         for _ in range(self.n_epochs):
-            self.actor_critic.reset()
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
             match batch:
@@ -109,14 +107,14 @@ class PPO(Agent):
                     mini_log_probs, mini_returns, mini_advantages = log_probs[:, indices], returns[:, indices], advantages[:, indices]
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
-            mini_values = self.actor_critic.value(minibatch.obs)
+            mini_values, _ = self.actor_critic.value(minibatch.obs)
             mini_values = mini_values * minibatch.masks
             td_error = mini_values - mini_returns
             critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
-            mini_policy = self.actor_critic.policy(minibatch.obs)
+            mini_policy, _ = self.actor_critic.policy(minibatch.obs)
             new_log_probs = mini_policy.log_prob(minibatch.actions)
 
             ratios = torch.exp(new_log_probs - mini_log_probs)
@@ -135,16 +133,22 @@ class PPO(Agent):
             loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
             loss.backward()
             self.optimizer.step()
-        self.actor_critic.restore_hidden_states()
 
-    def update(self, t: Transition, step: int):
-        self._memory.add(t)
-        if t.is_terminal:
-            self.actor_critic.reset()
-        if self._memory.is_full:
-            batch = self._memory.as_batch(self.device)
-            self.train(batch, step)
-            self._memory.clear()
+    def update_transition(self, t: Transition, step: int):
+        if self.memory.update_on_transitions:
+            self.memory.add(t)
+            if self.memory.is_full:
+                batch = self.memory.as_batch(self.device)
+                self.train(batch, step)
+                self.memory.clear()
+
+    def update_episode(self, episode: Episode, step_num: int, episode_num: int):
+        if self.memory.update_on_episodes:
+            self.memory.add(episode)
+            if self.memory.is_full:
+                batch = self.memory.as_batch(self.device)
+                self.train(batch, step_num)
+                self.memory.clear()
 
     @property
     def networks(self):

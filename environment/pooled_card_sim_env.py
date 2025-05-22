@@ -1,37 +1,31 @@
+import logging
 import random
 from copy import deepcopy
 from datetime import timedelta
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
-from banksys import Transaction
+from banksys import Card, Transaction
 
 from .action import Action
 from .card_registry import CardRegistry
+from .priority_queue import PriorityQueue
 
 if TYPE_CHECKING:
     from banksys import Banksys
 
 
-class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
+class PooledCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
         system: "Banksys",
         avg_card_block_delay: timedelta = timedelta(days=7),
-        card_registry: Optional[CardRegistry] = None,
         *,
         customer_location_is_known: bool = False,
         normalize_location: bool = False,
     ):
-        """
-        Args:
-            system: The Banksys object to be used for the simulation.
-            card_block_delay: The average time delay before a card can be blocked.
-            n_parallel: The number of parallel transactions to be processed.
-            customer_location_is_known: Whether the customer's location is known.
-        """
         self.normalize_location = normalize_location
         if customer_location_is_known:
             obs_shape = (6,)
@@ -51,67 +45,75 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
         self.system = system
         self.t = system.attack_start
         self.t_start = deepcopy(system.attack_start)
-        if card_registry is None:
-            card_registry = CardRegistry(system.cards, avg_card_block_delay)
-        self.card_registry = card_registry
+        self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
-        self.current_card = self.card_registry.release_card(self.t)
-        self.transactions = list[Transaction]()
+        self.action_buffer = PriorityQueue[tuple[Card, np.ndarray]]()
+        logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
-        # self.system.rollback(self.transactions)
-        # self.transactions = []
-        # self.t = deepcopy(self.t_start)
-        self.current_card = self.card_registry.release_card(self.t)
-        obs = self.get_observation()
-        state = self.get_state()
-        return obs, state
+        self.t = deepcopy(self.t_start)
 
-    def get_observation(self):
-        state = self.compute_state()
+    def spawn_card(self):
+        card = self.card_registry.release_card(self.t)
+        state = self.compute_state(card)
+        return card, Observation(state, self.available_actions()), State(state)
+
+    def buffer_action(self, np_action: np.ndarray, card: Card):
+        action = Action.from_numpy(np_action)
+        execution_time = self.t + action.timedelta
+        self.action_buffer.push((card, np_action), execution_time)
+
+    def get_observation(self, card: Card):
+        state = self.compute_state(card)
         return Observation(state, self.available_actions())
 
-    def get_state(self):
-        state = self.compute_state()
+    def get_state(self, card: Card):
+        state = self.compute_state(card)
         return State(state)
 
     @property
     def observation_size(self):
         return self.observation_shape[0]
 
-    def compute_state(self):
-        time_ratio = self.card_registry.get_time_ratio(self.current_card, self.t)
-        features = [time_ratio, self.current_card.is_credit, self.t.hour, self.t.day]
+    def compute_state(self, card: Card):
+        time_ratio = self.card_registry.get_time_ratio(card, self.t)
+        features = [time_ratio, card.is_credit, self.t.hour, self.t.day]
         if self.customer_location_is_known:
-            x, y = self.current_card.customer_x, self.current_card.customer_y
+            x, y = card.customer_x, card.customer_y
             if self.normalize_location:
                 x, y = x / 200, y / 200
             features += [x, y]
         return np.array(features, dtype=np.float32)
 
-    def step(self, np_action: np.ndarray):
+    def step(self):
+        """
+        Performs the next action in the queue.
+        """
+        t, (card, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
+        assert t >= self.t, "Actions can not be executed in the past"
+        assert t <= self.system.attack_end, (
+            f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()}) "
+        )
+        self.t = t
         if self.normalize_location:
             action.terminal_x *= 200
             action.terminal_y *= 200
-        self.t += action.timedelta
-        if self.card_registry.has_expired(self.current_card, self.t):
-            self.card_registry.clear(self.current_card)
+        if self.card_registry.has_expired(card, self.t):
+            self.card_registry.clear(card)
             done = True
             reward = 0.0
-            trx = None
         else:
-            terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
-            trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
+            terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
+            trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
             fraud_is_detected = self.system.process_transaction(trx)
-            self.transactions.append(trx)
             if fraud_is_detected:
                 reward = 0.0
             else:
                 reward = action.amount
             done = fraud_is_detected
-        state = self.compute_state()
-        return Step(Observation(state, self.available_actions()), State(state), reward, done), trx
+        state = self.compute_state(card)
+        return card, Step(Observation(state, self.available_actions()), State(state), reward, done)
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

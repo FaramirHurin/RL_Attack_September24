@@ -10,5 +10,5 @@ class SimpleGenetic(Agent):
     def choose_action(self, state: np.ndarray) -> np.ndarray:
         return super().choose_action(state)
 
-    def update(self, t: Transition):
+    def update_transition(self, t: Transition):
         return
