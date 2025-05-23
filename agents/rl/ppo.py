@@ -91,10 +91,10 @@ class PPO(Agent):
         returns = advantages + values
         return returns, advantages, log_probs
 
-    def train(self, batch: Batch, step: int):
+    def train(self, batch: Batch, step_num: int, episode_num: int):
         batch.normalize_rewards()
-        self.c1.update(step)
-        self.c2.update(step)
+        self.c1.update(episode_num)
+        self.c2.update(episode_num)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
 
@@ -135,12 +135,12 @@ class PPO(Agent):
             loss.backward()
             self.optimizer.step()
 
-    def update_transition(self, t: Transition, step: int):
+    def update_transition(self, t: Transition, step: int, episode_num: int):
         if self.memory.update_on_transitions:
             self.memory.add(t)
             if self.memory.is_full:
                 batch = self.memory.as_batch(self.device)
-                self.train(batch, step)
+                self.train(batch, step, episode_num)
                 self.memory.clear()
 
     def update_episode(self, episode: Episode, step_num: int, episode_num: int):
@@ -148,7 +148,7 @@ class PPO(Agent):
             self.memory.add(episode)
             if self.memory.is_full:
                 batch = self.memory.as_batch(self.device)
-                self.train(batch, step_num)
+                self.train(batch, step_num, episode_num)
                 self.memory.clear()
 
     @property

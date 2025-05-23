@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
+from typing import Any, Optional
+import logging
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -9,33 +11,41 @@ import os
 import orjson
 from marlenv import Episode
 
+
 from banksys import Transaction
 from environment import Action
 
 
 @dataclass
 class LogItem:
-    episode: Episode
+    t_start: datetime
+    t_end: datetime
+    # terminal_ids: list[int]
+    n_transactions: int
+    card_id: int
+    amount_stolen: float
+    raw_data: dict
+
+    @staticmethod
+    def from_json(data: dict[str, Any]):
+        metrics = data["metrics"]
+        t_start = datetime.fromisoformat(metrics["t_start"])
+        try:
+            t_end = datetime.fromisoformat(metrics["t_end"])
+        except KeyError:
+            t_end = t_start
+        # terminal_ids = metrics["terminals"]
+        card_id = metrics["card_id"]
+        n_transactions = metrics["episode_len"]
+        amount_stolen = metrics["score-0"]
+        return LogItem(t_start, t_end, n_transactions, card_id, amount_stolen, data)
 
     @cached_property
-    def t_start(self):
-        return datetime.fromisoformat(self.episode.metrics["t_start"])
-
-    @cached_property
-    def t_end(self):
-        return datetime.fromisoformat(self.episode.metrics["t_end"])
-
-    @cached_property
-    def terminal_ids(self) -> list[int]:
-        return self.episode.metrics["terminals"]
-
-    @cached_property
-    def card_id(self) -> int:
-        return self.episode.metrics["card_id"]
-
-    @property
-    def n_transactions(self):
-        return len(self.terminal_ids)
+    def episode(self):
+        for key, value in self.raw_data.items():
+            if isinstance(value, list):
+                self.raw_data[key] = [np.array(items) for items in value]
+        return Episode(**self.raw_data)
 
     @cached_property
     def transactions(self):
@@ -44,33 +54,28 @@ class LogItem:
         for i, transition in enumerate(self.episode.transitions()):
             action = Action.from_numpy(transition.action)
             t = t + action.timedelta
-            res.append(Transaction(action.amount, t, self.terminal_ids[i], self.card_id, action.is_online, True, predicted_label=False))
+            res.append(Transaction(action.amount, t, 0, self.card_id, action.is_online, True, predicted_label=False))
         res[-1].predicted_label = True
         return res
 
-    @cached_property
-    def amount_stolen(self):
-        return self.episode.score[0]
-
 
 @dataclass
-class Logs:
+class Run:
     items: list[LogItem]
+    params: dict[str, Any]
 
     @staticmethod
-    def from_file(file_path: str):
-        with open(file_path, "rb") as f:
+    def from_directory(directory: str, params: Optional[dict[str, Any]] = None):
+        if params is None:
+            params_path = os.path.join(directory, "params.json")
+            with open(params_path) as f:
+                params = orjson.loads(f.read())
+        episodes_path = os.path.join(directory, "episodes.json")
+        with open(episodes_path, "rb") as f:
             episodes = orjson.loads(f.read())
-        logs = list[LogItem]()
-        for e_dict in episodes[:4000]:
-            assert isinstance(e_dict, dict)
-            # e_dict.pop("score", None)
-            for key, value in e_dict.items():
-                if isinstance(value, list):
-                    e_dict[key] = [np.array(items) for items in value]
-            e_dict = Episode(**e_dict)
-            logs.append(LogItem(e_dict))
-        return Logs(logs)
+        logs = [LogItem.from_json(data) for data in episodes]
+        assert params is not None
+        return Run(logs, params)
 
     @cached_property
     def total_amount(self) -> float:
@@ -90,32 +95,47 @@ class Logs:
 
 @dataclass
 class Experiment:
-    logs: dict[str, Logs]
+    runs: dict[str, Run]
+    params: dict[str, Any]
+
+    @property
+    def n_runs(self):
+        return len(self.runs)
+
+    def __init__(self, logs, params):
+        self.runs = logs
+        self.params = params
 
     @staticmethod
     def from_directory(directory: str):
-        results = dict[str, Logs]()
+        with open(os.path.join(directory, "params.json")) as f:
+            params = orjson.loads(f.read())
+        results = dict[str, Run]()
         for entry in os.listdir(directory):
             if not entry.startswith("seed-"):
                 continue
-            episodes_path = os.path.join(directory, entry, "episodes.json")
+            run_dir = os.path.join(directory, entry)
             try:
-                results[entry] = Logs.from_file(episodes_path)
+                results[entry] = Run.from_directory(run_dir, params)
             except FileNotFoundError:
                 pass
-        print(f"Loaded {len(results)} logs from {directory}")
-        return Experiment(results)
+        logging.debug(f"Loaded {len(results)} logs from {directory}")
+        return Experiment(results, params)
 
     @cached_property
     def n_transactions_over_time(self):
-        return np.array([e.n_transactions_over_time for e in self.logs.values()])
+        return np.array([e.n_transactions_over_time for e in self.runs.values()])
 
     @cached_property
     def amounts_over_time(self):
-        return np.array([e.amount_over_time for e in self.logs.values()])
+        return np.array([run.amount_over_time for run in self.runs.values()])
+
+    @cached_property
+    def total_amount(self):
+        return sum(run.total_amount for run in self.runs.values())
 
     def __iter__(self):
-        return iter(self.logs.values())
+        return iter(self.runs.values())
 
 
 def plot_transactions(transactions: list[Transaction]):

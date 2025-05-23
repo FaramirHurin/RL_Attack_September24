@@ -2,7 +2,7 @@ import heapq
 from datetime import datetime
 from typing import TypeVar, Generic
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class PriorityQueue(Generic[T]):
@@ -15,7 +15,7 @@ class PriorityQueue(Generic[T]):
     def clear(self):
         self.elements.clear()
 
-    def push(self, item: T, priority: datetime):
+    def push(self, item: T, priority):
         heapq.heappush(self.elements, (priority, item))
 
     def pop(self):

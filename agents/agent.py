@@ -13,7 +13,7 @@ class Agent(ABC):
         """
 
     @abstractmethod
-    def update_transition(self, t: Transition, step: int):
+    def update_transition(self, t: Transition, step: int, episode_num: int):
         """
         Update the agent's policy based on the transition.
         """

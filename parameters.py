@@ -4,7 +4,7 @@ from datetime import timedelta, datetime
 import os
 import orjson
 import shutil
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 import logging
 
 import numpy as np

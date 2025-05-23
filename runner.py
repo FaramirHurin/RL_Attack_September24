@@ -15,7 +15,7 @@ import dotenv
 
 dotenv.load_dotenv()  # Load the "private" .env file
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def save_episodes(episodes: list[Episode], directory: str):
@@ -83,7 +83,7 @@ class PoolRunner:
             card, step = self.env.step()
 
             transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
-            self.agent.update_transition(transition, step_num)
+            self.agent.update_transition(transition, step_num, episode_num)
 
             current_episode = self.episodes[card]
             current_episode.add(transition)
@@ -125,7 +125,7 @@ def run(params: Parameters):
                 terminals.append(trx.terminal_id)
                 transactions.append(trx)
             t = Transition.from_step(obs, state, action, step)
-            agent.update_transition(t, step_num)
+            agent.update_transition(t, step_num, episode_num)
             episode.add(t)
             obs, state = step.obs, step.state
         episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})
@@ -150,9 +150,15 @@ def truc(params: Parameters):
 
 def main():
     params = Parameters(
-        agent=PPOParameters(is_recurrent=True, train_on="episode", n_epochs=20, minibatch_size=16, train_interval=32),
+        agent=PPOParameters(
+            is_recurrent=True,
+            train_on="episode",
+            n_epochs=20,
+            minibatch_size=16,
+            train_interval=32,
+        ),
         # agent=VAEParameters(),
-        cardsim=CardSimParameters(n_days=365),
+        cardsim=CardSimParameters(n_days=365, n_payers=10_000),
         logdir="logs/rppo",
         card_pool_size=50,
         terminal_fract=1.0,
@@ -161,6 +167,10 @@ def main():
     )
     # run(params)
 
+    # params.create_banksys()
+    # exit()
+    # truc(params)
+    # exit()
     pool = mp.Pool(5)
     pool.map(truc, params.repeat(10))
     sleep(1)

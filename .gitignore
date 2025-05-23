@@ -15,3 +15,4 @@ cache
 
 logs/*
 .env
+logs.txt
