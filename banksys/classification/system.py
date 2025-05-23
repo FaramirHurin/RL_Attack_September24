@@ -4,11 +4,11 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from imblearn.ensemble import BalancedRandomForestClassifier
-from sklearn.svm import OneClassSVM
 from ..transaction import Transaction
 import logging
 from .rule_based import RuleBasedClassifier, rules_dict
 from .statistical import StatisticalClassifier
+from sklearn.ensemble import IsolationForest
 
 # Import isolation forest
 from typing import TYPE_CHECKING
@@ -21,7 +21,7 @@ class ClassificationSystem:
     ml_classifier: RandomForestClassifier
     rule_classifier: RuleBasedClassifier
     statistical_classifier: StatisticalClassifier
-    anomaly_detection_classifier: OneClassSVM
+    anomaly_detection_classifier: IsolationForest
     banksys: "Banksys"
     use_anomaly: bool
 
@@ -30,11 +30,14 @@ class ClassificationSystem:
         features_for_quantiles: list[str],
         quantiles: list[float],
         banksys: "Banksys",
+        contamination: float,
+        balance_factor: float,
         use_anomaly: bool = True,
+
     ):
-        self.ml_classifier = BalancedRandomForestClassifier(n_jobs=1, sampling_strategy=0.2)  # type: ignore[assignment]
+        self.ml_classifier = BalancedRandomForestClassifier(n_jobs=1, sampling_strategy=balance_factor)  # type: ignore[assignment]
         self.banksys = banksys
-        self.anomaly_detection_classifier = OneClassSVM(nu=0.005)
+        self.anomaly_detection_classifier = IsolationForest(contamination=contamination)
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
         self.rule_classifier = RuleBasedClassifier([], self.banksys, {})
         self.use_anomaly = use_anomaly

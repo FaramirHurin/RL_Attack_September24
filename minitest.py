@@ -11,7 +11,7 @@ from agents import Agent
 
 from banksys import Banksys, Transaction
 from environment import SimpleCardSimEnv
-from parameters import CardSimParameters, Parameters, PPOParameters, RPPOParameters, VAEParameters
+from parameters import CardSimParameters, Parameters, PPOParameters, VAEParameters
 
 dotenv.load_dotenv()  # Load the "private" .env file
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -91,13 +91,14 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
                 option=orjson.OPT_SERIALIZE_NUMPY,
             )
         )
+    DEBUG=0
 
 
 def main():
-    # agent_params = PPOParameters()
-    agent_params = RPPOParameters()
+    agent_params = PPOParameters()
+    #agent_params = RPPOParameters()
     # agent_params = VAEParameters()
-    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000))
+    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000, contamination=0.05))
     env = params.create_env()
     agent = params.create_agent(env)
     # Sanitize the timestamp
