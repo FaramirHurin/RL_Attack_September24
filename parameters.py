@@ -82,6 +82,15 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
+    @staticmethod
+    def from_json(data: dict[str, Any]):
+        """
+        Create PPOParameters from a JSON-like dictionary.
+        """
+        data["critic_c1"] = schedule_from_json(data["critic_c1"])
+        data["entropy_c2"] = Schedule.constant(data["entropy_c2"])
+        return PPOParameters(**data)
+
     def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
@@ -148,6 +157,7 @@ class Parameters:
     quantiles_anomaly: list[float]
     rules: dict[str, float]
     logdir: str
+    agent_name: Literal["ppo", "rppo", "vae"]
 
     def __init__(
         self,
@@ -187,6 +197,16 @@ class Parameters:
         if logdir is None:
             logdir = self.default_logdir()
         self.logdir = logdir
+        match self.agent:
+            case PPOParameters():
+                if self.agent.is_recurrent:
+                    self.agent_name = "rppo"
+                else:
+                    self.agent_name = "ppo"
+            case VAEParameters():
+                self.agent_name = "vae"
+            case _:
+                raise ValueError("Unknown agent type")
         if save:
             self.save()
 
@@ -297,18 +317,6 @@ class Parameters:
         with open(file_path, "wb") as f:
             f.write(orjson.dumps(self))
 
-    @property
-    def agent_name(self):
-        match self.agent:
-            case PPOParameters():
-                if self.agent.is_recurrent:
-                    return "rppo"
-                return "ppo"
-            case VAEParameters():
-                return "vae"
-            case _:
-                raise ValueError("Unknown agent type")
-
     def default_logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")
         return os.path.join("logs", self.agent_name, timestamp)
@@ -321,3 +329,29 @@ class Parameters:
             logdir = os.path.join(self.logdir, f"seed-{self.seed_value + i}")
             os.makedirs(logdir, exist_ok=True)
             yield replace(self, seed_value=self.seed_value + i, save=False, logdir=logdir)
+
+    @staticmethod
+    def load(filename: str):
+        with open(filename, "rb") as f:
+            data = orjson.loads(f.read())
+        assert isinstance(data, dict), "Parameters should be a dictionary"
+        match data["agent_name"]:
+            case "ppo" | "rppo":
+                data["agent"] = PPOParameters.from_json(data["agent"])
+            case "vae":
+                data["agent"] = VAEParameters(**data["agent"])
+            case _:
+                raise ValueError(f"Unknown agent type: {data['agent_name']}")
+        return Parameters(**data)
+
+
+def schedule_from_json(data: dict[str, Any]):
+    """Create a Schedule from a JSON-like dictionary."""
+    classname = data["name"]
+    if classname == "LinearSchedule":
+        return Schedule.linear(data["start_value"], data["end_value"], data["n_steps"])
+    elif classname == "ExpSchedule":
+        return Schedule.exp(data["start_value"], data["end_value"], data["n_steps"])
+    elif classname == "ConstantSchedule":
+        return Schedule.constant(data["value"])
+    raise NotImplementedError(f"Unsupported deserialization for schedule type: {classname}")

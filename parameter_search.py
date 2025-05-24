@@ -15,13 +15,14 @@ def experiment(params: Parameters):
         episodes = runner.run()
         save_episodes(episodes, params.logdir)
         del runner
+        del episodes
     except Exception as e:
         logging.error(f"Error occurred while running experiment: {e}")
 
 
 def parameter_search():
-    types = list[tuple[Literal["episode", "transition"], bool]]([("episode", True), ("episode", False), ("transition", False)])
-    for train_on, is_recurrent in types:
+    ppo_types = list[tuple[Literal["episode", "transition"], bool]]([("episode", True), ("episode", False), ("transition", False)])
+    for train_on, is_recurrent in ppo_types:
         for c1 in [0.5, 0.1, 0.3]:
             for c2 in [
                 Schedule.constant(0.01),
