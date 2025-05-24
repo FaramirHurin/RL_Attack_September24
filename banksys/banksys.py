@@ -38,11 +38,12 @@ class Banksys:
         feature_names: list[str],
         quantiles: list[float],
         contamination: float,
+        trees:int,
         balance_factor: float,
         attackable_terminal_factor: float = 1.0,
     ):
         self.clf = ClassificationSystem(banksys=self, features_for_quantiles=feature_names,
-                                        contamination=contamination, balance_factor=balance_factor, quantiles=quantiles)
+                                       trees=trees, contamination=contamination, balance_factor=balance_factor, quantiles=quantiles)
         self.cards = cards
         self.terminals = terminals
         self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
