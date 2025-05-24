@@ -14,5 +14,6 @@ uv.lock
 cache
 
 logs/*
+logs-1/*
 .env
 logs.txt

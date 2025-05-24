@@ -50,7 +50,7 @@ def parameter_search():
                             card_pool_size=50,
                             save=False,
                         )
-                        for p in params.repeat(16):
+                        for p in params.repeat(8):
                             yield p
 
 

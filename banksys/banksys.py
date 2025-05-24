@@ -28,6 +28,12 @@ class Banksys:
     terminals: list[Terminal]
     cards: list[Card]
     feature_names: list[str]
+    training_start: datetime
+    training_end: datetime
+    train_X: pd.DataFrame
+    train_y: np.ndarray
+    test_X: pd.DataFrame
+    test_y: np.ndarray
 
     def __init__(
         self,
@@ -37,9 +43,19 @@ class Banksys:
         transactions: list[Transaction],
         feature_names: list[str],
         quantiles: list[float],
+        contamination: float,
+        trees: int,
+        balance_factor: float,
         attackable_terminal_factor: float = 1.0,
     ):
-        self.clf = ClassificationSystem(banksys=self, features_for_quantiles=feature_names, quantiles=quantiles)
+        self.clf = ClassificationSystem(
+            banksys=self,
+            features_for_quantiles=feature_names,
+            trees=trees,
+            contamination=contamination,
+            balance_factor=balance_factor,
+            quantiles=quantiles,
+        )
         self.cards = cards
         self.terminals = terminals
         self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
@@ -74,6 +90,8 @@ class Banksys:
             labels.append(t.is_fraud)
         df = pd.DataFrame(rows, columns=self.feature_names)
         labels = np.array(labels, dtype=np.bool)
+        self.train_X = df
+        self.train_y = labels
         self.clf.fit(df, labels)
 
     def _simulate(self, transactions: list[Transaction]):
@@ -161,7 +179,7 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def test(self, transactions: list[Transaction]):
+    def test(self, transactions: list[Transaction], predicted_labels: bool = True):
         """
         Compute the confusion matrix for the given transactions.
         """
@@ -173,5 +191,10 @@ class Banksys:
         features = np.array(features)
         labels = np.array(labels)
         df = pd.DataFrame(features, columns=self.feature_names)
-        predicted_labels = self.clf.predict(df)
-        return predicted_labels, labels
+        self.test_X = df
+        self.test_y = labels
+        if predicted_labels:
+            predicted_labels = self.clf.predict(df)
+            return predicted_labels, labels
+        else:
+            return

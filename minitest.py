@@ -8,11 +8,13 @@ import orjson
 from marlenv import Episode, Transition
 from tqdm import tqdm
 from agents import Agent
-
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from banksys import Banksys, Transaction
 from environment import SimpleCardSimEnv
-from parameters import CardSimParameters, Parameters, PPOParameters, RPPOParameters, VAEParameters
-
+from parameters import CardSimParameters, Parameters, PPOParameters, VAEParameters
+from banksys.classification.system import ClassificationSystem
+from banksys.banksys import Banksys
+from banksys.classification.rule_based import rules_dict
 dotenv.load_dotenv()  # Load the "private" .env file
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -91,13 +93,14 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
                 option=orjson.OPT_SERIALIZE_NUMPY,
             )
         )
+    DEBUG=0
 
 
 def main():
-    # agent_params = PPOParameters()
-    agent_params = RPPOParameters()
+    agent_params = PPOParameters()
+    #agent_params = RPPOParameters()
     # agent_params = VAEParameters()
-    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000))
+    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000, contamination=0.05))
     env = params.create_env()
     agent = params.create_agent(env)
     # Sanitize the timestamp
@@ -106,9 +109,54 @@ def main():
     # Create the directory path
     directory = os.path.join("logs", f"{params.agent_name}_{safe_timestamp}")
     save_parameters(directory, params)
-    # test_and_save_metrics(env.system, directory)
-    train(env, agent, params.n_episodes)
+    test_and_save_metrics(env.system, directory)
+    #train(env, agent, params.n_episodes)
 
+
+def cross_validate_classifier():
+    # Load the Banksys system
+    banksys = Banksys.load()
+    banksys.test(predicted_labels=False)
+    # Define the parameters for the classification system
+    features_for_quantiles = ["amount"]
+    trees_candidates = [100, 200]
+    contamination_candidates = [0.005, 0.001]
+    balance_factor_candidates = [0.1, 0.05]
+    quantiles = [0.005, 0.995]
+
+    results_list = []
+
+    # Create a grid of parameters
+    for trees in trees_candidates:
+        for contamination in contamination_candidates:
+            for balance_factor in balance_factor_candidates:
+                # Create the classification system
+                clf = ClassificationSystem(features_for_quantiles, quantiles, banksys, trees, contamination, balance_factor)
+
+                # Fit the classifier
+                clf.fit(banksys.train_X, banksys.train_y)
+
+                # Make predictions on the test set
+                predictions = clf.predict(banksys.test_X)
+
+                # Calculate accuracy and F1 score
+                accuracy = np.mean(predictions == banksys.test_y)
+                f1 = f1_score(banksys.test_y, predictions)
+                recall = recall_score(banksys.test_y, predictions)
+                precision = precision_score(banksys.test_y, predictions)
+
+                results = {
+                    "trees": trees,
+                    "contamination": contamination,
+                    "balance_factor": balance_factor,
+                    "accuracy": accuracy,
+                    "f1_score": f1,
+                    "recall": recall,
+                    "precision": precision,
+                }
+                results_list.append(results)
+    print(results_list)
 
 if __name__ == "__main__":
-    main()
+    # main()
+    cross_validate_classifier()

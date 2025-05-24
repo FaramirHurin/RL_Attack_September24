@@ -21,6 +21,9 @@ class CardSimParameters:
     n_days: int = 50
     start_date: str = "2023-01-01"
     n_payers: int = 10_000
+    trees: int = 20
+    contamination: float = 0.005
+    balance_factor: float = 0.05
 
 
 @dataclass(eq=True)
@@ -119,7 +122,7 @@ class VAEParameters:
     trees: int = 20
     batch_size: int = 8
     num_epochs: int = 4000
-    quantile: float = 0.99
+    quantile: float = 0.95
     supervised: bool = False
 
     def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device, know_client: bool, quantile: float):
@@ -158,6 +161,10 @@ class Parameters:
     rules: dict[str, float]
     logdir: str
     agent_name: Literal["ppo", "rppo", "vae"]
+
+    trees: int
+    contamination: float
+    balance_factor: float
 
     def __init__(
         self,
@@ -293,6 +300,9 @@ class Parameters:
             training_duration=timedelta(days=self.n_days_training),
             transactions=transactions,
             feature_names=["amount"],
+            contamination=self.cardsim.contamination,
+            trees=self.cardsim.trees,
+            balance_factor=self.cardsim.balance_factor,
             quantiles=self.quantiles_anomaly,
             attackable_terminal_factor=self.terminal_fract,
         )

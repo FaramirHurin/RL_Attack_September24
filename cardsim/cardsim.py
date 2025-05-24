@@ -584,6 +584,8 @@ class Cardsim:
         df["debit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["debit_mean_fraud"], df["debit_sd"], mu=True)
         df["credit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["credit_mean_fraud"], df["credit_sd"], mu=True)
 
+        df["balance"] = ( df["debit_mean"] * df["mean_frequency"] ) * 60 # Average spending per month
+
         return df
 
     def generate_payee_profiles(self, payers: pd.DataFrame):
@@ -1140,8 +1142,8 @@ class Cardsim:
 
     def get_cards(self, payers: pd.DataFrame):
         cards = list[Card]()
-        for _, (payer_id, payer_x, payer_y) in payers[["payer_id", "payer_x", "payer_y"]].iterrows():
-            cards.append(Card(payer_id, False, payer_x, payer_y))
+        for _, (payer_id, payer_x, payer_y, balance) in payers[["payer_id", "payer_x", "payer_y", "balance"]].iterrows():
+            cards.append(Card(payer_id, False, payer_x, payer_y, balance))
         return cards
 
     def get_terminals(self, payees: pd.DataFrame):
