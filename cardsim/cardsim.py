@@ -584,7 +584,7 @@ class Cardsim:
         df["debit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["debit_mean_fraud"], df["debit_sd"], mu=True)
         df["credit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["credit_mean_fraud"], df["credit_sd"], mu=True)
 
-        df["balance"] = ( df["debit_mean"] * df["mean_frequency"] ) * 60 # Average spending per month
+        df["balance"] = (df["debit_mean"] * df["mean_frequency"]) * 60  # Average spending per month
 
         return df
 
@@ -1054,9 +1054,10 @@ class Cardsim:
         pd.DataFrame
             A data frame of payment transactions, features, and a fraud flag.
         """
-        cached_transactions = f"cache/transactions-{n_payers}-{n_days}-{start_date}.csv"
-        cached_payers = f"cache/payers-{n_payers}.csv"
-        cached_payees = f"cache/payees-{n_payers}.csv"
+        cache_dir = os.path.join("cache", "cardsim")
+        cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
+        cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
+        cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
         try:
             df = pl.read_csv(
                 cached_transactions,
@@ -1081,7 +1082,7 @@ class Cardsim:
             self.logger.info(f"Loaded transactions from {cached_transactions}")
         except FileNotFoundError:
             df, payers, payees = self.make_transactions_dataframe(n_payers, n_days, start_date)
-            os.makedirs("cache", exist_ok=True)
+            os.makedirs(cache_dir, exist_ok=True)
             df.to_csv(cached_transactions, index=False)
             payers.to_csv(cached_payers, index=False)
             payees.to_csv(cached_payees, index=False)

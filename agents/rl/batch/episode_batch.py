@@ -39,8 +39,6 @@ class EpisodeBatch(Batch):
                 pass
             case _:
                 raise ValueError(f"Invalid minibatch size {indices_or_size}")
-        if len(indices) == 0:
-            print()
         return EpisodeBatch([self.episodes[i] for i in indices], self.device, pad_episodes=False)
 
     def multi_objective(self):

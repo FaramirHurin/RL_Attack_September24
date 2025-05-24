@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from typing import overload
+from typing import overload, Sequence
 from ..transaction import Transaction
 
 
@@ -10,9 +10,9 @@ class StatisticalClassifier:
     Classifier that classifies outliers as frauds.
     """
 
-    def __init__(self, considered_features: list[str], quantiles: list[float]):
-        self.considered_features = considered_features
-        self.quantiles = quantiles
+    def __init__(self, considered_features: Sequence[str], quantiles: Sequence[float]):
+        self.considered_features = list(considered_features)
+        self.quantiles = list(quantiles)
         self.quantiles_df = None
 
     def fit(self, transactions_df: pd.DataFrame):

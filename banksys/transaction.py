@@ -50,8 +50,8 @@ class Transaction:
             dtype=np.float32,
         )
 
-    @property
-    def feature_names(self):
+    @staticmethod
+    def feature_names():
         return [
             "amount",
             "hour_ratio",

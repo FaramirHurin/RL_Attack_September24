@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 import multiprocessing as mp
 from banksys import Transaction, Card
-from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters
+from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
 import dotenv
 
 dotenv.load_dotenv()  # Load the "private" .env file
@@ -163,7 +163,7 @@ def main():
         card_pool_size=50,
         terminal_fract=1.0,
         seed_value=0,
-        rules={},
+        clf_params=ClassificationParameters(rules={}),
     )
     # run(params)
 
