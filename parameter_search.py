@@ -30,8 +30,8 @@ def parameter_search():
                 Schedule.linear(0.2, 0.001, 4_000),
                 Schedule.linear(0.5, 0.05, 4_000),
             ]:
-                for n_epochs in [16, 32, 64]:
-                    for train_interval in [32, 64, 128]:
+                for n_epochs in [16, 32, 64, 128]:
+                    for train_interval in [32, 64, 96, 128]:
                         params = Parameters(
                             PPOParameters(
                                 is_recurrent=is_recurrent,
@@ -45,18 +45,18 @@ def parameter_search():
                             use_anomaly=True,
                             seed_value=0,
                             rules={},
-                            cardsim=CardSimParameters(n_days=365 + 30 + 7, n_payers=10_000),
+                            cardsim=CardSimParameters(n_days=365 * 2 + 30 + 7, n_payers=20_000),
                             card_pool_size=50,
                             save=False,
                         )
-                        for p in params.repeat(10):
+                        for p in params.repeat(16):
                             yield p
 
 
 if __name__ == "__main__":
     from time import sleep
 
-    pool = mp.Pool(6)
+    pool = mp.Pool(16)
     next(parameter_search()).create_pooled_env()
     pool.map(experiment, parameter_search())
     sleep(1)

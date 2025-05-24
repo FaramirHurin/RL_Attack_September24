@@ -47,7 +47,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.t_start = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
-        self.action_buffer = PriorityQueue[tuple[Card, np.ndarray], datetime]()
+        self.action_buffer = PriorityQueue[tuple[Card, np.ndarray]]()
         logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
