@@ -21,10 +21,16 @@ class Card(OrderedTransactionsRegistry):
     aggregation_windows: tuple[timedelta, ...]
 
     def __init__(
-        self, id: int, is_credit: bool, x: float, y: float, balance:float, aggregation_windows: tuple[timedelta, ...] = (timedelta(1), timedelta(7))
+        self,
+        id: int,
+        is_credit: bool,
+        x: float,
+        y: float,
+        balance: float,
+        aggregation_windows: tuple[timedelta, ...] = (timedelta(1), timedelta(7)),
     ):
         self.id = int(id)
-        self.is_credit = int(is_credit)
+        self.is_credit = bool(is_credit)
         self.customer_x = int(x)
         self.customer_y = int(y)
         self.balance = balance

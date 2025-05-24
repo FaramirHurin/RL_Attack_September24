@@ -30,10 +30,10 @@ class Banksys:
     feature_names: list[str]
     training_start: datetime
     training_end: datetime
-    train_X: pd.DataFrame
-    train_y: np.ndarray
-    test_X: pd.DataFrame
-    test_y: np.ndarray
+    # train_X: pd.DataFrame
+    # train_y: np.ndarray
+    # test_X: pd.DataFrame
+    # test_y: np.ndarray
 
     def __init__(
         self,
@@ -90,8 +90,8 @@ class Banksys:
             labels.append(t.is_fraud)
         df = pd.DataFrame(rows, columns=self.feature_names)
         labels = np.array(labels, dtype=np.bool)
-        self.train_X = df
-        self.train_y = labels
+        # self.train_X = df
+        # self.train_y = labels
         self.clf.fit(df, labels)
 
     def _simulate(self, transactions: list[Transaction]):
@@ -179,7 +179,7 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def test(self, transactions: list[Transaction], predicted_labels: bool = True):
+    def test(self, transactions: list[Transaction]):
         """
         Compute the confusion matrix for the given transactions.
         """
@@ -191,10 +191,6 @@ class Banksys:
         features = np.array(features)
         labels = np.array(labels)
         df = pd.DataFrame(features, columns=self.feature_names)
-        self.test_X = df
-        self.test_y = labels
-        if predicted_labels:
-            predicted_labels = self.clf.predict(df)
-            return predicted_labels, labels
-        else:
-            return
+        # self.test_X = df
+        # self.test_y = labels
+        return self.clf.predict(df)

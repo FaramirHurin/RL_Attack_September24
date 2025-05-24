@@ -105,7 +105,7 @@ class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
             terminal_id = self.system.get_closest_terminal(self.current_card.customer_x, self.current_card.customer_y).id
             trx = Transaction(action.amount, self.t, terminal_id, self.current_card.id, action.is_online, is_fraud=True)
             fraud_is_detected = self.system.process_transaction(trx) or self.current_card.balance < action.amount
-            self.transactions.append(trx)
+            # self.transactions.append(trx)
             if fraud_is_detected:
                 reward = 0.0
             else:
