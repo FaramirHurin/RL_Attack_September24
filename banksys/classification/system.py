@@ -36,9 +36,9 @@ class ClassificationSystem:
         use_anomaly: bool = True,
 
     ):
-        self.ml_classifier = BalancedRandomForestClassifier(trees=trees, n_jobs=-1, sampling_strategy=balance_factor)  # type: ignore[assignment]
+        self.ml_classifier = BalancedRandomForestClassifier(n_estimators=trees, n_jobs=-1, sampling_strategy=balance_factor)  # type: ignore[assignment]
         self.banksys = banksys
-        self.anomaly_detection_classifier = IsolationForest(trees=trees, n_jobs=-1, contamination=contamination)
+        self.anomaly_detection_classifier = IsolationForest(n_estimators=trees, n_jobs=-1, contamination=contamination)
         self.statistical_classifier = StatisticalClassifier(features_for_quantiles, quantiles)
         self.rule_classifier = RuleBasedClassifier([], self.banksys, {})
         self.use_anomaly = use_anomaly
