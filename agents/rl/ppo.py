@@ -133,6 +133,8 @@ class PPO(Agent):
             # Equation (9) in the paper
             loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
             loss.backward()
+            if self.grad_norm_clipping is not None:
+                torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
             self.optimizer.step()
 
     def update_transition(self, t: Transition, step: int, episode_num: int):

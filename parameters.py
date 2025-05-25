@@ -1,5 +1,5 @@
 import random
-from dataclasses import asdict, dataclass, replace, field
+from dataclasses import asdict, dataclass, replace
 from datetime import timedelta, datetime
 import os
 import orjson
@@ -35,20 +35,40 @@ class CardSimParameters:
 
 @dataclass(eq=True)
 class ClassificationParameters:
-    use_anomaly: bool = True
-    n_trees: int = 100
-    balance_factor: float = 0.05
-    contamination: float = 0.005
-    training_duration: timedelta = timedelta(days=30)
-    quantiles_features: Sequence[str] = ("amount",)
-    quantiles_values: Sequence[float] = (0.01, 0.99)
-    rules: dict[str, float] = field(
-        default_factory=lambda: {
+    use_anomaly: bool
+    n_trees: int
+    balance_factor: float
+    contamination: float
+    training_duration: timedelta
+    quantiles_features: Sequence[str]
+    quantiles_values: Sequence[float]
+    rules: dict[str, float]
+
+    def __init__(
+        self,
+        use_anomaly: bool = True,
+        n_trees: int = 100,
+        balance_factor: float = 0.05,
+        contamination: float = 0.005,
+        training_duration: timedelta | float = timedelta(days=30),
+        quantiles_features: Sequence[str] = ("amount",),
+        quantiles_values: Sequence[float] = (0.01, 0.99),
+        rules: dict[str, float] = {
             "max_trx_hour": 6,
             "max_trx_week": 40,
             "max_trx_day": 15,
-        }
-    )
+        },
+    ):
+        self.use_anomaly = use_anomaly
+        self.n_trees = n_trees
+        self.balance_factor = balance_factor
+        self.contamination = contamination
+        if isinstance(training_duration, (float, int)):
+            training_duration = timedelta(seconds=training_duration)
+        self.training_duration = training_duration
+        self.quantiles_features = quantiles_features
+        self.quantiles_values = quantiles_values
+        self.rules = rules
 
 
 @dataclass(eq=True)
@@ -116,7 +136,7 @@ class PPOParameters:
         Create PPOParameters from a JSON-like dictionary.
         """
         data["critic_c1"] = schedule_from_json(data["critic_c1"])
-        data["entropy_c2"] = Schedule.constant(data["entropy_c2"])
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
         return PPOParameters(**data)
 
     def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device):
@@ -198,7 +218,7 @@ class Parameters:
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
-        aggregation_windows: Sequence[timedelta] | Sequence[float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         if len(kwargs) > 0:
@@ -362,6 +382,8 @@ class Parameters:
                 data["agent"] = VAEParameters(**data["agent"])
             case _:
                 raise ValueError(f"Unknown agent type: {data['agent_name']}")
+        data["cardsim"] = CardSimParameters(**data["cardsim"])
+        data["clf_params"] = ClassificationParameters(**data["clf_params"])
         return Parameters(**data)
 
 
