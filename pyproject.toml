@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11,<4"
 dependencies = [
+    "deprecated>=1.2.18",
     "imblearn>=0.0",
     "jupyterlab>=4.4.2",
     "matplotlib>=3.9.2",

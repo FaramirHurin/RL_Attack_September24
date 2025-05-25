@@ -17,3 +17,5 @@ logs/*
 logs-1/*
 .env
 logs.txt
+tuning/*
+*.db

@@ -199,7 +199,10 @@ class Parameters:
         logdir: Optional[str] = None,
         save: bool = True,
         aggregation_windows: Sequence[timedelta] | Sequence[float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        **kwargs,
     ):
+        if len(kwargs) > 0:
+            logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
         self.agent = agent
         self.cardsim = cardsim
         self.n_episodes = n_episodes

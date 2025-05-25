@@ -2,6 +2,7 @@ import random
 from copy import deepcopy
 from datetime import timedelta
 from typing import TYPE_CHECKING, Optional
+from deprecated import deprecated
 
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from banksys import Banksys
 
 
+@deprecated("Use `CardSimEnv` instead")
 class SimpleCardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,

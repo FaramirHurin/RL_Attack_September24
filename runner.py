@@ -13,10 +13,6 @@ from banksys import Transaction, Card
 from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
 import dotenv
 
-dotenv.load_dotenv()  # Load the "private" .env file
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
-
 
 def save_episodes(episodes: list[Episode], directory: str):
     os.makedirs(directory, exist_ok=True)
@@ -182,4 +178,8 @@ def main():
 
 
 if __name__ == "__main__":
+    dotenv.load_dotenv()  # Load the "private" .env file
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+
     main()

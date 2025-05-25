@@ -3,6 +3,7 @@ from runner import run
 
 
 if __name__ == "__main__":
+    total = 34.222500026226044
     params = Parameters(
         PPOParameters(entropy_c2=0.025, train_interval=64, minibatch_size=32, is_recurrent=True, train_on="episode"),
         logdir="logs/test",
