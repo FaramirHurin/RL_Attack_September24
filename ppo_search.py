@@ -65,7 +65,7 @@ def recurrent_trial(trial: optuna.Trial):
             lr_critic=lr_critic,
             grad_norm_clipping=grad_norm_clipping,
         ),
-        n_episodes=200,
+        n_episodes=4000,
         card_pool_size=50,
         clf_params=CLF_PARAMS,
         cardsim=CARDSIM_PARAMS,
@@ -104,9 +104,12 @@ if __name__ == "__main__":
     p.create_pooled_env()
 
     study = optuna.create_study(
-        storage="sqlite:///r-ppo_tuning.db", study_name="r-ppo-maximize", direction=optuna.study.StudyDirection.MAXIMIZE
+        storage="sqlite:///r-ppo_tuning.db",
+        study_name="r-ppo-maximize-4000",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=False,
     )
-    study.optimize(recurrent_trial, n_trials=300, n_jobs=3)
+    study.optimize(recurrent_trial, n_trials=150, n_jobs=3)
     df: pd.DataFrame = study.trials_dataframe()
     # Save the DataFrame to a CSV file
     df.to_csv("r-ppo_tuning_results.csv", index=False)
