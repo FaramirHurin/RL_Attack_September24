@@ -1,0 +1,1 @@
+{"parameters":{"use_anomaly":false,"n_trees":100,"balance_factor":0.1,"contamination":0.001,"training_duration":12960000.0,"quantiles_features":["amount"],"quantiles_values":[0.05,0.95],"rules":{}},"accuracy":0.985247760056713,"f1_score":0.49642879986354815,"recall":0.7254034519284691,"precision":0.3773254683347378,"confusion_matrix":[[1565784,19212],[4407,11642]]}
