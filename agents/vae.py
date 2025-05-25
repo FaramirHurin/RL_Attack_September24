@@ -223,7 +223,7 @@ class VaeAgent(Agent):
         transactions_df["hour"] = transactions_df["timestamp"].dt.hour
         return transactions_df
 
-    def choose_action(self, observation: np.ndarray):
+    def choose_action(self, observation: np.ndarray, hx=None):
         """
         Choose an action based on the observation given by environment
         :param observation: the observation comprising the remaining time, is_credit, hour, day and
@@ -263,7 +263,7 @@ class VaeAgent(Agent):
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
         trx = trx.to_numpy()
         trx = trx.astype(np.float32)
-        return trx
+        return trx, None
 
     @staticmethod
     def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:
@@ -307,5 +307,8 @@ class VaeAgent(Agent):
 
         return transactionsDF
 
-    def update(self, *args, **kwargs):
+    def update_transition(self, *args, **kwargs):
+        return {}
+
+    def update_episode(self, *args, **kwargs):
         return {}

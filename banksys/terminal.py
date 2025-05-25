@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Sequence
 import numpy as np
 from datetime import datetime
 from datetime import timedelta
@@ -12,35 +13,33 @@ class Terminal(OrderedTransactionsRegistry):
     id: int
     x: float
     y: float
-    days_aggregation: tuple[timedelta, ...]
     transactions: list[Transaction]
     """Transactions, ordered by timestamp"""
 
-    def __init__(self, id: int, x: float, y: float, days_aggregation: tuple[timedelta, ...] = (timedelta(1), timedelta(7))):
+    def __init__(self, id: int, x: float, y: float):
         super().__init__()
         self.id = id
         self.x = x
         self.y = y
-        self.days_aggregation = days_aggregation
 
-    @property
-    def feature_names(self):
+    @staticmethod
+    def feature_names(aggregation_windows: Sequence[timedelta]):
         prefix = "TERMINAL_ID_"
         nb = "NB_TX_"
         risk = "RISK_"
         suffix = "DAY_WINDOW"
 
-        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.days_aggregation]
-        AGGREGATE_RISK = [prefix + risk + str(days) + suffix for days in self.days_aggregation]
+        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in aggregation_windows]
+        AGGREGATE_RISK = [prefix + risk + str(days) + suffix for days in aggregation_windows]
 
         to_return = ["terminal_x", "terminal_y"] + AGGREGATE_NB + AGGREGATE_RISK
         return to_return
 
-    def features(self, current_time: datetime):
+    def features(self, current_time: datetime, aggregation_windows: Sequence[timedelta]):
         nb = list[float]()
         risk = list[float]()
 
-        for n_days in self.days_aggregation:
+        for n_days in aggregation_windows:
             start_index = self._find_index(current_time - n_days)
             stop_index = self._find_index(current_time)
             # Select transactions from the last n_days

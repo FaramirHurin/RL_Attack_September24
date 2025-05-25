@@ -15,6 +15,7 @@ from parameters import CardSimParameters, Parameters, PPOParameters, VAEParamete
 from banksys.classification.system import ClassificationSystem
 from banksys.banksys import Banksys
 from banksys.classification.rule_based import rules_dict
+
 dotenv.load_dotenv()  # Load the "private" .env file
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -52,7 +53,7 @@ def train(env: SimpleCardSimEnv, agent: Agent, n_episodes: int):
                     terminals.append(trx.terminal_id)
                     transactions.append(trx)
                 t = Transition.from_step(obs, state, action, step)
-                agent.update(t, step_num)
+                agent.update_transition(t, step_num)
                 episode.add(t)
                 obs, state = step.obs, step.state
             episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})
@@ -93,14 +94,16 @@ def test_and_save_metrics(banksys: Banksys, directory: str):
                 option=orjson.OPT_SERIALIZE_NUMPY,
             )
         )
-    DEBUG=0
+    DEBUG = 0
 
 
 def main():
     agent_params = PPOParameters()
-    #agent_params = RPPOParameters()
+    # agent_params = RPPOParameters()
     # agent_params = VAEParameters()
-    params = Parameters(agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000, contamination=0.05))
+    params = Parameters(
+        agent_params, use_anomaly=False, rules={}, seed_value=0, cardsim=CardSimParameters(n_days=100, n_payers=20_000, contamination=0.05)
+    )
     env = params.create_env()
     agent = params.create_agent(env)
     # Sanitize the timestamp
@@ -110,7 +113,7 @@ def main():
     directory = os.path.join("logs", f"{params.agent_name}_{safe_timestamp}")
     save_parameters(directory, params)
     test_and_save_metrics(env.system, directory)
-    #train(env, agent, params.n_episodes)
+    # train(env, agent, params.n_episodes)
 
 
 def cross_validate_classifier():
@@ -156,6 +159,7 @@ def cross_validate_classifier():
                 }
                 results_list.append(results)
     print(results_list)
+
 
 if __name__ == "__main__":
     # main()

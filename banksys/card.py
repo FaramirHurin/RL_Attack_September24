@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import numpy as np
+from typing import Sequence
 from datetime import datetime
 from datetime import timedelta
 
@@ -18,37 +19,40 @@ class Card(OrderedTransactionsRegistry):
     transactions: list[Transaction]
     balance: float
     """Transactions, ordered by timestamp"""
-    aggregation_windows: tuple[timedelta, ...]
 
     def __init__(
-        self, id: int, is_credit: bool, x: float, y: float, balance:float, aggregation_windows: tuple[timedelta, ...] = (timedelta(1), timedelta(7))
+        self,
+        id: int,
+        is_credit: bool,
+        x: float,
+        y: float,
+        balance: float,
     ):
         self.id = int(id)
-        self.is_credit = int(is_credit)
+        self.is_credit = bool(is_credit)
         self.customer_x = int(x)
         self.customer_y = int(y)
         self.balance = balance
-        self.aggregation_windows = aggregation_windows
         super().__init__()
 
-    @property
-    def feature_names(self):
+    @staticmethod
+    def feature_names(aggregation_windows: Sequence[timedelta]):
         prefix = "CUSTOMER_ID_"
         nb = "NB_TX_"
         avg = "AVG_AMOUNT_"
         suffix = "DAY_WINDOW"
 
-        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in self.aggregation_windows]
-        AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in self.aggregation_windows]
+        AGGREGATE_NB = [prefix + nb + str(days) + suffix for days in aggregation_windows]
+        AGGREGATE_RISK = [prefix + avg + str(days) + suffix for days in aggregation_windows]
 
         to_return = ["customer_x", "customer_y"] + AGGREGATE_NB + AGGREGATE_RISK
         return to_return
 
-    def features(self, current_time: datetime):
+    def features(self, current_time: datetime, aggregation_windows: Sequence[timedelta]):
         # TODO: add the mean/median terminal location ?
         nb = list[float]()
         avg = list[float]()
-        for n_days in self.aggregation_windows:
+        for n_days in aggregation_windows:
             start_index = self._find_index(current_time - n_days)
             stop_index = self._find_index(current_time)
             # Select transactions from the last n_days

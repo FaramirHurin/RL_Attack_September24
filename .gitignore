@@ -14,4 +14,9 @@ uv.lock
 cache
 
 logs/*
+logs-1/*
 .env
+logs.txt
+tuning/*
+*.db
+tuning-2/*

@@ -1,14 +1,20 @@
-from .action import Action
+import logging
 import random
-import numpy as np
-from datetime import timedelta
-from marlenv import Observation, Step, MARLEnv, State, ContinuousSpace
-
-from .card_registry import CardRegistry
+from copy import deepcopy
+from datetime import timedelta, datetime
 from typing import TYPE_CHECKING
 
+import numpy as np
+from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
+
+from banksys import Card, Transaction
+
+from .action import Action
+from .card_registry import CardRegistry
+from .priority_queue import PriorityQueue
+
 if TYPE_CHECKING:
-    from banksys import Banksys, Transaction, Card
+    from banksys import Banksys
 
 
 class CardSimEnv(MARLEnv[ContinuousSpace]):
@@ -17,41 +23,45 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         system: "Banksys",
         avg_card_block_delay: timedelta = timedelta(days=7),
         *,
-        customer_location_is_known: bool = False,  # TODO Move it somewhere else?
+        customer_location_is_known: bool = False,
+        normalize_location: bool = False,
     ):
-        """
-        Args:
-            system: The Banksys object to be used for the simulation.
-            card_block_delay: The average time delay before a card can be blocked.
-            n_parallel: The number of parallel transactions to be processed.
-            customer_location_is_known: Whether the customer's location is known.
-        """
+        self.normalize_location = normalize_location
         if customer_location_is_known:
             obs_shape = (6,)
         else:
             obs_shape = (4,)
+        action_space = ContinuousSpace(
+            low=np.array([0.01] + [0.0] * 5),
+            high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
+            labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
+        )
         super().__init__(
             1,
-            ContinuousSpace(
-                low=[0.01] + [0.0] * 5,
-                high=[100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600],
-                labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
-            ),
+            action_space=action_space,
             observation_shape=obs_shape,
             state_shape=obs_shape,
         )
         self.system = system
-        self.t = system.attack_time
-        """Current time in the simulation."""
+        self.t = system.attack_start
+        self.t_start = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
-        assert self.customer_location_is_known == True
+        self.action_buffer = PriorityQueue[tuple[Card, np.ndarray]]()
+        logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
-    def reset(self, n_parallel: int = 10):
-        cards = [self.steal_card() for _ in range(n_parallel)]
-        obs = [self.get_observation(c) for c in cards]
-        states = [self.get_state(c) for c in cards]
-        return list(zip(cards, obs, states))
+    def reset(self):
+        self.t = deepcopy(self.t_start)
+
+    def spawn_card(self):
+        card = self.card_registry.release_card(self.t)
+        state = self.compute_state(card)
+        return card, Observation(state, self.available_actions()), State(state)
+
+    def buffer_action(self, np_action: np.ndarray, card: Card):
+        action = Action.from_numpy(np_action)
+        execution_time = self.t + action.timedelta
+        self.action_buffer.push((card, np_action), execution_time)
 
     def get_observation(self, card: Card):
         state = self.compute_state(card)
@@ -69,36 +79,41 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         time_ratio = self.card_registry.get_time_ratio(card, self.t)
         features = [time_ratio, card.is_credit, self.t.hour, self.t.day]
         if self.customer_location_is_known:
-            features += [
-                card.customer_x,
-                card.customer_y,
-            ]
+            x, y = card.customer_x, card.customer_y
+            if self.normalize_location:
+                x, y = x / 200, y / 200
+            features += [x, y]
         return np.array(features, dtype=np.float32)
 
-    def steal_card(self):
-        return self.card_registry.release_card(self.t)
-
-    def step(self, action: Action, card: Card):
+    def step(self):
         """
-        Perform the given action at the given time.
+        Performs the next action in the queue.
         """
-        self.t += action.timedelta
-        self.card_registry.update(self.t)
+        t, (card, np_action) = self.action_buffer.ppop()
+        action = Action.from_numpy(np_action)
+        assert t >= self.t, "Actions can not be executed in the past"
+        assert t <= self.system.attack_end, (
+            f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()}) "
+        )
+        self.t = t
+        if self.normalize_location:
+            action.terminal_x *= 200
+            action.terminal_y *= 200
         if self.card_registry.has_expired(card, self.t):
+            self.card_registry.clear(card)
             done = True
             reward = 0.0
-            trx = None
         else:
             terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
-            trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online)
-            is_fraud = self.system.process_transaction(trx)
-            if is_fraud:
+            trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
+            fraud_is_detected = self.system.process_transaction(trx) or card.balance < action.amount
+            if fraud_is_detected:
                 reward = 0.0
             else:
                 reward = action.amount
-            done = is_fraud
+            done = fraud_is_detected
         state = self.compute_state(card)
-        return Step(Observation(state, self.available_actions()), State(state), reward, done, False), trx
+        return card, Step(Observation(state, self.available_actions()), State(state), reward, done)
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

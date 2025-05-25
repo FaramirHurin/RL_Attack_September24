@@ -1,14 +1,15 @@
 import logging
 import os
 import pickle
-from datetime import datetime, timedelta
-from typing import Optional, TYPE_CHECKING
 import random
+from datetime import timedelta, datetime
+from typing import TYPE_CHECKING, Optional, Sequence
 
 import numpy as np
 import orjson
 import pandas as pd
 from tqdm import tqdm
+
 
 from .card import Card
 from .classification import ClassificationSystem
@@ -17,79 +18,77 @@ from .terminal import Terminal
 from .transaction import Transaction
 
 if TYPE_CHECKING:
-    from parameters import CardSimParameters
+    from parameters import CardSimParameters, ClassificationParameters
 
 # TODO: when a card is blocked, we should remove all its future transactions
 
 
 class Banksys:
-    clf: ClassificationSystem
-    attack_start: datetime
-    terminals: list[Terminal]
-    cards: list[Card]
-    feature_names: list[str]
-    training_start: datetime
-    training_end: datetime
-    train_X: pd.DataFrame
-    train_y: np.ndarray
-    test_X: pd.DataFrame
-    test_y: np.ndarray
-
     def __init__(
         self,
         cards: list[Card],
         terminals: list[Terminal],
-        training_duration: timedelta,
-        transactions: list[Transaction],
-        feature_names: list[str],
-        quantiles: list[float],
-        contamination: float,
-        trees:int,
-        balance_factor: float,
+        aggregation_windows: Sequence[timedelta],
+        clf_params: "ClassificationParameters",
         attackable_terminal_factor: float = 1.0,
     ):
-        self.clf = ClassificationSystem(banksys=self, features_for_quantiles=feature_names,
-                                       trees=trees, contamination=contamination, balance_factor=balance_factor, quantiles=quantiles)
+        self.clf = ClassificationSystem(self, clf_params)
         self.cards = cards
         self.terminals = terminals
-        self.feature_names = transactions[0].feature_names + self.cards[0].feature_names + self.terminals[0].feature_names
+        self.aggregation_windows = aggregation_windows
+        self.feature_names = [
+            *Transaction.feature_names(),
+            *Card.feature_names(aggregation_windows),
+            *Terminal.feature_names(aggregation_windows),
+        ]
         self.attackable_terminals = random.sample(terminals, round(len(terminals) * attackable_terminal_factor))
-
-        self.registry = OrderedTransactionsRegistry(transactions)
-        aggregation_duration = max(*cards[0].aggregation_windows, *terminals[0].days_aggregation)
-        training_start = self.registry[0].timestamp + aggregation_duration
-        training_end = training_start + training_duration
-
-
-        self._warmup(self.registry.get_before(training_start))
-        self._train(self.registry.get_between(training_start, training_end))
-        self._simulate(self.registry.get_after(training_end))
-        self.attack_start = training_end
+        self.attack_start = datetime.now()
+        self.attack_end = datetime.now()
 
     def _warmup(self, transactions: list[Transaction]):
-        logging.info("Warming up the system for aggregation")
+        logging.info(f"Warming up the system for aggregation until {transactions[-1].timestamp.date().isoformat()}")
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
 
     def _train(self, transactions: list[Transaction]):
-        logging.info("Training the system")
+        logging.info(f"Training the system until {self.attack_start.date().isoformat()}")
         rows = []
         labels = []
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
-            features = self.make_features_np(t, with_label=False)
-            rows.append(features)
+            rows.append(self.make_features_np(t, with_label=False))
             labels.append(t.is_fraud)
         df = pd.DataFrame(rows, columns=self.feature_names)
         labels = np.array(labels, dtype=np.bool)
-        self.train_X = df
-        self.train_y = labels
         self.clf.fit(df, labels)
+        return df, labels
 
     def _simulate(self, transactions: list[Transaction]):
-        logging.info("Simulating the system until the end")
+        logging.info(f"Simulating the system until {self.attack_end.date().isoformat()}")
+        features, labels = [], []
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
+            features.append(self.make_features_np(t, with_label=False))
+            labels.append(t.is_fraud)
+        df = pd.DataFrame(features, columns=self.feature_names)
+        return df, np.array(labels, dtype=np.bool)
+
+    def fit(self, transactions: list[Transaction]):
+        logging.info("Fitting the bank system...")
+        registry = OrderedTransactionsRegistry(transactions)
+        aggregation_duration = max(*self.aggregation_windows)
+        training_start = registry[0].timestamp + aggregation_duration
+        training_end = training_start + self.clf.training_duration
+        simulation_end = registry[-1].timestamp
+
+        self.attack_start = training_end
+        self.attack_end = simulation_end
+        assert self.attack_start < simulation_end, f"The simulation ends ({simulation_end}) before the attack starts ({self.attack_start})"
+
+        self._warmup(registry.get_before(training_start))
+        train_x, train_y = self._train(registry.get_between(training_start, training_end))
+        test_x, test_y = self._simulate(registry.get_after(training_end))
+        return train_x, train_y, test_x, test_y
 
     def set_up_run(self, rules_values: dict, use_anomaly: bool):
         self.clf.set_rules(rules_values)
@@ -98,8 +97,8 @@ class Banksys:
     def make_features_np(self, transaction: Transaction, with_label: bool):
         terminal = self.terminals[transaction.terminal_id]
         card = self.cards[transaction.card_id]
-        terminal_features = terminal.features(transaction.timestamp)
-        card_features = card.features(transaction.timestamp)
+        terminal_features = terminal.features(transaction.timestamp, self.aggregation_windows)
+        card_features = card.features(transaction.timestamp, self.aggregation_windows)
         if with_label:
             assert transaction.is_fraud is not None, "Label must be set for the transaction used in the agredated features"
             return np.concatenate([transaction.features, terminal_features, card_features, [transaction.is_fraud]])
@@ -171,26 +170,18 @@ class Banksys:
             self.terminals[transaction.terminal_id].remove(transaction)
             self.cards[transaction.card_id].remove(transaction)
 
-    def test(self, predicted_labels:bool = True):
+    def test(self, transactions: list[Transaction]):
         """
-        Compute the confusion matrix for the transactions.
+        Compute the confusion matrix for the given transactions.
         """
         features = []
         labels = []
-        transactions = self.registry.get_after(self.attack_start)
         for transaction in tqdm(transactions):
             features.append(self.make_features_np(transaction, with_label=False))
             labels.append(transaction.is_fraud)
         features = np.array(features)
         labels = np.array(labels)
         df = pd.DataFrame(features, columns=self.feature_names)
-        self.test_X = df
-        self.test_y = labels
-        if predicted_labels:
-            predicted_labels = self.clf.predict(df)
-            return predicted_labels, labels
-        else:
-            return
-
-
-
+        # self.test_X = df
+        # self.test_y = labels
+        return self.clf.predict(df)

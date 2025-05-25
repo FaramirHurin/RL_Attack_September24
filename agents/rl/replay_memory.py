@@ -85,16 +85,6 @@ class EpisodeMemory(ReplayMemory[Episode]):
 
     def __init__(self, max_size: int):
         super().__init__(max_size, "episode")
-        self.current_episode = None
-
-    def add(self, transition: Transition):
-        if self.current_episode is None:
-            self.current_episode = Episode.from_transitions([transition])
-        else:
-            self.current_episode.add(transition)
-        if self.current_episode.is_finished:
-            self._memory.append(self.current_episode)
-            self.current_episode = None
 
     def get_batch(self, indices: Iterable[int], device: Optional[torch.device] = None):
         episodes = [self._memory[i] for i in indices]

@@ -7,8 +7,8 @@ class SimpleGenetic(Agent):
     def __init__(self):
         super().__init__()
 
-    def choose_action(self, state: np.ndarray) -> np.ndarray:
+    def choose_action(self, state: np.ndarray):
         return super().choose_action(state)
 
-    def update(self, t: Transition):
+    def update_transition(self, t: Transition):
         return

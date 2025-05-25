@@ -4,7 +4,7 @@ from datetime import timedelta, datetime
 import os
 import orjson
 import shutil
-from typing import Literal, Optional
+from typing import Any, Literal, Optional, Sequence
 import logging
 
 import numpy as np
@@ -12,18 +12,63 @@ import torch
 from marlenv.utils import Schedule
 
 from agents import Agent
-from cardsim import Cardsim
-from environment import SimpleCardSimEnv
+from environment import SimpleCardSimEnv, CardSimEnv
 
 
 @dataclass(eq=True)
 class CardSimParameters:
-    n_days: int = 50
+    n_days: int = 365
     start_date: str = "2023-01-01"
     n_payers: int = 10_000
-    trees: int = 20
-    contamination: float = 0.005
-    balance_factor: float = 0.05
+
+    def get_simulation_data(self):
+        from cardsim import Cardsim
+
+        simulator = Cardsim()
+        cards, terminals, transactions = simulator.simulate(
+            n_days=self.n_days,
+            n_payers=self.n_payers,
+            start_date=self.start_date,
+        )
+        return cards, terminals, transactions
+
+
+@dataclass(eq=True)
+class ClassificationParameters:
+    use_anomaly: bool
+    n_trees: int
+    balance_factor: float
+    contamination: float
+    training_duration: timedelta
+    quantiles_features: Sequence[str]
+    quantiles_values: Sequence[float]
+    rules: dict[str, float]
+
+    def __init__(
+        self,
+        use_anomaly: bool = True,
+        n_trees: int = 100,
+        balance_factor: float = 0.05,
+        contamination: float = 0.005,
+        training_duration: timedelta | float = timedelta(days=30),
+        quantiles_features: Sequence[str] = ("amount",),
+        quantiles_values: Sequence[float] = (0.01, 0.99),
+        rules: dict[str, float] = {
+            "max_trx_hour": 6,
+            "max_trx_week": 40,
+            "max_trx_day": 15,
+        },
+    ):
+        self.use_anomaly = use_anomaly
+        self.n_trees = n_trees
+        self.balance_factor = balance_factor
+        self.contamination = contamination
+        if isinstance(training_duration, (float, int)):
+            training_duration = timedelta(seconds=training_duration)
+        self.training_duration = training_duration
+        self.quantiles_features = quantiles_features
+        self.quantiles_values = quantiles_values
+        self.rules = rules
 
 
 @dataclass(eq=True)
@@ -85,7 +130,16 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device):
+    @staticmethod
+    def from_json(data: dict[str, Any]):
+        """
+        Create PPOParameters from a JSON-like dictionary.
+        """
+        data["critic_c1"] = schedule_from_json(data["critic_c1"])
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
+        return PPOParameters(**data)
+
+    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
         from agents.rl.ppo import PPO
@@ -116,7 +170,7 @@ class VAEParameters:
     quantile: float = 0.95
     supervised: bool = False
 
-    def get_agent(self, env: SimpleCardSimEnv, device: torch.device, know_client: bool, quantile: float):
+    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
         return VaeAgent(
@@ -140,41 +194,35 @@ class VAEParameters:
 class Parameters:
     agent: PPOParameters | VAEParameters
     cardsim: CardSimParameters
+    clf_params: ClassificationParameters
     n_episodes: int
     know_client: bool
     terminal_fract: float
     seed_value: int
-    use_anomaly: bool
-    n_days_training: int
+    card_pool_size: int
     avg_card_block_delay_days: int
-    quantiles_anomaly: list[float]
-    rules: dict[str, float]
     logdir: str
-
-    trees: int
-    contamination: float
-    balance_factor: float
+    aggregation_windows: Sequence[timedelta]
+    agent_name: Literal["ppo", "rppo", "vae"]
 
     def __init__(
         self,
         agent: PPOParameters | VAEParameters,
         cardsim: CardSimParameters = CardSimParameters(),
+        clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
         terminal_fract: float = 1.0,
         seed_value: Optional[int] = None,
-        use_anomaly: bool = True,
-        n_days_training: int = 30,
+        card_pool_size: int = 10,
         avg_card_block_delay_days: int = 7,
-        quantiles_anomaly: list[float] = [0.01, 0.99],
-        rules: dict[str, float] = {
-            "max_trx_hour": 6,
-            "max_trx_week": 40,
-            "max_trx_day": 15,
-        },
         logdir: Optional[str] = None,
         save: bool = True,
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        **kwargs,
     ):
+        if len(kwargs) > 0:
+            logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
         self.agent = agent
         self.cardsim = cardsim
         self.n_episodes = n_episodes
@@ -183,11 +231,24 @@ class Parameters:
         if seed_value is None:
             seed_value = hash(datetime.now().isoformat()) % 2**32
         self.seed_value = seed_value
-        self.use_anomaly = use_anomaly
-        self.n_days_training = n_days_training
         self.avg_card_block_delay_days = avg_card_block_delay_days
-        self.quantiles_anomaly = quantiles_anomaly
-        self.rules = rules
+        self.clf_params = clf_params
+        self.card_pool_size = card_pool_size
+        self.aggregation_windows = []
+        for window in aggregation_windows:
+            if isinstance(window, (float, int)):
+                window = timedelta(seconds=window)
+            self.aggregation_windows.append(window)
+        match self.agent:
+            case PPOParameters():
+                if self.agent.is_recurrent:
+                    self.agent_name = "rppo"
+                else:
+                    self.agent_name = "ppo"
+            case VAEParameters():
+                self.agent_name = "vae"
+            case _:
+                raise ValueError("Unknown agent type")
         if logdir is None:
             logdir = self.default_logdir()
         self.logdir = logdir
@@ -202,13 +263,13 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv, device: Optional[torch.device] = None) -> Agent:
+    def create_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
         if device is None:
             device = self.get_device_by_seed()
         match self.agent:
             case VAEParameters():
-                return self.agent.get_agent(env, device, self.know_client, self.quantiles_anomaly[0])
+                return self.agent.get_agent(env, device, self.know_client, self.clf_params.quantiles_values[0])
             case PPOParameters():
                 return self.agent.get_agent(env, device)
             case _:
@@ -222,10 +283,28 @@ class Parameters:
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
-            banksys.save(self.cardsim)
 
-        banksys.set_up_run(rules_values=self.rules, use_anomaly=self.use_anomaly)
+        banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
         env = SimpleCardSimEnv(
+            banksys,
+            timedelta(days=self.avg_card_block_delay_days),
+            customer_location_is_known=self.know_client,
+            normalize_location=self.agent_name in ("ppo", "rppo"),
+        )
+        env.seed(self.seed_value)
+        return env
+
+    def create_pooled_env(self):
+        from banksys import Banksys
+
+        try:
+            banksys = Banksys.load(self.cardsim, self.banksys_dir)
+        except (FileNotFoundError, ValueError):
+            print("Banksys not found, creating a new one")
+            banksys = self.create_banksys()
+
+        banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
+        env = CardSimEnv(
             banksys,
             timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,
@@ -244,28 +323,20 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self):
+    def create_banksys(self, save: bool = True):
         from banksys import Banksys
 
-        simulator = Cardsim()
-        cards, terminals, transactions = simulator.simulate(
-            n_days=self.cardsim.n_days,
-            n_payers=self.cardsim.n_payers,
-            start_date=self.cardsim.start_date,
-        )
+        cards, terminals, transactions = self.cardsim.get_simulation_data()
         banksys = Banksys(
             cards=cards,
             terminals=terminals,
-            training_duration=timedelta(days=self.n_days_training),
-            transactions=transactions,
-            feature_names=["amount"],
-            contamination=self.cardsim.contamination,
-            trees=self.cardsim.trees,
-            balance_factor=self.cardsim.balance_factor,
-            quantiles=self.quantiles_anomaly,
+            aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
+            clf_params=self.clf_params,
         )
-        banksys.save(self.cardsim, self.banksys_dir)
+        banksys.fit(transactions)
+        if save:
+            banksys.save(self.cardsim, self.banksys_dir)
         return banksys
 
     def get_device_by_seed(self) -> torch.device:
@@ -284,19 +355,7 @@ class Parameters:
         file_path = os.path.join(self.logdir, "params.json")
         print(file_path)
         with open(file_path, "wb") as f:
-            f.write(orjson.dumps(self))
-
-    @property
-    def agent_name(self):
-        match self.agent:
-            case PPOParameters():
-                if self.agent.is_recurrent:
-                    return "rppo"
-                return "ppo"
-            case VAEParameters():
-                return "vae"
-            case _:
-                raise ValueError("Unknown agent type")
+            f.write(orjson.dumps(self, default=serialize_unknown))
 
     def default_logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")
@@ -310,3 +369,38 @@ class Parameters:
             logdir = os.path.join(self.logdir, f"seed-{self.seed_value + i}")
             os.makedirs(logdir, exist_ok=True)
             yield replace(self, seed_value=self.seed_value + i, save=False, logdir=logdir)
+
+    @staticmethod
+    def load(filename: str):
+        with open(filename, "rb") as f:
+            data = orjson.loads(f.read())
+        assert isinstance(data, dict), "Parameters should be a dictionary"
+        match data["agent_name"]:
+            case "ppo" | "rppo":
+                data["agent"] = PPOParameters.from_json(data["agent"])
+            case "vae":
+                data["agent"] = VAEParameters(**data["agent"])
+            case _:
+                raise ValueError(f"Unknown agent type: {data['agent_name']}")
+        data["cardsim"] = CardSimParameters(**data["cardsim"])
+        data["clf_params"] = ClassificationParameters(**data["clf_params"])
+        return Parameters(**data)
+
+
+def schedule_from_json(data: dict[str, Any]):
+    """Create a Schedule from a JSON-like dictionary."""
+    classname = data["name"]
+    if classname == "LinearSchedule":
+        return Schedule.linear(data["start_value"], data["end_value"], data["n_steps"])
+    elif classname == "ExpSchedule":
+        return Schedule.exp(data["start_value"], data["end_value"], data["n_steps"])
+    elif classname == "ConstantSchedule":
+        return Schedule.constant(data["value"])
+    raise NotImplementedError(f"Unsupported deserialization for schedule type: {classname}")
+
+
+def serialize_unknown(data):
+    match data:
+        case timedelta():
+            return data.total_seconds()
+    raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")
