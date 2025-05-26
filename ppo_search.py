@@ -34,20 +34,20 @@ CARDSIM_PARAMS = CardSimParameters(
 def trial(is_recurrent: bool, train_on: Literal["transition", "episode"], trial: optuna.Trial):
     c1 = Schedule.linear(
         trial.suggest_float("critic_c1_start", 0.1, 1.0),
-        trial.suggest_float("critic_c1_end", 0.001, 0.1),
+        trial.suggest_float("critic_c1_end", 0.001, 0.5),
         trial.suggest_int("critic_c1_steps", 1000, 4000),
     )
 
     c2 = Schedule.linear(
-        trial.suggest_float("entropy_c2_start", 0.001, 0.5),
-        trial.suggest_float("entropy_c2_end", 0.001, 0.1),
+        trial.suggest_float("entropy_c2_start", 0.001, 0.2),
+        trial.suggest_float("entropy_c2_end", 0.0001, 0.1),
         trial.suggest_int("entropy_c2_steps", 1000, 4000),
     )
-    train_interval = trial.suggest_int("train_interval", 8, 256)
-    minibatch_size = trial.suggest_int("minibatch_size", 4, train_interval)
+    train_interval = trial.suggest_int("train_interval", 4, 64)
+    minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
 
-    lr_actor = trial.suggest_float("lr_actor", 0.0001, 0.001)
-    lr_critic = trial.suggest_float("lr_critic", 0.0001, 0.001)
+    lr_actor = trial.suggest_float("lr_actor", 0.0001, 0.01)
+    lr_critic = trial.suggest_float("lr_critic", 0.0001, 0.01)
     enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
     if enable_clipping:
         grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 1, 10)
