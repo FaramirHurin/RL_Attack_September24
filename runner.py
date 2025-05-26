@@ -123,7 +123,7 @@ def main():
         card_pool_size=50,
         terminal_fract=0.1,
         seed_value=7,
-        clf_params=ClassificationParameters.best_params(1),
+        clf_params=ClassificationParameters.paper_params(1),
         avg_card_block_delay_days=7,
         n_episodes=4000,
     )

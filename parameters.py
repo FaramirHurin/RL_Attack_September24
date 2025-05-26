@@ -32,6 +32,14 @@ class CardSimParameters:
         )
         return cards, terminals, transactions
 
+    @staticmethod
+    def paper_params():
+        return CardSimParameters(
+            n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
+            n_payers=20_000,
+            start_date="2023-01-01",
+        )
+
 
 @dataclass(eq=True)
 class ClassificationParameters:
@@ -71,37 +79,21 @@ class ClassificationParameters:
         self.rules = rules
 
     @staticmethod
-    def best_params(nth: int = 0):
-        if nth == 0:
-            return ClassificationParameters(
-                n_trees=200,
-                balance_factor=0.05,
-                contamination=0.001,
-                training_duration=timedelta(days=150),
-                quantiles_features=("amount",),
-                quantiles_values=(0.05, 0.95),
-                rules={
-                    "max_trx_hour": 5,
-                    "max_trx_week": 20,
-                    "max_trx_day": 10,
-                },
-            )
-        elif nth == 1:
-            return ClassificationParameters(
-                use_anomaly=False,
-                n_trees=100,
-                balance_factor=0.05,
-                contamination=0.005,
-                training_duration=timedelta(days=150),
-                quantiles_features=("amount",),
-                quantiles_values=(0.01, 1.0),
-                rules={
-                    "max_trx_hour": 6,
-                    "max_trx_week": 40,
-                    "max_trx_day": 15,
-                },
-            )
-        raise ValueError(f"Unknown nth value: {nth}. Available values: 0, 1.")
+    def paper_params():
+        return ClassificationParameters(
+            use_anomaly=False,
+            n_trees=100,
+            balance_factor=0.05,
+            contamination=0.005,
+            training_duration=timedelta(days=150),
+            quantiles_features=("amount",),
+            quantiles_values=(0.01, 1.0),
+            rules={
+                "max_trx_hour": 6,
+                "max_trx_week": 40,
+                "max_trx_day": 15,
+            },
+        )
 
 
 @dataclass(eq=True)
@@ -324,6 +316,7 @@ class Parameters:
         aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
+        kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
         if len(kwargs) > 0:
             logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
         self.agent = agent
