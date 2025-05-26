@@ -115,50 +115,43 @@ class PPO(Agent):
             returns, advantages, log_probs = self._compute_training_data(batch)
 
         for _ in range(self.n_epochs):
-            try:
-                indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
-                minibatch = batch.get_minibatch(indices)
-                match batch:
-                    case TransitionBatch():
-                        mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
-                    case EpisodeBatch():
-                        mini_log_probs, mini_returns, mini_advantages = log_probs[:, indices], returns[:, indices], advantages[:, indices]
-                # Use the Monte Carlo estimate of returns as target values
-                # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
-                mini_values, _ = self.actor_critic.value(minibatch.obs)
-                mini_values = mini_values * minibatch.masks
-                td_error = mini_values - mini_returns
-                critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
+            indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
+            minibatch = batch.get_minibatch(indices)
+            match batch:
+                case TransitionBatch():
+                    mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
+                case EpisodeBatch():
+                    mini_log_probs, mini_returns, mini_advantages = log_probs[:, indices], returns[:, indices], advantages[:, indices]
+            # Use the Monte Carlo estimate of returns as target values
+            # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
+            mini_values, _ = self.actor_critic.value(minibatch.obs)
+            mini_values = mini_values * minibatch.masks
+            td_error = mini_values - mini_returns
+            critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
-                # Actor loss (ratio between the new and old policy):
-                # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
-                mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-                new_log_probs = mini_policy.log_prob(minibatch.actions)
+            # Actor loss (ratio between the new and old policy):
+            # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
+            mini_policy, _ = self.actor_critic.policy(minibatch.obs)
+            new_log_probs = mini_policy.log_prob(minibatch.actions)
 
-                ratios = torch.exp(new_log_probs - mini_log_probs)
-                surrogate1 = mini_advantages * ratios
-                surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
-                # Minus because we want to maximize the objective
-                actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
+            ratios = torch.exp(new_log_probs - mini_log_probs)
+            surrogate1 = mini_advantages * ratios
+            surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
+            # Minus because we want to maximize the objective
+            actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
 
-                # S[\pi_0](s_t) in the paper (equation (9))
-                entropy = mini_policy.entropy()
-                masked_entropy = entropy * minibatch.masks
-                entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
+            # S[\pi_0](s_t) in the paper (equation (9))
+            entropy = mini_policy.entropy()
+            masked_entropy = entropy * minibatch.masks
+            entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
 
-                self.optimizer.zero_grad()
-                # Equation (9) in the paper
-                loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
-                loss.backward()
-                if self.grad_norm_clipping is not None:
-                    torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
-                self.optimizer.step()
-            except ValueError:
-                logging.error(f"Error at step={step_num}, episode {episode_num}. Resetting the optimizer.")
-                # self.load()
-                # Reset the optimizer to avoid accumulating gradients
-                self.optimizer = torch.optim.Adam(self.optimizer.param_groups)
-                self.optimizer.zero_grad()
+            self.optimizer.zero_grad()
+            # Equation (9) in the paper
+            loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
+            loss.backward()
+            if self.grad_norm_clipping is not None:
+                torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
+            self.optimizer.step()
 
     def update_transition(self, t: Transition, step: int, episode_num: int):
         if self.memory.update_on_transitions:

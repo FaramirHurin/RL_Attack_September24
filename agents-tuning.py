@@ -15,6 +15,8 @@ from runner import Runner
 
 N_PARALLEL = 8
 TIMEOUT = timedelta(minutes=20)
+CLF_PARAMS = ClassificationParameters.paper_params()
+CARDSIM_PARAMS = CardSimParameters.paper_params()
 
 
 def run(p: Parameters, trial_num: int):
@@ -29,9 +31,8 @@ def run(p: Parameters, trial_num: int):
 def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters | VAEParameters]) -> float:
     params = Parameters(
         agent=fn(trial),
-        clf_params=ClassificationParameters.paper_params(),
-        # cardsim=CardSimParameters.paper_params(),
-        cardsim=CardSimParameters(),
+        clf_params=CLF_PARAMS,
+        cardsim=CARDSIM_PARAMS,
         seed_value=0,
     )
 
@@ -88,10 +89,11 @@ if __name__ == "__main__":
 
     p = Parameters(
         PPOParameters(),
-        clf_params=ClassificationParameters.paper_params(),
-        cardsim=CardSimParameters.paper_params(),
+        clf_params=CLF_PARAMS,
+        cardsim=CARDSIM_PARAMS,
         save=False,
     )
+    # env = p.create_env()
     if not p.banksys_is_in_cache():
         p.create_banksys(save=True)
 

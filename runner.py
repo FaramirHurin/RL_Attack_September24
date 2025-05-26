@@ -94,6 +94,8 @@ class Runner:
                     self.env.buffer_action(action, card)
         except AttackPeriodExpired as e:
             logging.warning(f"Attack period expired: {e}")
+        except ValueError as e:
+            logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
         return episodes
 
 
