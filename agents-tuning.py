@@ -14,7 +14,7 @@ import logging
 from parameters import CardSimParameters, Parameters, PPOParameters, ClassificationParameters, VAEParameters
 
 
-N_REPEATS = 2
+N_REPEATS = 8
 N_PARALLEL = 8
 TIMEOUT = timedelta(minutes=20)
 
