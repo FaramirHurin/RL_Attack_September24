@@ -193,5 +193,5 @@ if __name__ == "__main__":
         p.create_banksys(save=True)
 
     make_tuning(150, "ppo", ppo_parameters, 4)
-    make_tuning(100, "rppo", rppo_parameters,4)
+    make_tuning(100, "rppo", rppo_parameters, 4)
     make_tuning(100, "vae", vae_parameters, 4)

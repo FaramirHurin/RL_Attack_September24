@@ -371,7 +371,7 @@ class Parameters:
             case _:
                 raise ValueError("Unknown agent type")
 
-    def create_pooled_env(self):
+    def create_env(self):
         from banksys import Banksys
 
         try:

@@ -29,7 +29,7 @@ class Runner:
         self.states = dict[Card, State]()
         self.hidden_states = dict[Card, Optional[torch.Tensor]]()
         if env is None:
-            env = params.create_pooled_env()
+            env = params.create_env()
         self.env = env
         self.agent = params.create_agent(self.env)
         self.n_spawned = 0
