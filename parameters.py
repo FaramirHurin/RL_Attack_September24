@@ -241,7 +241,7 @@ class PPOParameters:
         )
 
     @staticmethod
-    def suggest(recurrent: bool, trial: Trial):
+    def suggest_rppo(trial: Trial):
         train_interval = trial.suggest_int("train_interval", 4, 64)
         minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
         enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
@@ -249,16 +249,9 @@ class PPOParameters:
             grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.5, 10)
         else:
             grad_norm_clipping = None
-        if recurrent:
-            train_on = "episode"
-        elif trial.suggest_categorical("train_on_episode", [True, False]):
-            train_on = "episode"
-        else:
-            train_on = "transition"
-
         return PPOParameters(
-            is_recurrent=recurrent,
-            train_on=train_on,
+            is_recurrent=True,
+            train_on="episode",
             critic_c1=Schedule.linear(
                 trial.suggest_float("critic_c1_start", 0.1, 1.0),
                 trial.suggest_float("critic_c1_end", 0.001, 0.5),
@@ -276,6 +269,16 @@ class PPOParameters:
             lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
             grad_norm_clipping=grad_norm_clipping,
         )
+
+    @staticmethod
+    def suggest_ppo(trial: Trial):
+        params = PPOParameters.suggest_rppo(trial)
+        params.is_recurrent = False
+        if trial.suggest_categorical("train_on_episode", [True, False]):
+            params.train_on = "episode"
+        else:
+            params.train_on = "transition"
+        return params
 
 
 @dataclass(eq=True)

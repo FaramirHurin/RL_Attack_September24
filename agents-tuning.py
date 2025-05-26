@@ -13,7 +13,7 @@ import pandas as pd
 from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
 from runner import Runner
 
-N_PARALLEL = 2
+N_PARALLEL = 8
 TIMEOUT = timedelta(minutes=20)
 
 
@@ -95,6 +95,6 @@ if __name__ == "__main__":
     if not p.banksys_is_in_cache():
         p.create_banksys(save=True)
 
-    make_tuning(2, "ppo", lambda t: PPOParameters.suggest(False, t), 1)
-    make_tuning(2, "rppo", lambda t: PPOParameters.suggest(True, t), 1)
-    make_tuning(2, "vae", VAEParameters.suggest, 1)
+    make_tuning(100, "rppo", PPOParameters.suggest_rppo, 4)
+    make_tuning(150, "ppo", PPOParameters.suggest_ppo, 4)
+    make_tuning(50, "vae", VAEParameters.suggest, 4)
