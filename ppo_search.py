@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from runner import PoolRunner, save_episodes
 import logging
-from parameters import CardSimParameters, Parameters, PPOParameters, ClassificationParameters
+from parameters import CardSimParameters, Parameters, PPOParameters, ClassificationParameters, VAEParameters
 
 
 CLF_PARAMS = ClassificationParameters(
@@ -26,21 +26,21 @@ CLF_PARAMS = ClassificationParameters(
 )
 
 CARDSIM_PARAMS = CardSimParameters(
-    n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
-    n_payers=20_000,
+    n_days=365,  # * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
+    n_payers=10_000,
 )
 
 
 def trial(is_recurrent: bool, train_on: Literal["transition", "episode"], trial: optuna.Trial):
     c1 = Schedule.linear(
-        trial.suggest_float("critic_c1_start", 0.1, 0.7),
+        trial.suggest_float("critic_c1_start", 0.1, 1.0),
         trial.suggest_float("critic_c1_end", 0.001, 0.1),
         trial.suggest_int("critic_c1_steps", 1000, 4000),
     )
 
     c2 = Schedule.linear(
-        trial.suggest_float("entropy_c2_start", 0.001, 0.1),
-        trial.suggest_float("entropy_c2_end", 0.001, 0.05),
+        trial.suggest_float("entropy_c2_start", 0.001, 0.5),
+        trial.suggest_float("entropy_c2_end", 0.001, 0.1),
         trial.suggest_int("entropy_c2_steps", 1000, 4000),
     )
     train_interval = trial.suggest_int("train_interval", 8, 256)
@@ -86,15 +86,62 @@ def experiment(params: Parameters):
     try:
         params.save()
         runner = PoolRunner(params)
-        episodes = runner.run()
-        total_amount = sum(e.score[0] for e in episodes)
-        save_episodes(episodes, params.logdir)
+        run = runner.run()
         del runner
-        del episodes
-        return total_amount
+        return run.total_amount
     except Exception as e:
         logging.error(f"Error occurred while running experiment: {e}")
     return 0.0
+
+
+def vae_trial(trial: optuna.Trial):
+    latent_dim = trial.suggest_int("latent_dim", 2, 64)
+    hidden_dim = trial.suggest_int("hidden_dim", 64, 256)
+    lr = trial.suggest_float("lr", 0.0001, 0.001)
+    trees = trial.suggest_int("trees", 20, 200)
+    batch_size = trial.suggest_int("batch_size", 8, 64)
+    quantile = trial.suggest_float("quantile", 0.9, 0.999)
+    num_epochs = trial.suggest_int("num_epochs", 2_000, 10_000)
+
+    params = Parameters(
+        VAEParameters(
+            latent_dim=latent_dim,
+            hidden_dim=hidden_dim,
+            lr=lr,
+            trees=trees,
+            batch_size=batch_size,
+            num_epochs=num_epochs,
+            quantile=quantile,
+        ),
+        n_episodes=1000,
+        card_pool_size=50,
+        clf_params=CLF_PARAMS,
+        cardsim=CARDSIM_PARAMS,
+        logdir=f"tuning/vae/trial-{trial.number}",
+        seed_value=0,
+        save=True,
+    )
+    # amounts = [experiment(params) for _ in range(4)]
+    # with mp.Pool(4) as pool:
+    #     amounts = pool.map(experiment, params.repeat(4))
+    objective = experiment(params)  # sum(amounts) / len(amounts)
+    logging.critical(f"VAE Trial {trial.number} objective: {objective}")
+    return objective
+
+
+def make_vae_tuning():
+    study = optuna.create_study(
+        storage="sqlite:///ppo_tuning.db",
+        study_name="vae-tuning",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(vae_trial, n_trials=100, n_jobs=1)
+    df: pd.DataFrame = study.trials_dataframe()
+    # Save the DataFrame to a CSV file
+    df.to_csv(f"tuning-results-{datetime.now()}.csv", index=False)
+    logging.critical(f"Trials DataFrame:\n{df}")
+    logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
 
 
 def make_tuning(is_recurrent: bool, train_on: Literal["transition", "episode"]):
@@ -126,4 +173,5 @@ if __name__ == "__main__":
 
     # make_tuning(True, "episode")
     # make_tuning(False, "episode")
-    make_tuning(True, "transition")
+    # make_tuning(True, "transition")
+    make_vae_tuning()

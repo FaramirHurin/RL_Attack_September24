@@ -21,7 +21,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
         system: "Banksys",
-        avg_card_block_delay: timedelta = timedelta(days=7),
+        avg_card_block_delay: timedelta,
         *,
         customer_location_is_known: bool = False,
         normalize_location: bool = False,
@@ -77,7 +77,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def compute_state(self, card: Card):
         time_ratio = self.card_registry.get_time_ratio(card, self.t)
-        features = [time_ratio, card.is_credit, self.t.hour, self.t.day]
+        features = [time_ratio, card.is_credit, self.t.hour / 24, self.t.day / 31]
         if self.customer_location_is_known:
             x, y = card.customer_x, card.customer_y
             if self.normalize_location:

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import orjson
-from parameters import Parameters
+from parameters import Parameters, serialize_unknown
 from marlenv import Episode
 
 
@@ -27,9 +27,15 @@ class LogItem:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "LogItem":
+        t_start = d["t_start"]
+        if isinstance(t_start, str):
+            t_start = datetime.fromisoformat(t_start)
+        t_end = d.get("t_end", d["t_start"])
+        if isinstance(t_end, str):
+            t_end = datetime.fromisoformat(t_end)
         return LogItem(
-            t_start=datetime.fromisoformat(d["t_start"]),
-            t_end=datetime.fromisoformat(d.get("t_end", d["t_start"])),
+            t_start=t_start,
+            t_end=t_end,
             n_transactions=d["episode_len"],
             card_id=d["card_id"],
             amount_stolen=d["score-0"],
@@ -51,7 +57,7 @@ class Run:
         os.makedirs(rundir, exist_ok=True)
         params_path = os.path.join(rundir, "params.json")
         with open(params_path, "wb") as f:
-            f.write(orjson.dumps(params))
+            f.write(orjson.dumps(params, default=serialize_unknown))
         episodes_path = os.path.join(rundir, "episodes.json")
         with open(episodes_path, "wb") as f:
             f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
@@ -76,9 +82,25 @@ class Run:
     def load(rundir: str, params: Optional[Parameters] = None):
         if params is None:
             params = Run.load_parameters(rundir)
-        metrics_path = os.path.join(rundir, "metrics.json")
-        with open(metrics_path, "rb") as f:
-            metrics_dict: list[dict] = orjson.loads(f.read())
+        try:
+            metrics_path = os.path.join(rundir, "metrics.json")
+            with open(metrics_path, "rb") as f:
+                metrics_dict: list[dict] = orjson.loads(f.read())
+        except FileNotFoundError:
+            episode_path = os.path.join(rundir, "episodes.json")
+            with open(episode_path, "rb") as f:
+                json_data: list[dict] = orjson.loads(f.read())
+            metrics_dict = []
+            for json_episode in json_data:
+                metrics_dict.append(
+                    {
+                        "t_start": json_episode["metrics"]["t_start"],
+                        "t_end": json_episode.get("t_end", json_episode["metrics"]["t_start"]),
+                        "episode_len": len(json_episode["actions"]),
+                        "card_id": json_episode["metrics"]["card_id"],
+                        "score-0": json_episode["metrics"]["score-0"],
+                    }
+                )
         items = [LogItem.from_dict(m) for m in metrics_dict]
         return Run(rundir, params, items)
 
@@ -180,12 +202,7 @@ class Experiment:
 
     def add(self, episodes: list[Episode], seed: int):
         path = os.path.join(self.logdir, f"seed-{seed}")
-        os.makedirs(path)
-        with open(os.path.join(path, "episodes.json"), "wb") as f:
-            f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
-        with open(os.path.join(path, "metrics.json"), "wb") as f:
-            metrics = [e.metrics for e in episodes]
-            f.write(orjson.dumps(metrics))
+        return Run.create(path, self.params, episodes)
 
     @cached_property
     def n_transactions_over_time(self):

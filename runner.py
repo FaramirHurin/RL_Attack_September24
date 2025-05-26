@@ -1,14 +1,14 @@
 import logging
 import os
+import random
 from typing import Optional
-from time import sleep
+from plots import Experiment
 
 import numpy as np
 import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
-import multiprocessing as mp
 from banksys import Card
 from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
 import dotenv
@@ -30,6 +30,10 @@ class PoolRunner:
         self.states = dict[Card, State]()
         self.hidden_states = dict[Card, Optional[torch.Tensor]]()
         self.env = params.create_pooled_env()
+
+        terminals = self.env.system.attackable_terminals
+        logging.info(f"Terminals: {len(terminals)}")
+        self.env.system.attackable_terminals = random.sample(terminals, round(len(terminals) * params.terminal_fract))
         self.agent = params.create_agent(self.env)
         self.n_spawned = 0
 
@@ -71,6 +75,7 @@ class PoolRunner:
         episodes = list[Episode]()
         step_num = 0
         episode_num = 0
+        best_score = -float("inf")
         scores = list[float]()
         pbar = tqdm(total=self.params.n_episodes, desc="Training")
         while episode_num < self.params.n_episodes:
@@ -88,7 +93,12 @@ class PoolRunner:
                 scores.append(current_episode.score[0])
                 episodes.append(current_episode)
                 pbar.update()
-                pbar.set_description(f"{self.env.t.date().isoformat()} avg score={np.mean(scores[-100:]):.2f}")
+                avg_score = np.mean(scores[-100:])
+                pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
+                if avg_score > best_score:
+                    logging.info(f"Saving best model with avg score {avg_score}")
+                    self.agent.save()
+                    best_score = avg_score
                 episode_num += 1
                 self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 if self.n_spawned < self.params.n_episodes:
@@ -96,37 +106,38 @@ class PoolRunner:
             else:
                 action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
                 self.env.buffer_action(action, card)
-        return episodes
 
-
-def truc(params: Parameters):
-    try:
-        runner = PoolRunner(params)
-        episodes = runner.run()
-        save_episodes(episodes, runner.params.logdir)
-        del runner
-    except Exception as e:
-        logging.error(f"Error occurred while running experiment: {e}")
+        exp = Experiment.load(self.params.logdir)
+        run = exp.add(episodes, self.params.seed_value)
+        return run
 
 
 def main():
     params = Parameters(
-        agent=PPOParameters.best_rppo(),
+        # agent=VAEParameters.best_vae(),
+        agent=PPOParameters.best_ppo(),
+        # agent=PPOParameters.best_rppo(),
         # agent=VAEParameters(),
-        cardsim=CardSimParameters(n_days=365, n_payers=10_000),
+        cardsim=CardSimParameters(n_days=365 * 2, n_payers=10_000),
         logdir="logs/rppo",
         card_pool_size=50,
-        terminal_fract=1.0,
-        seed_value=0,
-        clf_params=ClassificationParameters(rules={}),
+        terminal_fract=0.1,
+        seed_value=7,
+        clf_params=ClassificationParameters.best_params(1),
+        avg_card_block_delay_days=7,
+        n_episodes=4000,
     )
+    # params.clf_params.rules = {}
+    runner = PoolRunner(params)
+    run = runner.run()
+    print(run.total_amount)
 
-    pool = mp.Pool(8)
-    pool.map(truc, params.repeat(32))
-    sleep(1)
-    pool.join()
-    pool.terminate()
-    pool.close()
+    # pool = mp.Pool(8)
+    # pool.map(truc, params.repeat(32))
+    # sleep(1)
+    # pool.join()
+    # pool.terminate()
+    # pool.close()
     # for param in params.repeat(10):
     #    PoolRunner(param).run()
 
@@ -134,6 +145,11 @@ def main():
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+    logging.basicConfig(
+        # filename="logs.txt",
+        # filemode="a",
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
 
     main()

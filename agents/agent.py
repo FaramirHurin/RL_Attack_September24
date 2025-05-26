@@ -23,3 +23,8 @@ class Agent(ABC):
         """
         Update the agent's policy based on the episode.
         """
+
+    def save(self):
+        """
+        Save the model weights.
+        """

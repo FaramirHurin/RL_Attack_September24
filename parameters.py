@@ -70,6 +70,39 @@ class ClassificationParameters:
         self.quantiles_values = quantiles_values
         self.rules = rules
 
+    @staticmethod
+    def best_params(nth: int = 0):
+        if nth == 0:
+            return ClassificationParameters(
+                n_trees=200,
+                balance_factor=0.05,
+                contamination=0.001,
+                training_duration=timedelta(days=150),
+                quantiles_features=("amount",),
+                quantiles_values=(0.05, 0.95),
+                rules={
+                    "max_trx_hour": 5,
+                    "max_trx_week": 20,
+                    "max_trx_day": 10,
+                },
+            )
+        elif nth == 1:
+            return ClassificationParameters(
+                use_anomaly=False,
+                n_trees=100,
+                balance_factor=0.05,
+                contamination=0.005,
+                training_duration=timedelta(days=150),
+                quantiles_features=("amount",),
+                quantiles_values=(0.01, 1.0),
+                rules={
+                    "max_trx_hour": 6,
+                    "max_trx_week": 40,
+                    "max_trx_day": 15,
+                },
+            )
+        raise ValueError(f"Unknown nth value: {nth}. Available values: 0, 1.")
+
 
 @dataclass(eq=True)
 class PPOParameters:
@@ -186,11 +219,33 @@ class PPOParameters:
         )
 
     @staticmethod
-    def best_ppo(train_on: Literal["transition", "episode"]):
-        if train_on == "episode":
-            raise NotImplementedError("Best PPO parameters for episode training are not defined.")
-        else:
-            raise NotImplementedError("Best PPO parameters for transition training are not defined. ")
+    def best_ppo():
+        """
+        The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
+        """
+        return PPOParameters(
+            is_recurrent=False,
+            train_on="transition",
+            gamma=0.99,
+            lr_actor=0.0009830993791440257,
+            lr_critic=0.000995558928022473,
+            n_epochs=26,
+            eps_clip=0.2,
+            critic_c1=Schedule.linear(
+                start_value=0.4943612898407241,
+                end_value=0.09730954213676407,
+                n_steps=2614,
+            ),
+            entropy_c2=Schedule.linear(
+                start_value=0.08127702555893541,
+                end_value=0.014990199238406538,
+                n_steps=3982,
+            ),
+            train_interval=11,
+            minibatch_size=4,
+            gae_lambda=0.95,
+            grad_norm_clipping=9.319870685466327,
+        )
 
 
 @dataclass(eq=True)
@@ -221,6 +276,20 @@ class VAEParameters:
             supervised=self.supervised,
             current_time=env.t,
             quantile=quantile,
+        )
+
+    @staticmethod
+    def best_vae():
+        # [latent_dim: 55, hidden_dim: 172, lr: 0.00028782207302075277, trees: 90, batch_size: 22, quantile: 0.9953256365516118, num_epochs: 7488]
+        return VAEParameters(
+            latent_dim=55,
+            hidden_dim=172,
+            lr=0.00028782207302075277,
+            trees=90,
+            batch_size=22,
+            num_epochs=7488,
+            quantile=0.9953256365516118,
+            supervised=False,
         )
 
 
