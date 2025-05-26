@@ -1,9 +1,8 @@
 import logging
 import os
-import random
 from typing import Optional
 from plots import Experiment
-
+from environment import CardSimEnv
 import numpy as np
 import orjson
 from marlenv import Episode, Transition, Observation, State
@@ -21,19 +20,17 @@ def save_episodes(episodes: list[Episode], directory: str):
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
-class PoolRunner:
-    def __init__(self, params: Parameters):
+class Runner:
+    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None):
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.observations = dict[Card, Observation]()
         self.actions = dict[Card, np.ndarray]()
         self.states = dict[Card, State]()
         self.hidden_states = dict[Card, Optional[torch.Tensor]]()
-        self.env = params.create_pooled_env()
-
-        terminals = self.env.system.attackable_terminals
-        logging.info(f"Terminals: {len(terminals)}")
-        self.env.system.attackable_terminals = random.sample(terminals, round(len(terminals) * params.terminal_fract))
+        if env is None:
+            env = params.create_pooled_env()
+        self.env = env
         self.agent = params.create_agent(self.env)
         self.n_spawned = 0
 
@@ -123,12 +120,12 @@ def main():
         card_pool_size=50,
         terminal_fract=0.1,
         seed_value=7,
-        clf_params=ClassificationParameters.paper_params(1),
+        clf_params=ClassificationParameters.paper_params(),
         avg_card_block_delay_days=7,
         n_episodes=4000,
     )
     # params.clf_params.rules = {}
-    runner = PoolRunner(params)
+    runner = Runner(params)
     run = runner.run()
     print(run.total_amount)
 

@@ -9,7 +9,7 @@ import pandas as pd
 
 from marlenv.utils.schedule import Schedule
 
-from runner import PoolRunner
+from runner import Runner
 import logging
 from parameters import CardSimParameters, Parameters, PPOParameters, ClassificationParameters, VAEParameters
 
@@ -129,16 +129,17 @@ def vae_parameters(trial: optuna.Trial):
     return experiment(trial, params)
 
 
-def experiment(trial: optuna.Trial, params: Parameters):
-    def run(p: Parameters):
-        try:
-            runner = PoolRunner(p)
-            run = runner.run()
-            return run.total_amount
-        except Exception as e:
-            logging.error(f"Error occurred while running experiment: {e}")
-        return 0.0
+def run(p: Parameters):
+    try:
+        runner = Runner(p)
+        run = runner.run()
+        return run.total_amount
+    except Exception as e:
+        logging.error(f"Error occurred while running experiment: {e}")
+    return 0.0
 
+
+def experiment(trial: optuna.Trial, params: Parameters):
     submission_times = list[datetime]()
     handles = list[AsyncResult]()
     with mp.Pool(N_PARALLEL) as pool:
@@ -182,13 +183,15 @@ if __name__ == "__main__":
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    Parameters(
+    p = Parameters(
         PPOParameters(),
         clf_params=ClassificationParameters.paper_params(),
         cardsim=CardSimParameters.paper_params(),
         save=False,
-    ).create_pooled_env()
+    )
+    if not p.banksys_is_in_cache():
+        p.create_banksys(save=True)
 
-    make_tuning(150, "ppo", ppo_parameters, 5)
-    make_tuning(100, "rppo", rppo_parameters, 5)
-    make_tuning(100, "vae", vae_parameters, 5)
+    make_tuning(150, "ppo", ppo_parameters, 4)
+    make_tuning(100, "rppo", rppo_parameters,4)
+    make_tuning(100, "vae", vae_parameters, 4)

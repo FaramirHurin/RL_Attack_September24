@@ -307,7 +307,7 @@ class Parameters:
         clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
-        terminal_fract: float = 1.0,
+        terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
         card_pool_size: int = 10,
         avg_card_block_delay_days: int = 7,
@@ -390,6 +390,12 @@ class Parameters:
         env.seed(self.seed_value)
         return env
 
+    def banksys_is_in_cache(self):
+        """
+        Check if the Banksys directory exists.
+        """
+        return os.path.exists(self.banksys_dir)
+
     @property
     def banksys_dir(self):
         return os.path.join(
@@ -430,7 +436,7 @@ class Parameters:
                 pass
         os.makedirs(self.logdir, exist_ok=True)
         file_path = os.path.join(self.logdir, "params.json")
-        print(file_path)
+        logging.debug(file_path)
         with open(file_path, "wb") as f:
             f.write(orjson.dumps(self, default=serialize_unknown))
 
