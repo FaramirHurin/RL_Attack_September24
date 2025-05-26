@@ -10,7 +10,7 @@ from tqdm import tqdm
 from agents import Agent
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from banksys import Banksys, Transaction
-from environment import SimpleCardSimEnv
+from environment import CardSimEnv
 from parameters import CardSimParameters, Parameters, PPOParameters, VAEParameters
 from banksys.classification.system import ClassificationSystem
 from banksys.banksys import Banksys
@@ -34,26 +34,27 @@ def save_episodes(episodes: list[Episode], directory: str):
         f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
-def train(env: SimpleCardSimEnv, agent: Agent, n_episodes: int):
+def train(env: CardSimEnv, agent: Agent, n_episodes: int):
     scores = list[float]()
     episodes = list[Episode]()
     with tqdm(range(n_episodes)) as pbar:
         step_num = 0
         avg_score = 0.0
         for e in pbar:
+            hx = None
             obs, state = env.reset()
             episode = Episode.new(obs, state, {"t_start": env.t_start, "card_id": env.current_card.id})
             transactions = list[Transaction]()
             terminals = list[int]()
             while not episode.is_finished:
                 step_num += 1
-                action = agent.choose_action(obs.data)
+                action, hx = agent.choose_action(obs.data, hx)
                 step, trx = env.step(action)
                 if trx is not None:
                     terminals.append(trx.terminal_id)
                     transactions.append(trx)
                 t = Transition.from_step(obs, state, action, step)
-                agent.update_transition(t, step_num)
+                agent.update_transition(t, step_num, e)
                 episode.add(t)
                 obs, state = step.obs, step.state
             episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})

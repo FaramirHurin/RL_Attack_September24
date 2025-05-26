@@ -1,0 +1,32 @@
+{
+    "optuna-result": {
+        "critic_c1_start": 0.5640469966895131,
+        "critic_c1_end": 0.059606970056594356,
+        "critic_c1_steps": 2017,
+        "entropy_c2_start": 0.05257108712492839,
+        "entropy_c2_end": 0.032373700129899374,
+        "entropy_c2_steps": 2602,
+        "train_interval": 13,
+        "minibatch_size": 4,
+        "lr_actor": 0.0009169278258635868,
+        "lr_critic": 0.0005058375638259988,
+        "enable_clipping": true,
+        "grad_norm_clipping": 2.548454926359372,
+        "n_epochs": 50
+    },
+    "adapted-parameters": {
+        "critic_c1_start": 0.55,
+        "critic_c1_end": 0.06,
+        "critic_c1_steps": 2000,
+        "entropy_c2_start": 0.05,
+        "entropy_c2_end": 0.025,
+        "entropy_c2_steps": 2500,
+        "train_interval": 13,
+        "minibatch_size": 4,
+        "lr_actor": 0.001,
+        "lr_critic": 0.0005,
+        "enable_clipping": true,
+        "grad_norm_clipping": 2.5,
+        "n_epochs": 50
+    }
+}
