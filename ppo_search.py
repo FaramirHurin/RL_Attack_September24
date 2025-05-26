@@ -2,6 +2,8 @@ import multiprocessing as mp
 import dotenv
 import optuna
 import os
+from datetime import datetime
+from typing import Literal
 import pandas as pd
 
 from marlenv.utils.schedule import Schedule
@@ -29,7 +31,7 @@ CARDSIM_PARAMS = CardSimParameters(
 )
 
 
-def recurrent_trial(trial: optuna.Trial):
+def trial(is_recurrent: bool, train_on: Literal["transition", "episode"], trial: optuna.Trial):
     c1 = Schedule.linear(
         trial.suggest_float("critic_c1_start", 0.1, 0.7),
         trial.suggest_float("critic_c1_end", 0.001, 0.1),
@@ -54,8 +56,8 @@ def recurrent_trial(trial: optuna.Trial):
 
     params = Parameters(
         PPOParameters(
-            is_recurrent=True,
-            train_on="episode",
+            is_recurrent=is_recurrent,
+            train_on=train_on,
             critic_c1=c1,
             entropy_c2=c2,
             n_epochs=trial.suggest_int("n_epochs", 10, 100),
@@ -95,25 +97,33 @@ def experiment(params: Parameters):
     return 0.0
 
 
+def make_tuning(is_recurrent: bool, train_on: Literal["transition", "episode"]):
+    name = "ppo-tuning"
+    if is_recurrent:
+        name = f"r-{name}"
+    name = f"{name}-{train_on}"
+    study = optuna.create_study(
+        storage="sqlite:///ppo_tuning.db",
+        study_name=name,
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(lambda t: trial(is_recurrent, train_on, t), n_trials=100, n_jobs=4)
+    df: pd.DataFrame = study.trials_dataframe()
+    # Save the DataFrame to a CSV file
+    df.to_csv(f"tuning-results-{datetime.now()}.csv", index=False)
+    logging.critical(f"Trials DataFrame:\n{df}")
+    logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
+
+
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(filename="logs.txt", filemode="a", level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    p = Parameters(PPOParameters(), clf_params=CLF_PARAMS, cardsim=CARDSIM_PARAMS)
+    p = Parameters(PPOParameters(), clf_params=CLF_PARAMS, cardsim=CARDSIM_PARAMS, save=False)
     p.create_pooled_env()
 
-    study = optuna.create_study(
-        storage="sqlite:///r-ppo_tuning.db",
-        study_name="r-ppo-maximize-4000",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=False,
-    )
-    study.optimize(recurrent_trial, n_trials=150, n_jobs=3)
-    df: pd.DataFrame = study.trials_dataframe()
-    # Save the DataFrame to a CSV file
-    df.to_csv("r-ppo_tuning_results.csv", index=False)
-    logging.critical(f"Trials DataFrame:\n{df}")
-    print(df)
-
-    print(study.best_params)
+    # make_tuning(True, "episode")
+    # make_tuning(False, "episode")
+    make_tuning(True, "transition")

@@ -10,6 +10,7 @@ dependencies = [
     "jupyterlab>=4.4.2",
     "matplotlib>=3.9.2",
     "multi-agent-rlenv>=3.3.7",
+    "optuna-dashboard>=0.18.0",
     "optuna>=4.3.0",
     "orjson>=3.10.18",
     "pandas>=2.2.3",
@@ -22,6 +23,7 @@ dependencies = [
     "torch>=2.5.1",
     "tqdm>=4.67.1",
     "typed-argparse>=0.3.1",
+    "gunicorn>=23.0.0",
 ]
 
 [tool.uv.sources]

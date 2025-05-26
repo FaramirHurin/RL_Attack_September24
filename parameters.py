@@ -12,7 +12,7 @@ import torch
 from marlenv.utils import Schedule
 
 from agents import Agent
-from environment import SimpleCardSimEnv, CardSimEnv
+from environment import CardSimEnv
 
 
 @dataclass(eq=True)
@@ -139,7 +139,7 @@ class PPOParameters:
         data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
         return PPOParameters(**data)
 
-    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device):
+    def get_agent(self, env: CardSimEnv, device: torch.device):
         # from agents import RPPO
         from agents.rl.replay_memory import TransitionMemory, EpisodeMemory
         from agents.rl.ppo import PPO
@@ -158,6 +158,40 @@ class PPOParameters:
             network = LinearActorCritic(env.observation_size, env.n_actions, device)
         return PPO(network, memory, **self.as_dict(), device=device)
 
+    @staticmethod
+    def best_rppo():
+        """
+        The result of the hyperparameter tuning with Optuna for recurrent PPO.
+        """
+        return PPOParameters(
+            True,
+            "episode",
+            gamma=0.99,
+            lr_actor=0.0009169278258635868,
+            lr_critic=0.0005058375638259988,
+            grad_norm_clipping=2.548454926359372,
+            n_epochs=50,
+            train_interval=13,
+            minibatch_size=4,
+            critic_c1=Schedule.linear(
+                start_value=0.5640469966895131,
+                end_value=0.059606970056594356,
+                n_steps=2017,
+            ),
+            entropy_c2=Schedule.linear(
+                start_value=0.05257108712492839,
+                end_value=0.032373700129899374,
+                n_steps=2602,
+            ),
+        )
+
+    @staticmethod
+    def best_ppo(train_on: Literal["transition", "episode"]):
+        if train_on == "episode":
+            raise NotImplementedError("Best PPO parameters for episode training are not defined.")
+        else:
+            raise NotImplementedError("Best PPO parameters for transition training are not defined. ")
+
 
 @dataclass(eq=True)
 class VAEParameters:
@@ -170,7 +204,7 @@ class VAEParameters:
     quantile: float = 0.95
     supervised: bool = False
 
-    def get_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: torch.device, know_client: bool, quantile: float):
+    def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
         return VaeAgent(
@@ -263,7 +297,7 @@ class Parameters:
         np.random.seed(self.seed_value)
         torch.manual_seed(self.seed_value)
 
-    def create_agent(self, env: SimpleCardSimEnv | CardSimEnv, device: Optional[torch.device] = None) -> Agent:
+    def create_agent(self, env: CardSimEnv, device: Optional[torch.device] = None) -> Agent:
         self.seed()
         if device is None:
             device = self.get_device_by_seed()
@@ -274,25 +308,6 @@ class Parameters:
                 return self.agent.get_agent(env, device)
             case _:
                 raise ValueError("Unknown agent type")
-
-    def create_env(self):
-        from banksys import Banksys
-
-        try:
-            banksys = Banksys.load(self.cardsim, self.banksys_dir)
-        except (FileNotFoundError, ValueError):
-            print("Banksys not found, creating a new one")
-            banksys = self.create_banksys()
-
-        banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
-        env = SimpleCardSimEnv(
-            banksys,
-            timedelta(days=self.avg_card_block_delay_days),
-            customer_location_is_known=self.know_client,
-            normalize_location=self.agent_name in ("ppo", "rppo"),
-        )
-        env.seed(self.seed_value)
-        return env
 
     def create_pooled_env(self):
         from banksys import Banksys

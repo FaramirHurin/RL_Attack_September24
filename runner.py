@@ -9,7 +9,7 @@ from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 import multiprocessing as mp
-from banksys import Transaction, Card
+from banksys import Card
 from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
 import dotenv
 
@@ -99,41 +99,6 @@ class PoolRunner:
         return episodes
 
 
-def run(params: Parameters):
-    env = params.create_env()
-    agent = params.create_agent(env)
-
-    scores = list[float]()
-    episodes = list[Episode]()
-    pbar = tqdm(range(params.n_episodes), desc="Training")
-    step_num = 0
-    for episode_num in pbar:
-        obs, state = env.reset()
-        hx = None
-        episode = Episode.new(obs, state, {"t_start": env.t_start, "card_id": env.current_card.id})
-        transactions = list[Transaction]()
-        terminals = list[int]()
-        while not episode.is_finished:
-            step_num += 1
-            action, hx = agent.choose_action(obs.data, hx)
-            step, trx = env.step(action)
-            if trx is not None:
-                terminals.append(trx.terminal_id)
-                transactions.append(trx)
-            t = Transition.from_step(obs, state, action, step)
-            agent.update_transition(t, step_num, episode_num)
-            episode.add(t)
-            obs, state = step.obs, step.state
-        episode.add_metrics({"t_end": env.t.isoformat(), "terminals": terminals})
-        agent.update_episode(episode, step_num, episode_num)
-        scores.append(episode.score[0])
-        episodes.append(episode)
-        # Update tqdm description with average score
-        pbar.set_description(f"{env.t.date().isoformat()} avg score={np.mean(scores[-100:]):.2f}")
-    pbar.close()
-    save_episodes(episodes, params.logdir)
-
-
 def truc(params: Parameters):
     try:
         runner = PoolRunner(params)
@@ -146,13 +111,7 @@ def truc(params: Parameters):
 
 def main():
     params = Parameters(
-        agent=PPOParameters(
-            is_recurrent=True,
-            train_on="episode",
-            n_epochs=20,
-            minibatch_size=16,
-            train_interval=32,
-        ),
+        agent=PPOParameters.best_rppo(),
         # agent=VAEParameters(),
         cardsim=CardSimParameters(n_days=365, n_payers=10_000),
         logdir="logs/rppo",
@@ -161,14 +120,9 @@ def main():
         seed_value=0,
         clf_params=ClassificationParameters(rules={}),
     )
-    # run(params)
 
-    # params.create_banksys()
-    # exit()
-    # truc(params)
-    # exit()
-    pool = mp.Pool(5)
-    pool.map(truc, params.repeat(10))
+    pool = mp.Pool(8)
+    pool.map(truc, params.repeat(32))
     sleep(1)
     pool.join()
     pool.terminate()
