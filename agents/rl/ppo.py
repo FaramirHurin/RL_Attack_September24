@@ -154,8 +154,11 @@ class PPO(Agent):
                     torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
                 self.optimizer.step()
             except ValueError:
-                logging.error(f"Error at step={step_num}, episode {episode_num}. Reloading best model.")
-                self.load()
+                logging.error(f"Error at step={step_num}, episode {episode_num}. Resetting the optimizer.")
+                # self.load()
+                # Reset the optimizer to avoid accumulating gradients
+                self.optimizer = torch.optim.Adam(self.optimizer.param_groups)
+                self.optimizer.zero_grad()
 
     def update_transition(self, t: Transition, step: int, episode_num: int):
         if self.memory.update_on_transitions:

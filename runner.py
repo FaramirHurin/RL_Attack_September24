@@ -9,7 +9,7 @@ from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
-from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
+from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters
 import dotenv
 
 
@@ -21,7 +21,7 @@ def save_episodes(episodes: list[Episode], directory: str):
 
 
 class Runner:
-    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None):
+    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False):
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.observations = dict[Card, Observation]()
@@ -32,6 +32,7 @@ class Runner:
             env = params.create_env()
         self.env = env
         self.agent = params.create_agent(self.env)
+        self.quiet = quiet
         self.n_spawned = 0
 
     def reset(self):
@@ -74,7 +75,7 @@ class Runner:
         episode_num = 0
         best_score = -float("inf")
         scores = list[float]()
-        pbar = tqdm(total=self.params.n_episodes, desc="Training")
+        pbar = tqdm(total=self.params.n_episodes, desc="Training", quiet=self.quiet)
         while episode_num < self.params.n_episodes:
             logging.debug(f"{self.env.t.isoformat()} - {step_num}")
             step_num += 1
@@ -92,10 +93,10 @@ class Runner:
                 pbar.update()
                 avg_score = np.mean(scores[-100:])
                 pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
-                if avg_score > best_score:
-                    logging.info(f"Saving best model with avg score {avg_score}")
-                    self.agent.save()
-                    best_score = avg_score
+                # if avg_score > best_score:
+                #     logging.info(f"Saving best model with avg score {avg_score}")
+                #     self.agent.save()
+                #     best_score = avg_score
                 episode_num += 1
                 self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 if self.n_spawned < self.params.n_episodes:

@@ -57,7 +57,7 @@ def ppo_parameters(trial: optuna.Trial):
         ),
         clf_params=ClassificationParameters.paper_params(),
         cardsim=CardSimParameters.paper_params(),
-        logdir=f"tuning/r-ppo/trial-{trial.number}",
+        seed_value=0,
     )
     return experiment(trial, params)
 
@@ -98,7 +98,7 @@ def rppo_parameters(trial: optuna.Trial):
         ),
         clf_params=ClassificationParameters.paper_params(),
         cardsim=CardSimParameters.paper_params(),
-        logdir=f"tuning/r-ppo/trial-{trial.number}",
+        seed_value=0,
     )
     return experiment(trial, params)
 
@@ -124,18 +124,18 @@ def vae_parameters(trial: optuna.Trial):
         ),
         clf_params=ClassificationParameters.paper_params(),
         cardsim=CardSimParameters.paper_params(),
-        logdir=f"tuning/vae/trial-{trial.number}",
+        seed_value=0,
     )
     return experiment(trial, params)
 
 
-def run(p: Parameters):
+def run(p: Parameters, trial: optuna.Trial):
     try:
-        runner = Runner(p)
+        runner = Runner(p, quiet=p.seed_value != 0)
         run = runner.run()
         return run.total_amount
     except Exception as e:
-        logging.error(f"Error occurred while running experiment: {e}")
+        logging.error(f"Trial {trial.number}: Error occurred while running experiment with seed {p.seed_value}: {e}")
     return 0.0
 
 
@@ -144,7 +144,7 @@ def experiment(trial: optuna.Trial, params: Parameters):
     handles = list[AsyncResult]()
     with mp.Pool(N_PARALLEL) as pool:
         for p in params.repeat(N_REPEATS):
-            handles.append(pool.apply_async(run, (p,)))
+            handles.append(pool.apply_async(run, (p, trial)))
             submission_times.append(datetime.now())
         amounts = []
         for i, handle in enumerate(handles):
@@ -157,7 +157,7 @@ def experiment(trial: optuna.Trial, params: Parameters):
                 logging.error(f"Trial {trial.number} timed out after {TIMEOUT}.")
 
     if len(amounts) == 0:
-        logging.critical(f"Trial {trial.number} failed to complete any runs.")
+        logging.critical(f"Trial {trial.number} failed to complete any run.")
         return 0.0
     objective = sum(amounts) / len(amounts)
     logging.critical(f"Trial {trial.number} objective: {objective}")
