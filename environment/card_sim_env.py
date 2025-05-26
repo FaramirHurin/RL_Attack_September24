@@ -2,6 +2,7 @@ import logging
 import random
 from copy import deepcopy
 from datetime import timedelta, datetime
+from .exceptions import AttackPeriodExpired
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -92,9 +93,10 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         t, (card, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
         assert t >= self.t, "Actions can not be executed in the past"
-        assert t <= self.system.attack_end, (
-            f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()}) "
-        )
+        if t >= self.system.attack_end:
+            raise AttackPeriodExpired(
+                f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()})"
+            )
         self.t = t
         if self.normalize_location:
             action.terminal_x *= 200

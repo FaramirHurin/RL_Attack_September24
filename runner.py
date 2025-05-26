@@ -1,8 +1,8 @@
 import logging
 import os
 from typing import Optional
-from plots import Experiment
-from environment import CardSimEnv
+from plots import Experiment, Run
+from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
 import orjson
 from marlenv import Episode, Transition, Observation, State
@@ -34,13 +34,6 @@ class Runner:
         self.agent = params.create_agent(self.env)
         self.quiet = quiet
         self.n_spawned = 0
-
-    def reset(self):
-        self.episodes.clear()
-        self.observations.clear()
-        self.actions.clear()
-        self.states.clear()
-        self.hidden_states.clear()
 
     def spawn_card_and_buffer_action(self):
         """
@@ -75,32 +68,36 @@ class Runner:
         episode_num = 0
         scores = list[float]()
         pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
-        while episode_num < self.params.n_episodes:
-            logging.debug(f"{self.env.t.isoformat()} - {step_num}")
-            step_num += 1
-            card, step = self.env.step()
+        try:
+            while episode_num < self.params.n_episodes:
+                logging.debug(f"{self.env.t.isoformat()} - {step_num}")
+                step_num += 1
+                card, step = self.env.step()
 
-            transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
-            self.agent.update_transition(transition, step_num, episode_num)
+                transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
+                self.agent.update_transition(transition, step_num, episode_num)
 
-            current_episode = self.episodes[card]
-            current_episode.add(transition)
-            if current_episode.is_finished:
-                self.cleanup_card(card)
-                scores.append(current_episode.score[0])
-                episodes.append(current_episode)
-                pbar.update()
-                avg_score = np.mean(scores[-100:])
-                pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
-                episode_num += 1
-                self.agent.update_episode(current_episode, step_num, self.n_spawned)
-                if self.n_spawned < self.params.n_episodes:
-                    self.spawn_card_and_buffer_action()
-            else:
-                action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
-                self.env.buffer_action(action, card)
+                current_episode = self.episodes[card]
+                current_episode.add(transition)
+                if current_episode.is_finished:
+                    self.cleanup_card(card)
+                    scores.append(current_episode.score[0])
+                    episodes.append(current_episode)
+                    pbar.update()
+                    avg_score = np.mean(scores[-100:])
+                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
+                    episode_num += 1
+                    self.agent.update_episode(current_episode, step_num, self.n_spawned)
+                    if self.n_spawned < self.params.n_episodes:
+                        self.spawn_card_and_buffer_action()
+                else:
+                    action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
+                    self.env.buffer_action(action, card)
+        except AttackPeriodExpired as e:
+            logging.warning(f"Attack period expired: {e}")
 
         exp = Experiment.load(self.params.logdir)
+        Run.create(self.params, params)
         run = exp.add(episodes, self.params.seed_value)
         return run
 
