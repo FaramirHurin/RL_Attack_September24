@@ -73,9 +73,8 @@ class Runner:
         episodes = list[Episode]()
         step_num = 0
         episode_num = 0
-        best_score = -float("inf")
         scores = list[float]()
-        pbar = tqdm(total=self.params.n_episodes, desc="Training", quiet=self.quiet)
+        pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
         while episode_num < self.params.n_episodes:
             logging.debug(f"{self.env.t.isoformat()} - {step_num}")
             step_num += 1
@@ -93,10 +92,6 @@ class Runner:
                 pbar.update()
                 avg_score = np.mean(scores[-100:])
                 pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
-                # if avg_score > best_score:
-                #     logging.info(f"Saving best model with avg score {avg_score}")
-                #     self.agent.save()
-                #     best_score = avg_score
                 episode_num += 1
                 self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 if self.n_spawned < self.params.n_episodes:

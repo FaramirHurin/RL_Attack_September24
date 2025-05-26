@@ -2,6 +2,7 @@ import random
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta, datetime
 import os
+from optuna import Trial
 import orjson
 import shutil
 from typing import Any, Literal, Optional, Sequence
@@ -239,6 +240,43 @@ class PPOParameters:
             grad_norm_clipping=9.319870685466327,
         )
 
+    @staticmethod
+    def suggest(recurrent: bool, trial: Trial):
+        train_interval = trial.suggest_int("train_interval", 4, 64)
+        minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
+        enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
+        if enable_clipping:
+            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.5, 10)
+        else:
+            grad_norm_clipping = None
+        if recurrent:
+            train_on = "episode"
+        elif trial.suggest_categorical("train_on_episode", [True, False]):
+            train_on = "episode"
+        else:
+            train_on = "transition"
+
+        return PPOParameters(
+            is_recurrent=recurrent,
+            train_on=train_on,
+            critic_c1=Schedule.linear(
+                trial.suggest_float("critic_c1_start", 0.1, 1.0),
+                trial.suggest_float("critic_c1_end", 0.001, 0.5),
+                trial.suggest_int("critic_c1_steps", 1000, 4000),
+            ),
+            entropy_c2=Schedule.linear(
+                trial.suggest_float("entropy_c2_start", 0.001, 0.2),
+                trial.suggest_float("entropy_c2_end", 0.0001, 0.1),
+                trial.suggest_int("entropy_c2_steps", 1000, 4000),
+            ),
+            n_epochs=trial.suggest_int("n_epochs", 10, 100),
+            minibatch_size=minibatch_size,
+            train_interval=train_interval,
+            lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01),
+            lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
+            grad_norm_clipping=grad_norm_clipping,
+        )
+
 
 @dataclass(eq=True)
 class VAEParameters:
@@ -284,10 +322,22 @@ class VAEParameters:
             supervised=False,
         )
 
+    @staticmethod
+    def suggest(trial: Trial):
+        return VAEParameters(
+            latent_dim=trial.suggest_int("latent_dim", 2, 64),
+            hidden_dim=trial.suggest_int("hidden_dim", 64, 256),
+            lr=trial.suggest_float("lr", 0.0001, 0.001),
+            trees=trial.suggest_int("trees", 20, 200),
+            batch_size=trial.suggest_int("batch_size", 8, 64),
+            num_epochs=trial.suggest_int("num_epochs", 2_000, 10_000),
+            quantile=trial.suggest_float("quantile", 0.9, 0.999),
+        )
+
 
 @dataclass(eq=True)
 class Parameters:
-    agent: PPOParameters | VAEParameters
+    agent: PPOParameters | VAEParameters | None
     cardsim: CardSimParameters
     clf_params: ClassificationParameters
     n_episodes: int
@@ -302,7 +352,7 @@ class Parameters:
 
     def __init__(
         self,
-        agent: PPOParameters | VAEParameters,
+        agent: PPOParameters | VAEParameters | None = None,
         cardsim: CardSimParameters = CardSimParameters(),
         clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
