@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
 if TYPE_CHECKING:
-    from banksys import Card, Transaction, Terminal
+    from banksys import Card, Terminal, Transaction
     from banksys.banksys import Banksys
 
 from .agent import Agent
@@ -47,7 +48,7 @@ def vae_loss(recon_x, x, mu, logvar, epoch, beta=0.005):
     recon_loss = NMSE(x, recon_x)
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     if epoch % 100 == 0:
-        print(f"Epoch {epoch}, KL: {kl_div.item():.4f}, Recon Loss: {recon_loss.item():.4f}")
+        logging.debug(f"Epoch {epoch}, KL: {kl_div.item():.4f}, Recon Loss: {recon_loss.item():.4f}")
     return recon_loss + beta * kl_div
 
 
@@ -121,6 +122,7 @@ class Attack_Generation:
         self._train_vae(self.training_data.to(torch.float), batch_size, num_epochs)
 
     def _train_vae(self, data, batch_size, num_epochs=1000):
+        logging.info("Training VAE...")
         data = data.to(self.device)
         for epoch in range(num_epochs):
             self.model.train()
@@ -138,7 +140,7 @@ class Attack_Generation:
             self.optimizer.step()
 
             if epoch % 100 == 0:
-                print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {loss.item():.4f}")
+                logging.debug(f"Epoch [{epoch}/{num_epochs}], Loss: {loss.item():.4f}")
 
     def _generate_batch(self, num_samples: int = 1) -> np.ndarray:
         self.model.eval()

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from functools import cached_property
 from typing import Any, Optional
@@ -50,10 +50,11 @@ class Run:
     episodes: Optional[list[Episode]] = None
 
     @staticmethod
-    def create(rundir: str, params: Parameters, episodes: list[Episode]):
+    def create(params: Parameters, episodes: list[Episode]):
         """
         Create a new run and saves it to the disk.
         """
+        rundir = params.logdir
         os.makedirs(rundir, exist_ok=True)
         params_path = os.path.join(rundir, "params.json")
         with open(params_path, "wb") as f:
@@ -188,11 +189,12 @@ class Experiment:
         return len(self.runs)
 
     @staticmethod
-    def create(logdir: str, params: Parameters):
+    def create(params: Parameters):
+        logdir = params.logdir
         os.makedirs(logdir, exist_ok=True)
         params_path = os.path.join(logdir, "params.json")
         with open(params_path, "wb") as f:
-            f.write(orjson.dumps(params))
+            f.write(orjson.dumps(params, default=serialize_unknown))
         return Experiment(logdir, params, {})
 
     @staticmethod
@@ -202,7 +204,8 @@ class Experiment:
 
     def add(self, episodes: list[Episode], seed: int):
         path = os.path.join(self.logdir, f"seed-{seed}")
-        return Run.create(path, self.params, episodes)
+        params = replace(self.params, seed_value=seed, logdir=path)
+        return Run.create(params, episodes)
 
     @cached_property
     def n_transactions_over_time(self):

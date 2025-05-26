@@ -359,7 +359,7 @@ class Parameters:
         know_client: bool = False,
         terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
-        card_pool_size: int = 10,
+        card_pool_size: int = 50,
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
@@ -398,6 +398,7 @@ class Parameters:
         if logdir is None:
             logdir = self.default_logdir()
         self.logdir = logdir
+        self.seed()
         if save:
             self.save()
 
@@ -410,7 +411,6 @@ class Parameters:
         torch.manual_seed(self.seed_value)
 
     def create_agent(self, env: CardSimEnv, device: Optional[torch.device] = None) -> Agent:
-        self.seed()
         if device is None:
             device = self.get_device_by_seed()
         match self.agent:
@@ -432,8 +432,8 @@ class Parameters:
 
         banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
         env = CardSimEnv(
-            banksys,
-            timedelta(days=self.avg_card_block_delay_days),
+            system=banksys,
+            avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,
             normalize_location=self.agent_name in ("ppo", "rppo"),
         )
@@ -486,7 +486,6 @@ class Parameters:
                 pass
         os.makedirs(self.logdir, exist_ok=True)
         file_path = os.path.join(self.logdir, "params.json")
-        logging.debug(file_path)
         with open(file_path, "wb") as f:
             f.write(orjson.dumps(self, default=serialize_unknown))
 

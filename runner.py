@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Optional
-from plots import Experiment, Run
 from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
 import orjson
@@ -95,11 +94,7 @@ class Runner:
                     self.env.buffer_action(action, card)
         except AttackPeriodExpired as e:
             logging.warning(f"Attack period expired: {e}")
-
-        exp = Experiment.load(self.params.logdir)
-        Run.create(self.params, params)
-        run = exp.add(episodes, self.params.seed_value)
-        return run
+        return episodes
 
 
 def main():
@@ -119,8 +114,7 @@ def main():
     )
     # params.clf_params.rules = {}
     runner = Runner(params)
-    run = runner.run()
-    print(run.total_amount)
+    runner.run()
 
     # pool = mp.Pool(8)
     # pool.map(truc, params.repeat(32))
