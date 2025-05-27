@@ -291,6 +291,7 @@ class VAEParameters:
     num_epochs: int = 4000
     quantile: float = 0.95
     supervised: bool = False
+    generated_size: int = 1000
     n_infiltrated_terminals: int = 5
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
@@ -336,6 +337,7 @@ class VAEParameters:
             batch_size=trial.suggest_int("batch_size", 8, 32),
             num_epochs=trial.suggest_int("num_epochs", 2_000, 10_000),
             quantile=trial.suggest_float("quantile", 0.9, 0.999),
+            generated_size=trial.suggest_int("generated_size", 100, 1000),
         )
 
 

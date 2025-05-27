@@ -171,6 +171,7 @@ class VaeAgent(Agent):
         know_client: bool = False,
         supervised: bool = True,
         quantile: float = 0.9,
+        generated_size: int = 1000,
     ):
         super().__init__()
         self.device = device
@@ -180,6 +181,7 @@ class VaeAgent(Agent):
         self.know_client = know_client
         self.supervised = supervised
         self.quantile = quantile
+        self.generated_size = generated_size
 
         if self.know_client:
             self.columns = VAE_CLIENT_COLUMNS
@@ -235,7 +237,7 @@ class VaeAgent(Agent):
         """
         # Generate a batch of transactions
         with torch.no_grad():
-            batch = self.attack_generator._generate_batch(1000)
+            batch = self.attack_generator._generate_batch(self.generated_size)
             # Turn it to the original scale and to dataframe
             batch = self.scaler.inverse_transform(batch)
         # Sort batch by second column (amount)
