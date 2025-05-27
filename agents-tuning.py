@@ -66,8 +66,8 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
             logging.error(f"Trial {trial.number} timed out.")
 
     if len(amounts) == 0:
-        logging.critical(f"Trial {trial.number} failed to complete any run.")
-        return 0.0
+        # logging.critical(f"Trial {trial.number} failed to complete any run.")
+        raise ValueError(f"Trial {trial.number} failed to complete any run.")
     objective = sum(amounts) / len(amounts)
     logging.critical(f"Trial {trial.number} objective: {objective}")
     return objective

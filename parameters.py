@@ -220,24 +220,24 @@ class PPOParameters:
             is_recurrent=False,
             train_on="transition",
             gamma=0.99,
-            lr_actor=0.0009830993791440257,
-            lr_critic=0.000995558928022473,
-            n_epochs=26,
+            lr_actor=0.00117126625357408,
+            lr_critic=0.0007648237767940683,
+            n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
-                start_value=0.4943612898407241,
-                end_value=0.09730954213676407,
-                n_steps=2614,
+                start_value=0.16450187834828542,
+                end_value=0.45697380802021975,
+                n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.08127702555893541,
-                end_value=0.014990199238406538,
-                n_steps=3982,
+                start_value=0.08774192037356557,
+                end_value=0.017361163706258554,
+                n_steps=1171,
             ),
-            train_interval=11,
-            minibatch_size=4,
+            train_interval=22,
+            minibatch_size=20,
             gae_lambda=0.95,
-            grad_norm_clipping=9.319870685466327,
+            grad_norm_clipping=None,
         )
 
     @staticmethod
@@ -291,6 +291,7 @@ class VAEParameters:
     num_epochs: int = 4000
     quantile: float = 0.95
     supervised: bool = False
+    n_infiltrated_terminals: int = 5
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
@@ -302,7 +303,7 @@ class VAEParameters:
             lr=self.lr,
             trees=self.trees,
             banksys=env.system,
-            terminal_codes=env.system.terminals[-5:],
+            terminal_codes=env.system.terminals[-self.n_infiltrated_terminals :],
             batch_size=self.batch_size,
             num_epochs=self.num_epochs,
             know_client=know_client,
@@ -313,15 +314,15 @@ class VAEParameters:
 
     @staticmethod
     def best_vae():
-        # [latent_dim: 55, hidden_dim: 172, lr: 0.00028782207302075277, trees: 90, batch_size: 22, quantile: 0.9953256365516118, num_epochs: 7488]
+        # [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
         return VAEParameters(
-            latent_dim=55,
-            hidden_dim=172,
-            lr=0.00028782207302075277,
-            trees=90,
-            batch_size=22,
-            num_epochs=7488,
-            quantile=0.9953256365516118,
+            latent_dim=6,
+            hidden_dim=140,
+            lr=0.00046673940763915635,
+            trees=84,
+            batch_size=27,
+            num_epochs=9238,
+            quantile=0.9001873838227034,
             supervised=False,
         )
 

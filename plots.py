@@ -216,6 +216,14 @@ class Experiment:
         return np.array([run.amount_over_time for run in self.runs.values()])
 
     @cached_property
+    def mean_std_amounts_over_time(self):
+        """
+        Returns the mean and standard deviation of amounts over time for all runs.
+        """
+        amounts = self.amounts_over_time
+        return np.mean(amounts, axis=0), np.std(amounts, axis=0)
+
+    @cached_property
     def total_amount(self):
         return sum(run.total_amount for run in self.runs.values())
 
