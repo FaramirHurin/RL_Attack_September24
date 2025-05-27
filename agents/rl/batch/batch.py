@@ -35,7 +35,13 @@ class Batch(ABC):
 
     def _normalize(self, tensor: torch.Tensor):
         """Normalize the tensor such that it has a mean of 0 and a std of 1."""
-        return (tensor - tensor.mean()) / (tensor.std() + 1e-8)
+        # Take into account the masks
+        mean = torch.sum(tensor * self.masks) / self.masks_sum
+        data = tensor.flatten()
+        masks = self.masks.flatten()
+        filtered_data = data[masks == 1]
+        std = torch.std(filtered_data)
+        return (tensor - mean) / (std + 1e-8)
 
     @abstractmethod  # type: ignore
     @cached_property
