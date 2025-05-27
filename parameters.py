@@ -311,6 +311,7 @@ class VAEParameters:
             supervised=self.supervised,
             current_time=env.t,
             quantile=quantile,
+            generated_size=self.generated_size,
         )
 
     @staticmethod
