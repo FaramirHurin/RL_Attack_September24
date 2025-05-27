@@ -9,7 +9,7 @@ from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
-from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters
+from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
 
 
@@ -104,17 +104,19 @@ class Runner:
 
 def main():
     params = Parameters(
-        agent=PPOParameters.best_ppo(),
+        # agent=PPOParameters.best_ppo(),
+        agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=0,
-        logdir="logs/2025-05-27T15-43-49.866895",
+        seed_value=9,
+        logdir="logs/vae-paper",
     )
     exp = Experiment.create(params)
-    for p in params.repeat(30):
+    for p in params.repeat(30 - params.seed_value):
         runner = Runner(params)
         episodes = runner.run()
         exp.add(episodes, p.seed_value)
+        del runner
 
 
 if __name__ == "__main__":

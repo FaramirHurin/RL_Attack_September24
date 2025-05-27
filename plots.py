@@ -224,8 +224,11 @@ class Experiment:
         return np.mean(amounts, axis=0), np.std(amounts, axis=0)
 
     @cached_property
-    def total_amount(self):
-        return sum(run.total_amount for run in self.runs.values())
+    def total_amounts(self):
+        """
+        The total amount retrieved per run.
+        """
+        return np.array([run.total_amount for run in self.runs.values()])
 
     def __iter__(self):
         return iter(self.runs.values())
