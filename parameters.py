@@ -329,10 +329,10 @@ class VAEParameters:
     def suggest(trial: Trial):
         return VAEParameters(
             latent_dim=trial.suggest_int("latent_dim", 2, 64),
-            hidden_dim=trial.suggest_int("hidden_dim", 64, 256),
+            hidden_dim=trial.suggest_int("hidden_dim", 64, 192),
             lr=trial.suggest_float("lr", 0.0001, 0.001),
-            trees=trial.suggest_int("trees", 20, 200),
-            batch_size=trial.suggest_int("batch_size", 8, 64),
+            trees=trial.suggest_int("trees", 20, 100),
+            batch_size=trial.suggest_int("batch_size", 8, 32),
             num_epochs=trial.suggest_int("num_epochs", 2_000, 10_000),
             quantile=trial.suggest_float("quantile", 0.9, 0.999),
         )

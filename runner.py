@@ -20,7 +20,7 @@ def save_episodes(episodes: list[Episode], directory: str):
 
 
 class Runner:
-    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False):
+    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False, device: Optional[torch.device] = None):
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.observations = dict[Card, Observation]()
@@ -30,7 +30,7 @@ class Runner:
         if env is None:
             env = params.create_env()
         self.env = env
-        self.agent = params.create_agent(self.env)
+        self.agent = params.create_agent(self.env, device)
         self.quiet = quiet
         self.n_spawned = 0
 

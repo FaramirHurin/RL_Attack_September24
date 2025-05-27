@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 from multiprocessing.pool import AsyncResult
 from typing import Callable
+import torch
 
 import dotenv
 from plots import Experiment, Run
@@ -14,6 +15,7 @@ from parameters import CardSimParameters, ClassificationParameters, Parameters, 
 from runner import Runner
 
 N_PARALLEL = 8
+N_REPETITIONS = 8
 TIMEOUT = timedelta(minutes=20)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
@@ -21,7 +23,14 @@ CARDSIM_PARAMS = CardSimParameters.paper_params()
 
 def run(p: Parameters, trial_num: int):
     try:
-        runner = Runner(p, quiet=p.seed_value != 0)
+        if not torch.cuda.is_available():
+            device = torch.device("cpu")
+        else:
+            # We assign the run to the device based on its absolute run number, i.e.
+            # trial.number * N_PARALLEL + seed_value.
+            device_num = (trial_num * N_PARALLEL + p.seed_value) % torch.cuda.device_count()
+            device = torch.device(f"cuda:{device_num}")
+        runner = Runner(p, quiet=True, device=device)
         episodes = runner.run()
         return Run.create(p, episodes)
     except Exception as e:
@@ -41,7 +50,7 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
     handles = list[AsyncResult[Run | None]]()
 
     pool = mp.Pool(N_PARALLEL)
-    for p in params.repeat(N_PARALLEL):
+    for p in params.repeat(N_REPETITIONS):
         handles.append(pool.apply_async(run, (p, trial.number)))
         submission_times.append(datetime.now())
 
@@ -97,6 +106,6 @@ if __name__ == "__main__":
     if not p.banksys_is_in_cache():
         p.create_banksys(save=True)
 
-    make_tuning(100, "rppo", PPOParameters.suggest_rppo, 4)
-    make_tuning(150, "ppo", PPOParameters.suggest_ppo, 4)
-    make_tuning(50, "vae", VAEParameters.suggest, 4)
+    make_tuning(50, "rppo", PPOParameters.suggest_rppo, 4)
+    # make_tuning(150, "ppo", PPOParameters.suggest_ppo, 4)
+    # make_tuning(50, "vae", VAEParameters.suggest, 4)
