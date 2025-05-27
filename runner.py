@@ -1,15 +1,15 @@
 import logging
 import os
 from typing import Optional
-from plots import Experiment
-from environment import CardSimEnv
+from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
+from plots import Experiment, Run
 import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
-from parameters import Parameters, PPOParameters, VAEParameters, CardSimParameters, ClassificationParameters
+from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters
 import dotenv
 
 
@@ -21,7 +21,7 @@ def save_episodes(episodes: list[Episode], directory: str):
 
 
 class Runner:
-    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None):
+    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False, device: Optional[torch.device] = None):
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.observations = dict[Card, Observation]()
@@ -31,15 +31,9 @@ class Runner:
         if env is None:
             env = params.create_env()
         self.env = env
-        self.agent = params.create_agent(self.env)
+        self.agent = params.create_agent(self.env, device)
+        self.quiet = quiet
         self.n_spawned = 0
-
-    def reset(self):
-        self.episodes.clear()
-        self.observations.clear()
-        self.actions.clear()
-        self.states.clear()
-        self.hidden_states.clear()
 
     def spawn_card_and_buffer_action(self):
         """
@@ -71,80 +65,63 @@ class Runner:
         # Main loop
         episodes = list[Episode]()
         step_num = 0
+        total = 0.0
         episode_num = 0
-        best_score = -float("inf")
         scores = list[float]()
-        pbar = tqdm(total=self.params.n_episodes, desc="Training")
-        while episode_num < self.params.n_episodes:
-            logging.debug(f"{self.env.t.isoformat()} - {step_num}")
-            step_num += 1
-            card, step = self.env.step()
+        pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
+        try:
+            while episode_num < self.params.n_episodes:
+                logging.debug(f"{self.env.t.isoformat()} - {step_num}")
+                step_num += 1
+                card, step = self.env.step()
 
-            transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
-            self.agent.update_transition(transition, step_num, episode_num)
+                transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
+                self.agent.update_transition(transition, step_num, episode_num)
 
-            current_episode = self.episodes[card]
-            current_episode.add(transition)
-            if current_episode.is_finished:
-                self.cleanup_card(card)
-                scores.append(current_episode.score[0])
-                episodes.append(current_episode)
-                pbar.update()
-                avg_score = np.mean(scores[-100:])
-                pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f}")
-                if avg_score > best_score:
-                    logging.info(f"Saving best model with avg score {avg_score}")
-                    self.agent.save()
-                    best_score = avg_score
-                episode_num += 1
-                self.agent.update_episode(current_episode, step_num, self.n_spawned)
-                if self.n_spawned < self.params.n_episodes:
-                    self.spawn_card_and_buffer_action()
-            else:
-                action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
-                self.env.buffer_action(action, card)
-
-        exp = Experiment.load(self.params.logdir)
-        run = exp.add(episodes, self.params.seed_value)
-        return run
+                current_episode = self.episodes[card]
+                current_episode.add(transition)
+                if current_episode.is_finished:
+                    self.cleanup_card(card)
+                    total += current_episode.score[0]
+                    scores.append(current_episode.score[0])
+                    episodes.append(current_episode)
+                    pbar.update()
+                    avg_score = np.mean(scores[-100:])
+                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
+                    episode_num += 1
+                    self.agent.update_episode(current_episode, step_num, self.n_spawned)
+                    if self.n_spawned < self.params.n_episodes:
+                        self.spawn_card_and_buffer_action()
+                else:
+                    action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
+                    self.env.buffer_action(action, card)
+        except AttackPeriodExpired as e:
+            logging.warning(f"Attack period expired: {e}")
+        except ValueError as e:
+            logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+        return episodes
 
 
 def main():
     params = Parameters(
-        # agent=VAEParameters.best_vae(),
         agent=PPOParameters.best_ppo(),
-        # agent=PPOParameters.best_rppo(),
-        # agent=VAEParameters(),
-        cardsim=CardSimParameters(n_days=365 * 2, n_payers=10_000),
-        logdir="logs/rppo",
-        card_pool_size=50,
-        terminal_fract=0.1,
-        seed_value=7,
+        cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        avg_card_block_delay_days=7,
-        n_episodes=4000,
+        seed_value=0,
+        logdir="logs/2025-05-27T15-43-49.866895",
     )
-    # params.clf_params.rules = {}
-    runner = Runner(params)
-    run = runner.run()
-    print(run.total_amount)
-
-    # pool = mp.Pool(8)
-    # pool.map(truc, params.repeat(32))
-    # sleep(1)
-    # pool.join()
-    # pool.terminate()
-    # pool.close()
-    # for param in params.repeat(10):
-    #    PoolRunner(param).run()
+    exp = Experiment.create(params)
+    for p in params.repeat(30):
+        runner = Runner(params)
+        episodes = runner.run()
+        exp.add(episodes, p.seed_value)
 
 
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        # filename="logs.txt",
-        # filemode="a",
+        handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )

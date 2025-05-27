@@ -3,21 +3,21 @@
 # Author: Jeff Allen
 # -----------------------------------------------------------------------------#
 
-import os
 import logging
-from banksys import Card, Terminal, Transaction
+import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
-from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import polars as pl
-import numpy as np
 from scipy.stats import lognorm, triang
-
 from sklearn.preprocessing import MinMaxScaler
+
+from banksys import Card, Terminal, Transaction
 
 
 class Cardsim:

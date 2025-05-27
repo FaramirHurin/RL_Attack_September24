@@ -2,6 +2,7 @@ import random
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta, datetime
 import os
+from optuna import Trial
 import orjson
 import shutil
 from typing import Any, Literal, Optional, Sequence
@@ -219,25 +220,65 @@ class PPOParameters:
             is_recurrent=False,
             train_on="transition",
             gamma=0.99,
-            lr_actor=0.0009830993791440257,
-            lr_critic=0.000995558928022473,
-            n_epochs=26,
+            lr_actor=0.00117126625357408,
+            lr_critic=0.0007648237767940683,
+            n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
-                start_value=0.4943612898407241,
-                end_value=0.09730954213676407,
-                n_steps=2614,
+                start_value=0.16450187834828542,
+                end_value=0.45697380802021975,
+                n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.08127702555893541,
-                end_value=0.014990199238406538,
-                n_steps=3982,
+                start_value=0.08774192037356557,
+                end_value=0.017361163706258554,
+                n_steps=1171,
             ),
-            train_interval=11,
-            minibatch_size=4,
+            train_interval=22,
+            minibatch_size=20,
             gae_lambda=0.95,
-            grad_norm_clipping=9.319870685466327,
+            grad_norm_clipping=None,
         )
+
+    @staticmethod
+    def suggest_rppo(trial: Trial):
+        train_interval = trial.suggest_int("train_interval", 4, 64)
+        minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
+        enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
+        if enable_clipping:
+            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.5, 10)
+        else:
+            grad_norm_clipping = None
+        return PPOParameters(
+            is_recurrent=True,
+            train_on="episode",
+            critic_c1=Schedule.linear(
+                trial.suggest_float("critic_c1_start", 0.1, 1.0),
+                trial.suggest_float("critic_c1_end", 0.001, 0.5),
+                trial.suggest_int("critic_c1_steps", 1000, 4000),
+            ),
+            entropy_c2=Schedule.linear(
+                trial.suggest_float("entropy_c2_start", 0.001, 0.2),
+                trial.suggest_float("entropy_c2_end", 0.0001, 0.1),
+                trial.suggest_int("entropy_c2_steps", 1000, 4000),
+            ),
+            n_epochs=trial.suggest_int("n_epochs", 10, 100),
+            minibatch_size=minibatch_size,
+            train_interval=train_interval,
+            lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01),
+            lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
+            grad_norm_clipping=grad_norm_clipping,
+        )
+
+    @staticmethod
+    def suggest_ppo(trial: Trial):
+        params = PPOParameters.suggest_rppo(trial)
+        params.is_recurrent = False
+        if trial.suggest_categorical("train_on_episode", [True, False]):
+            params.train_on = "episode"
+        else:
+            params.train_on = "transition"
+        return params
 
 
 @dataclass(eq=True)
@@ -250,6 +291,8 @@ class VAEParameters:
     num_epochs: int = 4000
     quantile: float = 0.95
     supervised: bool = False
+    generated_size: int = 1000
+    n_infiltrated_terminals: int = 5
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
@@ -261,7 +304,7 @@ class VAEParameters:
             lr=self.lr,
             trees=self.trees,
             banksys=env.system,
-            terminal_codes=env.system.terminals[-5:],
+            terminal_codes=env.system.terminals[-self.n_infiltrated_terminals :],
             batch_size=self.batch_size,
             num_epochs=self.num_epochs,
             know_client=know_client,
@@ -272,22 +315,35 @@ class VAEParameters:
 
     @staticmethod
     def best_vae():
-        # [latent_dim: 55, hidden_dim: 172, lr: 0.00028782207302075277, trees: 90, batch_size: 22, quantile: 0.9953256365516118, num_epochs: 7488]
+        # [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
         return VAEParameters(
-            latent_dim=55,
-            hidden_dim=172,
-            lr=0.00028782207302075277,
-            trees=90,
-            batch_size=22,
-            num_epochs=7488,
-            quantile=0.9953256365516118,
+            latent_dim=6,
+            hidden_dim=140,
+            lr=0.00046673940763915635,
+            trees=84,
+            batch_size=27,
+            num_epochs=9238,
+            quantile=0.9001873838227034,
             supervised=False,
+        )
+
+    @staticmethod
+    def suggest(trial: Trial):
+        return VAEParameters(
+            latent_dim=trial.suggest_int("latent_dim", 2, 64),
+            hidden_dim=trial.suggest_int("hidden_dim", 64, 192),
+            lr=trial.suggest_float("lr", 0.0001, 0.001),
+            trees=trial.suggest_int("trees", 20, 100),
+            batch_size=trial.suggest_int("batch_size", 8, 32),
+            num_epochs=trial.suggest_int("num_epochs", 2_000, 10_000),
+            quantile=trial.suggest_float("quantile", 0.9, 0.999),
+            generated_size=trial.suggest_int("generated_size", 100, 1000),
         )
 
 
 @dataclass(eq=True)
 class Parameters:
-    agent: PPOParameters | VAEParameters
+    agent: PPOParameters | VAEParameters | None
     cardsim: CardSimParameters
     clf_params: ClassificationParameters
     n_episodes: int
@@ -302,14 +358,14 @@ class Parameters:
 
     def __init__(
         self,
-        agent: PPOParameters | VAEParameters,
+        agent: PPOParameters | VAEParameters | None = None,
         cardsim: CardSimParameters = CardSimParameters(),
         clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
         terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
-        card_pool_size: int = 10,
+        card_pool_size: int = 50,
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
@@ -348,6 +404,7 @@ class Parameters:
         if logdir is None:
             logdir = self.default_logdir()
         self.logdir = logdir
+        self.seed()
         if save:
             self.save()
 
@@ -360,7 +417,6 @@ class Parameters:
         torch.manual_seed(self.seed_value)
 
     def create_agent(self, env: CardSimEnv, device: Optional[torch.device] = None) -> Agent:
-        self.seed()
         if device is None:
             device = self.get_device_by_seed()
         match self.agent:
@@ -382,8 +438,8 @@ class Parameters:
 
         banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
         env = CardSimEnv(
-            banksys,
-            timedelta(days=self.avg_card_block_delay_days),
+            system=banksys,
+            avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,
             normalize_location=self.agent_name in ("ppo", "rppo"),
         )
@@ -436,7 +492,6 @@ class Parameters:
                 pass
         os.makedirs(self.logdir, exist_ok=True)
         file_path = os.path.join(self.logdir, "params.json")
-        logging.debug(file_path)
         with open(file_path, "wb") as f:
             f.write(orjson.dumps(self, default=serialize_unknown))
 
