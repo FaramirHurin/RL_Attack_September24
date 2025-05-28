@@ -104,15 +104,14 @@ class Runner:
 
 def main():
     params = Parameters(
-        # agent=PPOParameters.best_ppo(),
-        agent=VAEParameters.best_vae(),
+        agent=PPOParameters.best_rppo(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=9,
-        logdir="logs/vae-paper",
+        seed_value=0,
+        logdir="logs/rppo-paper",
     )
     exp = Experiment.create(params)
-    for p in params.repeat(30 - params.seed_value):
+    for p in params.repeat(5):
         runner = Runner(params)
         episodes = runner.run()
         exp.add(episodes, p.seed_value)
