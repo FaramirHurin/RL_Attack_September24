@@ -16,7 +16,7 @@ from runner import Runner
 
 N_PARALLEL = 4
 N_REPETITIONS = 4
-TIMEOUT = timedelta(minutes=20)
+TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
 
@@ -114,5 +114,5 @@ if __name__ == "__main__":
 
     # make_tuning(50, "rppo", PPOParameters.suggest_rppo, 4)
     # make_tuning(150, "ppo", PPOParameters.suggest_ppo, 4)
-    make_tuning(50, "vae-5-terminals", VAEParameters.suggest, 4)
-    make_tuning(50, "vae-100-terminals", vae_100_terminals, 4)
+    # make_tuning(50, "vae-5-terminals", VAEParameters.suggest, 4)
+    make_tuning(100, "vae-100-terminals", vae_100_terminals, 4)

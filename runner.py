@@ -3,6 +3,7 @@ import os
 from typing import Optional
 from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
+import multiprocessing as mp
 from plots import Experiment, Run
 import orjson
 from marlenv import Episode, Transition, Observation, State
@@ -102,20 +103,24 @@ class Runner:
         return episodes
 
 
-def main():
+def main_parallel():
     params = Parameters(
-        agent=PPOParameters.best_rppo(),
+        agent=PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
         seed_value=0,
-        logdir="logs/rppo-paper",
+        logdir="logs/rppo-3-paper",
     )
     exp = Experiment.create(params)
-    for p in params.repeat(5):
-        runner = Runner(params)
-        episodes = runner.run()
-        exp.add(episodes, p.seed_value)
-        del runner
+    with mp.Pool(16) as pool:
+        pool.map(run, exp.repeat(30))
+    logging.info("All runs completed.")
+
+
+def run(params: Parameters):
+    runner = Runner(params)
+    episodes = runner.run()
+    Run.create(params, episodes)
 
 
 if __name__ == "__main__":
@@ -127,4 +132,4 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    main()
+    main_parallel()

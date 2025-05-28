@@ -189,6 +189,21 @@ class PPOParameters:
         """
         The result of the hyperparameter tuning with Optuna for recurrent PPO.
         """
+        # train_interval: 18, minibatch_size: 6, enable_clipping: False, critic_c1_start: 0.9614950728256417, critic_c1_end: 0.29429613926674075, critic_c1_steps: 3687, entropy_c2_start: 0.10647245560376985, entropy_c2_end: 0.009336151944906949, entropy_c2_steps: 1266, n_epochs: 54, lr_actor: 0.0011984914461953097, lr_critic: 0.00805629589932524
+        """
+        rain_interval 22
+        minibatch_size 6
+        enable_clipping False
+        critic_c1_start 0.9431901927937658
+        critic_c1_end 0.28755235254166067
+        critic_c1_steps 3680
+        entropy_c2_start 0.09600892306056222
+        entropy_c2_end 0.008616980619886024
+        entropy_c2_steps 1295
+        n_epochs 60
+        lr_actor 0.0009794559292104822
+        lr_critic 0.00748635592628837
+        """
         return PPOParameters(
             True,
             "episode",
@@ -196,19 +211,45 @@ class PPOParameters:
             lr_actor=0.0011984914461953097,
             lr_critic=0.00805629589932524,
             grad_norm_clipping=False,
-            n_epochs=54,
-            train_interval=18,
+            n_epochs=60,
+            train_interval=22,
             minibatch_size=6,
             critic_c1=Schedule.linear(
-                start_value=0.9614950728256417,
-                end_value=0.29429613926674075,
-                n_steps=3687,
+                start_value=0.9431901927937658,
+                end_value=0.28755235254166067,
+                n_steps=3680,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.10647245560376985,
-                end_value=0.009336151944906949,
-                n_steps=1266,
+                start_value=0.09600892306056222,
+                end_value=0.008616980619886024,
+                n_steps=1295,
             ),
+        )
+
+    @staticmethod
+    def best_rppo3():
+        return PPOParameters(
+            is_recurrent=True,
+            train_on="episode",
+            gamma=0.99,
+            lr_actor=0.0013655647166021928,
+            lr_critic=0.007255685546096761,
+            n_epochs=27,
+            eps_clip=0.2,
+            critic_c1=Schedule.linear(
+                start_value=0.9375751577962954,
+                end_value=0.38048446480609044,
+                n_steps=3127,
+            ),
+            entropy_c2=Schedule.linear(
+                start_value=0.0957619650038549,
+                end_value=0.007744880113458132,
+                n_steps=2537,
+            ),
+            train_interval=10,
+            minibatch_size=8,
+            gae_lambda=0.95,
+            grad_norm_clipping=8.934885848478487,
         )
 
     @staticmethod
@@ -501,15 +542,6 @@ class Parameters:
     def default_logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")
         return os.path.join("logs", self.agent_name, timestamp)
-
-    def repeat(self, n: int):
-        """
-        Repeat the parameters n times, with different seeds.
-        """
-        for i in range(n):
-            logdir = os.path.join(self.logdir, f"seed-{self.seed_value + i}")
-            os.makedirs(logdir, exist_ok=True)
-            yield replace(self, seed_value=self.seed_value + i, save=False, logdir=logdir)
 
     @staticmethod
     def load(filename: str):

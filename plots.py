@@ -184,6 +184,17 @@ class Experiment:
         logging.debug(f"Loaded {len(results)} logs from {self.logdir}")
         return results
 
+    def repeat(self, n: int, initial_seed: Optional[int] = None):
+        """
+        Repeat the experiment n times.
+        """
+        if initial_seed is None:
+            initial_seed = self.params.seed_value + self.n_runs
+        for seed in range(initial_seed, initial_seed + n):
+            logdir = os.path.join(self.logdir, f"seed-{seed}")
+            os.makedirs(logdir, exist_ok=True)
+            yield replace(self.params, seed_value=seed, save=False, logdir=logdir)
+
     @property
     def n_runs(self):
         return len(self.runs)
