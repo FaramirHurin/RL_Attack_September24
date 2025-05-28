@@ -21,3 +21,4 @@ tuning/*
 *.db
 tuning-2/*
 *.weights
+*.svg

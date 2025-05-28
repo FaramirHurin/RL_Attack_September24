@@ -184,6 +184,17 @@ class Experiment:
         logging.debug(f"Loaded {len(results)} logs from {self.logdir}")
         return results
 
+    def repeat(self, n: int, initial_seed: Optional[int] = None):
+        """
+        Repeat the experiment n times.
+        """
+        if initial_seed is None:
+            initial_seed = self.params.seed_value + self.n_runs
+        for seed in range(initial_seed, initial_seed + n):
+            logdir = os.path.join(self.logdir, f"seed-{seed}")
+            os.makedirs(logdir, exist_ok=True)
+            yield replace(self.params, seed_value=seed, save=False, logdir=logdir)
+
     @property
     def n_runs(self):
         return len(self.runs)
@@ -213,19 +224,30 @@ class Experiment:
 
     @cached_property
     def amounts_over_time(self):
-        return np.array([run.amount_over_time for run in self.runs.values()])
+        amounts = []
+        maxlen = 0
+        for run in self.runs.values():
+            maxlen = max(maxlen, len(run.amount_over_time))
+            amounts.append(run.amount_over_time)
+        # Pad the amounts to the same length
+        for i in range(len(amounts)):
+            amounts[i] += [float("NaN")] * (maxlen - len(amounts[i]))
+        return np.array(amounts)
 
     @cached_property
-    def mean_std_amounts_over_time(self):
+    def mean_std_amounts_over_time(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns the mean and standard deviation of amounts over time for all runs.
         """
         amounts = self.amounts_over_time
-        return np.mean(amounts, axis=0), np.std(amounts, axis=0)
+        return np.nanmean(amounts, axis=0), np.nanstd(amounts, axis=0)
 
     @cached_property
-    def total_amount(self):
-        return sum(run.total_amount for run in self.runs.values())
+    def total_amounts(self):
+        """
+        The total amount retrieved per run.
+        """
+        return np.array([run.total_amount for run in self.runs.values()])
 
     def __iter__(self):
         return iter(self.runs.values())

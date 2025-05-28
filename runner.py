@@ -3,13 +3,14 @@ import os
 from typing import Optional
 from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
+import multiprocessing as mp
 from plots import Experiment, Run
 import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
-from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters
+from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
 
 
@@ -102,19 +103,24 @@ class Runner:
         return episodes
 
 
-def main():
+def main_parallel():
     params = Parameters(
-        agent=PPOParameters.best_ppo(),
+        agent=PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=0,
-        logdir="logs/2025-05-27T15-43-49.866895",
+        seed_value=30,
+        logdir="logs/rppo-3-paper",
     )
     exp = Experiment.create(params)
-    for p in params.repeat(30):
-        runner = Runner(params)
-        episodes = runner.run()
-        exp.add(episodes, p.seed_value)
+    with mp.Pool(16) as pool:
+        pool.map(run, exp.repeat(16))
+    logging.info("All runs completed.")
+
+
+def run(params: Parameters):
+    runner = Runner(params)
+    episodes = runner.run()
+    Run.create(params, episodes)
 
 
 if __name__ == "__main__":
@@ -126,4 +132,4 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    main()
+    main_parallel()

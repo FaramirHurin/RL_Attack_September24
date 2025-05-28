@@ -14,9 +14,9 @@ import pandas as pd
 from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
 from runner import Runner
 
-N_PARALLEL = 8
-N_REPETITIONS = 8
-TIMEOUT = timedelta(minutes=20)
+N_PARALLEL = 4
+N_REPETITIONS = 4
+TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
 
@@ -87,6 +87,12 @@ def make_tuning(n_trials: int, name: str, fn: Callable[[optuna.Trial], PPOParame
     df.to_csv(f"tuning-{name}-{datetime.now()}.csv", index=False)
 
 
+def vae_100_terminals(trial: optuna.Trial):
+    params = VAEParameters.suggest(trial)
+    params.n_infiltrated_terminals = 100
+    return params
+
+
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -106,6 +112,7 @@ if __name__ == "__main__":
     if not p.banksys_is_in_cache():
         p.create_banksys(save=True)
 
-    make_tuning(50, "rppo", PPOParameters.suggest_rppo, 4)
+    # make_tuning(50, "rppo", PPOParameters.suggest_rppo, 4)
     # make_tuning(150, "ppo", PPOParameters.suggest_ppo, 4)
-    # make_tuning(50, "vae", VAEParameters.suggest, 4)
+    # make_tuning(50, "vae-5-terminals", VAEParameters.suggest, 4)
+    make_tuning(100, "vae-100-terminals", vae_100_terminals, 4)
