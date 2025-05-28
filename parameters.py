@@ -315,16 +315,18 @@ class VAEParameters:
 
     @staticmethod
     def best_vae():
-        # [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
+        # Best 0 [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
+        # Best 1 latent_dim: 2, hidden_dim: 157, lr: 0.0007161633748676655, trees: 54, batch_size: 29, num_epochs: 6672, quantile: 0.9844833640628634, generated_size: 970
         return VAEParameters(
-            latent_dim=6,
-            hidden_dim=140,
-            lr=0.00046673940763915635,
-            trees=84,
-            batch_size=27,
-            num_epochs=9238,
-            quantile=0.9001873838227034,
+            latent_dim=2,
+            hidden_dim=157,
+            lr=0.0007161633748676655,
+            trees=54,
+            batch_size=29,
+            num_epochs=6672,
+            quantile=0.9844833640628634,
             supervised=False,
+            generated_size=970,
         )
 
     @staticmethod
