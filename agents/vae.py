@@ -93,6 +93,7 @@ class Attack_Generation:
         self,
         device,
         criterion,
+        beta,
         latent_dim,
         hidden_dim,
         lr,
@@ -101,6 +102,7 @@ class Attack_Generation:
         y,
         supervised=False,
     ):
+        self.beta = beta
         self.device = device
         self.model = VAE(input_dim=training_data.shape[1], latent_dim=latent_dim, hidden_dim=hidden_dim).to(self.device)
         self.criterion = criterion
@@ -135,7 +137,7 @@ class Attack_Generation:
 
             reconstructed, mu, logvar = self.model(inputs)
 
-            loss = vae_loss(reconstructed, inputs, mu, logvar, epoch)
+            loss = vae_loss(reconstructed, inputs, mu, logvar, epoch, beta=self.beta)
 
             loss.backward()
             self.optimizer.step()
@@ -191,8 +193,9 @@ class VaeAgent(Agent):
 
         # Preprocess the data
         transactions_df = self._prepare_data()
-        q_low = transactions_df["amount"].quantile(0.02)
-        q_hi = transactions_df["amount"].quantile(0.98)
+        # Remove outliers
+        q_low = transactions_df["amount"].quantile(0.001)
+        q_hi = transactions_df["amount"].quantile(0.999)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
         labels = transactions_df["is_fraud"].values
         transactions_df = transactions_df[self.columns]
@@ -277,7 +280,7 @@ class VaeAgent(Agent):
         # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
         # Print payee_x and payee_y, amount, is_online and delay_hours
-        print(f"Chosen transaction: {trx['payee_x']}, {trx['payee_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
+        # print(f"Chosen transaction: {trx['payee_x']}, {trx['payee_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
         trx = trx.to_numpy()
         trx = trx.astype(np.float32)
         return trx, None

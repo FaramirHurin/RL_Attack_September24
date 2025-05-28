@@ -137,7 +137,7 @@ params = Parameters(
     agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
     cardsim=CardSimParameters.paper_params(),
     clf_params=ClassificationParameters.paper_params(),
-    seed_value=0,
+    seed_value=1,
     logdir="logs/rppo-3-paper",
 )
 

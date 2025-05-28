@@ -320,7 +320,7 @@ class VAEParameters:
         return VAEParameters(
             n_infiltrated_terminals=100,
             latent_dim=6,
-            hidden_dim=14,
+            hidden_dim=128,
             lr=0.0046673940763915635,
             trees=84,
             batch_size=27,
