@@ -224,15 +224,23 @@ class Experiment:
 
     @cached_property
     def amounts_over_time(self):
-        return np.array([run.amount_over_time for run in self.runs.values()])
+        amounts = []
+        maxlen = 0
+        for run in self.runs.values():
+            maxlen = max(maxlen, len(run.amount_over_time))
+            amounts.append(run.amount_over_time)
+        # Pad the amounts to the same length
+        for i in range(len(amounts)):
+            amounts[i] += [float("NaN")] * (maxlen - len(amounts[i]))
+        return np.array(amounts)
 
     @cached_property
-    def mean_std_amounts_over_time(self):
+    def mean_std_amounts_over_time(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Returns the mean and standard deviation of amounts over time for all runs.
         """
         amounts = self.amounts_over_time
-        return np.mean(amounts, axis=0), np.std(amounts, axis=0)
+        return np.nanmean(amounts, axis=0), np.nanstd(amounts, axis=0)
 
     @cached_property
     def total_amounts(self):

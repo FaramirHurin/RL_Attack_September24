@@ -108,12 +108,12 @@ def main_parallel():
         agent=PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=0,
+        seed_value=30,
         logdir="logs/rppo-3-paper",
     )
     exp = Experiment.create(params)
     with mp.Pool(16) as pool:
-        pool.map(run, exp.repeat(30))
+        pool.map(run, exp.repeat(16))
     logging.info("All runs completed.")
 
 
