@@ -398,7 +398,7 @@ class Parameters:
     avg_card_block_delay_days: int
     logdir: str
     aggregation_windows: Sequence[timedelta]
-    agent_name: Literal["ppo", "rppo", "vae"]
+    agent_name: Literal["ppo", "rppo", "vae", ""]
 
     def __init__(
         self,
@@ -443,6 +443,8 @@ class Parameters:
                     self.agent_name = "ppo"
             case VAEParameters():
                 self.agent_name = "vae"
+            case None:
+                self.agent_name = ""
             case _:
                 raise ValueError("Unknown agent type")
         if logdir is None:
@@ -506,7 +508,7 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, save: bool = True):
+    def create_banksys(self, save: bool = True, save_directory: Optional[str] = None):
         from banksys import Banksys
 
         cards, terminals, transactions = self.cardsim.get_simulation_data()
@@ -519,7 +521,9 @@ class Parameters:
         )
         banksys.fit(transactions)
         if save:
-            banksys.save(self.cardsim, self.banksys_dir)
+            if save_directory is None:
+                save_directory = self.banksys_dir
+            banksys.save(self.cardsim, save_directory)
         return banksys
 
     def get_device_by_seed(self) -> torch.device:

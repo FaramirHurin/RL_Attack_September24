@@ -16,6 +16,7 @@ import pandas as pd
 import polars as pl
 from scipy.stats import lognorm, triang
 from sklearn.preprocessing import MinMaxScaler
+from tqdm import tqdm
 
 from banksys import Card, Terminal, Transaction
 
@@ -1091,7 +1092,7 @@ class Cardsim:
         # Polars is (much) faster for this (≃20x)
         transactions = list[Transaction]()
         start = time.time()
-        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in df.iter_rows():
+        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in tqdm(df.iter_rows()):
             transactions.append(
                 Transaction(
                     amount=amount,
