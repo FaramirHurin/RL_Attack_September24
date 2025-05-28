@@ -10,6 +10,7 @@ import torch.optim as optim
 from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
 
 if TYPE_CHECKING:
     from banksys import Card, Terminal, Transaction
@@ -43,7 +44,7 @@ def NMSE(y_true, y_pred):
     return torch.mean((y_true - y_pred) ** 2) / torch.std(y_true) ** 2
 
 
-def vae_loss(recon_x, x, mu, logvar, epoch, beta=0.005):
+def vae_loss(recon_x, x, mu, logvar, epoch, beta=0.1):
     # recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
     recon_loss = NMSE(x, recon_x)
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -251,11 +252,20 @@ class VaeAgent(Agent):
         else:
             batch["payee_x"] = batch["payee_x"].astype(int)
             batch["payee_y"] = batch["payee_y"].astype(int)
+
         batch = batch.sort_values(by="amount", ascending=True)
-        small_df = batch.iloc[: int(self.quantile * len(batch)), :]
+
+
+        # Filter the highest amounts based on the quantile
+        batch = batch[batch["amount"] >= batch["amount"].quantile(self.quantile)]
+
+        """
+        plt.plot(batch["payee_x"], batch["payee_y"], "o", markersize=1, alpha=0.5)
+        plt.plot()
+        """
 
         # Compute delay hours and delay days for all transactions
-        small_df = small_df.copy()
+        small_df = batch.copy()
         small_df["delay_hours"] = small_df["hour"].astype(int) - observation[-2] + (observation[-2] >= small_df["hour"].astype(int)) * 24
 
         # Sort small_df by delay_hours and select the closest
@@ -266,6 +276,8 @@ class VaeAgent(Agent):
         trx["delay_day"] = 0
         # Move delay_hours to the last column
         trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
+        # Print payee_x and payee_y, amount, is_online and delay_hours
+        print(f"Chosen transaction: {trx['payee_x']}, {trx['payee_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
         trx = trx.to_numpy()
         trx = trx.astype(np.float32)
         return trx, None
@@ -280,11 +292,12 @@ class VaeAgent(Agent):
         """
         transactions: list["Transaction"] = []
         for terminal in terminals:
-            transactions += terminal.transactions
-            # Add terminal coordinates to the transactions
-            for transaction in transactions:
+            for transaction in terminal.transactions:
                 transaction.payee_x = terminal.x
                 transaction.payee_y = terminal.y
+            transactions += terminal.transactions
+            # Add terminal coordinates to the transactions
+
         transactions = [transaction for transaction in transactions if transaction.timestamp <= current_time]
         transactions_df = pd.DataFrame([transaction.__dict__ for transaction in transactions])
         return transactions_df
