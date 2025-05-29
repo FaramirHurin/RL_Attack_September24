@@ -133,19 +133,16 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
+    params = Parameters(
+        agent=PPOParameters.best_rppo(),  # VAEParameters.best_vae() ,  #
+        cardsim=CardSimParameters.paper_params(),
+        clf_params=ClassificationParameters.paper_params(),
+        seed_value=1,
+        logdir="logs/RPPOlocal-paper/seed-" + str(1),
+    )
 
-params = Parameters(
-    agent= PPOParameters.best_rppo(), #VAEParameters.best_vae() ,  #
-    cardsim=CardSimParameters.paper_params(),
-    clf_params=ClassificationParameters.paper_params(),
-    seed_value=1,
-    logdir='logs/RPPOlocal-paper/seed-' + str(1) ,
-)
-
-exp = Experiment.create(params)
-run(params)
-
+    exp = Experiment.create(params)
+    run(params)
 
 
 # Run VAE
-
