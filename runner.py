@@ -69,7 +69,6 @@ class Runner:
         total = 0.0
         episode_num = 0
         scores = list[float]()
-        terminal_ids = []
         pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
         try:
             while episode_num < self.params.n_episodes:
@@ -134,7 +133,7 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
+        agent=PPOParameters.best_ppo(),  #   PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
         seed_value=1,

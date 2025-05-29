@@ -112,6 +112,8 @@ class PPOParameters:
     grad_norm_clipping: Optional[float]
     train_on: Literal["transition", "episode"]
     is_recurrent: bool
+    normalize_rewards: bool
+    normalize_advantages: bool
 
     def __init__(
         self,
@@ -128,6 +130,8 @@ class PPOParameters:
         minibatch_size: int = 32,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
+        normalize_rewards: bool = True,
+        normalize_advantages: bool = True,
     ):
         self.is_recurrent = is_recurrent
         if self.is_recurrent and not train_on == "episode":
@@ -149,6 +153,8 @@ class PPOParameters:
         self.minibatch_size = minibatch_size
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
+        self.normalize_rewards = normalize_rewards
+        self.normalize_advantages = normalize_advantages
 
     def as_dict(self):
         kwargs = asdict(self)
@@ -267,16 +273,15 @@ class PPOParameters:
             lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01),
             lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
             grad_norm_clipping=grad_norm_clipping,
+            normalize_rewards=trial.suggest_categorical("normalize_rewards", [True, False]),
+            normalize_advantages=trial.suggest_categorical("normalize_advantages", [True, False]),
         )
 
     @staticmethod
     def suggest_ppo(trial: Trial):
         params = PPOParameters.suggest_rppo(trial)
         params.is_recurrent = False
-        if trial.suggest_categorical("train_on_episode", [True, False]):
-            params.train_on = "episode"
-        else:
-            params.train_on = "transition"
+        params.train_on = "transition"
         return params
 
 
@@ -362,6 +367,7 @@ class Parameters:
     terminal_fract: float
     seed_value: int
     card_pool_size: int
+    include_weekday: bool
     avg_card_block_delay_days: int
     logdir: str
     aggregation_windows: Sequence[timedelta]
@@ -380,6 +386,7 @@ class Parameters:
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
+        include_weekday: bool = True,
         aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
@@ -397,6 +404,7 @@ class Parameters:
         self.avg_card_block_delay_days = avg_card_block_delay_days
         self.clf_params = clf_params
         self.card_pool_size = card_pool_size
+        self.include_weekday = include_weekday
         self.aggregation_windows = []
         for window in aggregation_windows:
             if isinstance(window, (float, int)):
@@ -455,6 +463,7 @@ class Parameters:
             avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,
             normalize_location=self.agent_name in ("ppo", "rppo"),
+            include_weekday=self.include_weekday,
         )
         env.seed(self.seed_value)
         return env
