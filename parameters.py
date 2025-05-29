@@ -335,6 +335,7 @@ class VAEParameters:
 
     @staticmethod
     def suggest(trial: Trial):
+        logging.info("Suggesting VAE parameters")
         return VAEParameters(
             latent_dim=trial.suggest_int("latent_dim", 8, 92),
             hidden_dim=trial.suggest_int("hidden_dim", 64, 192),

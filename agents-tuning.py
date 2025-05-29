@@ -20,6 +20,7 @@ CARDSIM_PARAMS = CardSimParameters.paper_params()
 
 
 def run(p: Parameters, trial_num: int):
+    logging.warning(f"Run {trial_num}")
     try:
         if not torch.cuda.is_available():
             device = torch.device("cpu")
@@ -43,6 +44,7 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
 
     pool = mp.Pool(N_PARALLEL)
     for p in exp.repeat(N_PARALLEL):
+        logging.info(f"Submitting run {p.seed_value} to the pool for trial {trial.number}")
         handles.append(pool.apply_async(run, (p, trial.number)))
 
     amounts = []
@@ -75,7 +77,7 @@ if __name__ == "__main__":
     p = Parameters(
         PPOParameters(),
         clf_params=CLF_PARAMS,
-        cardsim=CARDSIM_PARAMS,
+        # cardsim=CARDSIM_PARAMS,
         save=False,
     )
     # env = p.create_env()
@@ -89,5 +91,5 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, VAEParameters.suggest), 100, n_jobs=1)
+    study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=1)
     logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
