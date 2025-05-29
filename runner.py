@@ -69,6 +69,7 @@ class Runner:
         total = 0.0
         episode_num = 0
         scores = list[float]()
+        terminal_ids = []
         pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
         try:
             while episode_num < self.params.n_episodes:
@@ -108,12 +109,12 @@ def main_parallel():
         agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=30,
-        logdir="logs/rppo-3-paper",
+        seed_value=2,
+        logdir="logs/vae-test",
     )
     exp = Experiment.create(params)
-    with mp.Pool(16) as pool:
-        pool.map(run, exp.repeat(16))
+    with mp.Pool(1) as pool:
+        pool.map(run, exp.repeat(4))
     logging.info("All runs completed.")
 
 
@@ -145,6 +146,4 @@ exp = Experiment.create(params)
 run(params)
 
 
-
 # Run VAE
-
