@@ -185,6 +185,7 @@ class VaeAgent(Agent):
         self.know_client = know_client
         self.supervised = supervised
         self.quantile = quantile
+        self.beta = beta
         self.generated_size = generated_size
 
         if self.know_client:
@@ -216,7 +217,7 @@ class VaeAgent(Agent):
             lr=lr,
             trees=trees,
             supervised=supervised,
-            beta=beta,
+            beta=self.beta,
         )
         self.attack_generator.train(batch_size=batch_size, num_epochs=num_epochs)
 
@@ -279,11 +280,12 @@ class VaeAgent(Agent):
         trx = small_df.loc[0, ["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]  # type: ignore
         trx["delay_day"] = 0
         # Move delay_hours to the last column
-        trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_day", "delay_hours"]]
+        trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]
         # Print payee_x and payee_y, amount, is_online and delay_hours
         # print(f"Chosen transaction: {trx['payee_x']}, {trx['payee_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
-        trx = trx.to_numpy()
+        trx = trx
         trx = trx.astype(np.float32)
+        trx = trx.to_numpy().reshape(1, -1)
         return trx, None
 
     @staticmethod

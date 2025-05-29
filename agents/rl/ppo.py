@@ -14,7 +14,6 @@ from .batch import Batch, TransitionBatch, EpisodeBatch
 from .replay_memory import ReplayMemory
 from .networks import ActorCritic
 
-
 class PPO(Agent):
     actor_critic: ActorCritic
     memory: ReplayMemory
@@ -58,7 +57,9 @@ class PPO(Agent):
         self.memory = memory
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
-        self.model_directory = f"tmp/{datetime.now()}"
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.model_directory = f"tmp/{timestamp}"
+
         os.makedirs(self.model_directory, exist_ok=False)
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
         self.optimizer = torch.optim.Adam(param_groups)

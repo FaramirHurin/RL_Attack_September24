@@ -17,6 +17,11 @@ from .priority_queue import PriorityQueue
 if TYPE_CHECKING:
     from banksys import Banksys
 
+def round_timedelta_to_minute(td: timedelta) -> timedelta:
+    total_seconds = td.total_seconds()
+    rounded_seconds = round(total_seconds / 60) * 60
+    return timedelta(seconds=rounded_seconds)
+
 
 class CardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
@@ -33,9 +38,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         else:
             obs_shape = (4,)
         action_space = ContinuousSpace(
-            low=np.array([0.01] + [0.0] * 5),
-            high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
-            labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_days", "delay_hours"],
+            low=np.array([0.01] + [0.0] * 4),
+            high=np.array([100_000, 200, 200, 1,  avg_card_block_delay.total_seconds() / 3600]), #avg_card_block_delay.days,
+            labels=["amount", "terminal_x", "terminal_y", "is_online",  "delay_hours"], #"delay_days",
         )
         super().__init__(
             1,
@@ -61,7 +66,11 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def buffer_action(self, np_action: np.ndarray, card: Card):
         action = Action.from_numpy(np_action)
-        execution_time = self.t + action.timedelta
+        if action.delay_hours > 1:
+            DEBUG = False
+        delta = max(round_timedelta_to_minute(action.timedelta), timedelta(minutes=1))
+
+        execution_time = self.t + delta
         self.action_buffer.push((card, np_action), execution_time)
 
     def get_observation(self, card: Card):
