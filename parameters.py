@@ -345,6 +345,7 @@ class VAEParameters:
             quantile=trial.suggest_float("quantile", 0.9, 0.999),
             generated_size=trial.suggest_int("generated_size", 100, 1000),
             beta=trial.suggest_float("beta", 0.0, 1.0),
+            n_infiltrated_terminals=trial.suggest_int("n_infiltrated_terminals", 1, 100),
         )
 
 
