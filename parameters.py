@@ -296,6 +296,7 @@ class VAEParameters:
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
+        infiltrated_terminals = random.choices(env.system.terminals, k=self.n_infiltrated_terminals)
         return VaeAgent(
             device=device,
             latent_dim=self.latent_dim,
@@ -303,7 +304,7 @@ class VAEParameters:
             lr=self.lr,
             trees=self.trees,
             banksys=env.system,
-            terminal_codes=env.system.terminals[-self.n_infiltrated_terminals :],
+            terminal_codes=infiltrated_terminals,
             batch_size=self.batch_size,
             num_epochs=self.num_epochs,
             know_client=know_client,
@@ -372,8 +373,7 @@ class Parameters:
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
-        aggregation_windows: Sequence[timedelta | float] =
-        (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
