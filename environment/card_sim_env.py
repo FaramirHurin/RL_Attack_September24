@@ -29,9 +29,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     ):
         self.normalize_location = normalize_location
         if customer_location_is_known:
-            obs_shape = (6,)
+            obs_shape = (6 + 7,)
         else:
-            obs_shape = (4,)
+            obs_shape = (4 + 7,)
         action_space = ContinuousSpace(
             low=np.array([0.01] + [0.0] * 5),
             high=np.array([100_000, 200, 200, 1, avg_card_block_delay.days, avg_card_block_delay.total_seconds() / 3600]),
@@ -78,7 +78,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def compute_state(self, card: Card):
         time_ratio = self.card_registry.get_time_ratio(card, self.t)
-        features = [time_ratio, card.is_credit, self.t.hour / 24, self.t.day / 31]
+        one_hot_weekday = [0.0] * 7
+        one_hot_weekday[self.t.weekday()] = 1.0
+        features = [time_ratio, card.is_credit, self.t.hour / 24, self.t.day / 31, *one_hot_weekday]
         if self.customer_location_is_known:
             x, y = card.customer_x, card.customer_y
             if self.normalize_location:
