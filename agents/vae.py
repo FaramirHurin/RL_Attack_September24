@@ -169,6 +169,7 @@ class VaeAgent(Agent):
         banksys: "Banksys",
         terminal_codes: list,
         current_time: datetime,
+        beta: float,
         batch_size=32,
         num_epochs=1000,
         know_client: bool = False,
@@ -215,6 +216,7 @@ class VaeAgent(Agent):
             lr=lr,
             trees=trees,
             supervised=supervised,
+            beta=beta,
         )
         self.attack_generator.train(batch_size=batch_size, num_epochs=num_epochs)
 
@@ -257,7 +259,6 @@ class VaeAgent(Agent):
             batch["payee_y"] = batch["payee_y"].astype(int)
 
         batch = batch.sort_values(by="amount", ascending=True)
-
 
         # Filter the highest amounts based on the quantile
         batch = batch[batch["amount"] >= batch["amount"].quantile(self.quantile)]
