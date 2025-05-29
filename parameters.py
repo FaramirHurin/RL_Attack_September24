@@ -292,10 +292,12 @@ class VAEParameters:
     supervised: bool = False
     generated_size: int = 1000
     n_infiltrated_terminals: int = 5
+    beta: float = 0.1
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
 
+        infiltrated_terminals = random.choices(env.system.terminals, k=self.n_infiltrated_terminals)
         return VaeAgent(
             device=device,
             latent_dim=self.latent_dim,
@@ -303,7 +305,7 @@ class VAEParameters:
             lr=self.lr,
             trees=self.trees,
             banksys=env.system,
-            terminal_codes=env.system.terminals[-self.n_infiltrated_terminals :],
+            terminal_codes=infiltrated_terminals,
             batch_size=self.batch_size,
             num_epochs=self.num_epochs,
             know_client=know_client,
@@ -311,6 +313,7 @@ class VAEParameters:
             current_time=env.t,
             quantile=quantile,
             generated_size=self.generated_size,
+            beta=self.beta,
         )
 
     @staticmethod
@@ -333,14 +336,15 @@ class VAEParameters:
     @staticmethod
     def suggest(trial: Trial):
         return VAEParameters(
-            latent_dim=trial.suggest_int("latent_dim", 2, 64),
+            latent_dim=trial.suggest_int("latent_dim", 8, 92),
             hidden_dim=trial.suggest_int("hidden_dim", 64, 192),
             lr=trial.suggest_float("lr", 0.0001, 0.001),
             trees=trial.suggest_int("trees", 20, 100),
             batch_size=trial.suggest_int("batch_size", 8, 32),
-            num_epochs=trial.suggest_int("num_epochs", 2_000, 10_000),
+            num_epochs=trial.suggest_int("num_epochs", 1000, 10_000),
             quantile=trial.suggest_float("quantile", 0.9, 0.999),
             generated_size=trial.suggest_int("generated_size", 100, 1000),
+            beta=trial.suggest_float("beta", 0.0, 1.0),
         )
 
 
@@ -372,8 +376,7 @@ class Parameters:
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
-        aggregation_windows: Sequence[timedelta | float] =
-        (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
