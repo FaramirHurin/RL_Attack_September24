@@ -320,21 +320,24 @@ class VAEParameters:
     def best_vae():
         # Best 0 [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
         # Best 1 latent_dim: 2, hidden_dim: 157, lr: 0.0007161633748676655, trees: 54, batch_size: 29, num_epochs: 6672, quantile: 0.9844833640628634, generated_size: 970
+        # Best 2 (after rework from Daniele on the 28th or May) [latent_dim: 74, hidden_dim: 175, lr: 0.0005289140008626337, trees: 63, batch_size: 22, num_epochs: 8904, quantile: 0.9661441225831466, generated_size: 466, beta: 0.39527769849107575, n_infiltrated_terminals: 17]
         return VAEParameters(
-            n_infiltrated_terminals=100,
-            latent_dim=6,
-            hidden_dim=128,
-            lr=0.0046673940763915635,
-            trees=84,
-            batch_size=27,
-            num_epochs=9238,
-            quantile=0.9001873838227034,
+            latent_dim=74,
+            hidden_dim=175,
+            lr=0.0005289140008626337,
+            trees=63,
+            batch_size=22,
+            num_epochs=8904,
+            quantile=0.9661441225831466,
             supervised=False,
-            generated_size=1000,
+            generated_size=466,
+            n_infiltrated_terminals=17,
+            beta=0.39527769849107575,
         )
 
     @staticmethod
     def suggest(trial: Trial):
+        logging.info("Suggesting VAE parameters")
         return VAEParameters(
             latent_dim=trial.suggest_int("latent_dim", 8, 92),
             hidden_dim=trial.suggest_int("hidden_dim", 64, 192),
@@ -345,6 +348,7 @@ class VAEParameters:
             quantile=trial.suggest_float("quantile", 0.9, 0.999),
             generated_size=trial.suggest_int("generated_size", 100, 1000),
             beta=trial.suggest_float("beta", 0.0, 1.0),
+            n_infiltrated_terminals=trial.suggest_int("n_infiltrated_terminals", 1, 100),
         )
 
 
