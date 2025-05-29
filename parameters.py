@@ -318,15 +318,16 @@ class VAEParameters:
         # Best 0 [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
         # Best 1 latent_dim: 2, hidden_dim: 157, lr: 0.0007161633748676655, trees: 54, batch_size: 29, num_epochs: 6672, quantile: 0.9844833640628634, generated_size: 970
         return VAEParameters(
-            latent_dim=2,
-            hidden_dim=157,
-            lr=0.0007161633748676655,
-            trees=54,
-            batch_size=29,
-            num_epochs=6672,
-            quantile=0.9844833640628634,
+            n_infiltrated_terminals=100,
+            latent_dim=6,
+            hidden_dim=128,
+            lr=0.0046673940763915635,
+            trees=84,
+            batch_size=27,
+            num_epochs=9238,
+            quantile=0.9001873838227034,
             supervised=False,
-            generated_size=970,
+            generated_size=1000,
         )
 
     @staticmethod
@@ -365,13 +366,14 @@ class Parameters:
         clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
-        terminal_fract: float = 0.1,
+        terminal_fract: float = 0.2,
         seed_value: Optional[int] = None,
         card_pool_size: int = 50,
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
-        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] =
+        (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
