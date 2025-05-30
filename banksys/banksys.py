@@ -52,30 +52,10 @@ class Banksys:
             self.add_transaction(t)
 
     def _train(self, transactions: list[Transaction]):
-        logging.info(f"Building transactions features until {self.attack_start.date().isoformat()} for training")
-        rows = []
-        labels = []
-        for t in tqdm(transactions, unit="trx"):
-            self.add_transaction(t)
-            rows.append(self.make_features_np(t, with_label=False))
-            labels.append(t.is_fraud)
-        df = pd.DataFrame(rows, columns=self.feature_names)
-        labels = np.array(labels, dtype=np.bool)
+        df, labels = self.parallel_add_and_make_features(transactions, n_jobs=4)
         logging.info("Training the classification system...")
         self.clf.fit(df, labels)
         return df, labels
-
-    def _simulate(self, transactions: list[Transaction]):
-        logging.info(f"Simulating the system until {self.attack_end.date().isoformat()}")
-        for t in tqdm(transactions, unit="trx"):
-            self.add_transaction(t)
-
-        n_cpus = mp.cpu_count()
-        with mp.Pool(n_cpus - 1) as pool:
-            features = pool.map(self.make_features_np, [(t, False) for t in transactions])
-            labels = [t.is_fraud for t in transactions]
-        df = pd.DataFrame(features, columns=self.feature_names)
-        return df, np.array(labels, dtype=np.bool)
 
     def fit(self, transactions: list[Transaction]):
         logging.info("Fitting the bank system...")
@@ -91,14 +71,38 @@ class Banksys:
 
         self._warmup(registry.get_before(training_start))
         train_x, train_y = self._train(registry.get_between(training_start, training_end))
-        test_x, test_y = self._simulate(registry.get_after(training_end))
+        test_x, test_y = self.parallel_add_and_make_features(registry.get_after(training_end))
         return train_x, train_y, test_x, test_y
 
     def set_up_run(self, rules_values: dict, use_anomaly: bool):
         self.clf.set_rules(rules_values)
         self.clf.use_anomaly = use_anomaly
 
-    def make_features_np(self, transaction: Transaction, with_label: bool):
+    def parallel_add_and_make_features(self, transactions: list[Transaction], n_jobs: int = 4):
+        # Sequentially add the transactions to the system (mutable state)
+        labels = []
+        for t in tqdm(transactions, unit="trx"):
+            self.add_transaction(t)
+            labels.append(t.is_fraud)
+        # Parallel feature extraction (unmutable state)
+        chunk_size = len(transactions) // n_jobs + 1
+        chunks = (transactions[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs))
+        logging.info(f"Extracting features for {len(transactions)} transactions in {n_jobs} parallel jobs")
+        with mp.Pool(n_jobs) as pool:
+            features = pool.map(self.make_batch_features_np, chunks)
+        df = pd.DataFrame(np.concatenate(features), columns=self.feature_names)
+        return df, np.array(labels, dtype=np.bool)
+
+    def make_batch_features_np(self, transactions: list[Transaction], with_label: bool = False):
+        """
+        Make features for a batch of transactions.
+        """
+        features = []
+        for transaction in transactions:
+            features.append(self.make_features_np(transaction, with_label=with_label))
+        return np.array(features)
+
+    def make_features_np(self, transaction: Transaction, with_label: bool = False):
         terminal = self.terminals[transaction.terminal_id]
         card = self.cards[transaction.card_id]
         terminal_features = terminal.features(transaction.timestamp, self.aggregation_windows)
