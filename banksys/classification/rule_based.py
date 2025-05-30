@@ -4,53 +4,33 @@ from typing import TYPE_CHECKING, Callable, overload
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from ..transaction_registry import TransactionsRegistry
 import polars as pl
+from datetime import timedelta
 
 from ..transaction import Transaction
-from typing import List
 
 if TYPE_CHECKING:
     from banksys import Banksys
 
-"""
-def max_trx_day(transaction: Transaction, transactions: list[Transaction], max_number: float) -> bool:
-    same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
+
+def max_trx_day(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(days=1)
+    same_day_transactions = registry.get_between(start, transaction.timestamp)
     return len(same_day_transactions) > max_number
 
 
-def max_trx_hour(transaction: Transaction, transactions: list[Transaction], max_number: float) -> bool:
-    same_hour_transactions = [trx for trx in transactions if trx.timestamp.hour == transaction.timestamp.hour]
+def max_trx_hour(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(hours=1)
+    same_hour_transactions = registry.get_between(start, transaction.timestamp)
     return len(same_hour_transactions) > max_number
 
 
-def max_trx_week(transaction: Transaction, transactions: list[Transaction], max_number: float) -> bool:
-    same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] == transaction.timestamp.isocalendar()[1]]
+def max_trx_week(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(weeks=1)
+    same_week_transactions = registry.get_between(start, transaction.timestamp)
     return len(same_week_transactions) > max_number
-"""
-def max_trx_day(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
-    same_day_transactions = [
-        trx for trx in transactions
-        if trx.timestamp.date() == transaction.timestamp.date()
-    ]
-    return len(same_day_transactions) > max_number
 
-
-def max_trx_hour(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
-    same_hour_transactions = [
-        trx for trx in transactions
-        if trx.timestamp.date() == transaction.timestamp.date()
-        and trx.timestamp.hour == transaction.timestamp.hour
-    ]
-    return len(same_hour_transactions) > max_number
-
-
-def max_trx_week(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
-    trx_week = transaction.timestamp.isocalendar()
-    same_week_transactions = [
-        trx for trx in transactions
-        if trx.timestamp.isocalendar()[:2] == trx_week[:2]  # compare both year and week number
-    ]
-    return len(same_week_transactions) > max_number
 
 rules_dict = {
     "max_trx_day": max_trx_day,
@@ -60,19 +40,22 @@ rules_dict = {
 
 
 class RuleBasedClassifier:
-    def __init__(self, rules: list[Callable[[Transaction, list[Transaction], float], bool]], banksys: "Banksys", rule_values: dict):
+    def __init__(
+        self,
+        rules: list[Callable[[Transaction, TransactionsRegistry, float], bool]],
+        banksys: "Banksys",
+        rule_values: dict,
+    ):
         self.rules = dict(zip(rule_values.keys(), rules))
         self.rule_values = rule_values
         self.banksys = banksys
 
     def predict_transaction(self, transaction: Transaction):
-        card = self.banksys.cards[transaction.card_id]
-        i = card._find_index(transaction.timestamp)
-        transactions = card.transactions[:i]
+        registry = self.banksys.cards[transaction.card_id]
         for rule_name in self.rules.keys():
             rule = self.rules[rule_name]
             value = self.rule_values[rule_name]
-            if rule(transaction, transactions, value):
+            if rule(transaction, registry, value):
                 return True
         return False
 

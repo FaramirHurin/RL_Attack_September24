@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Optional
 
 
-class OrderedTransactionsRegistry:
+class TransactionsRegistry:
+    """Registry for transactions chronologically ordered for fast access based on timestamps."""
+
     def __init__(self, transactions: Optional[list[Transaction]] = None):
         if transactions is None:
             transactions = []

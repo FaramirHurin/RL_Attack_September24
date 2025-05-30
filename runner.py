@@ -89,7 +89,7 @@ class Runner:
                     pbar.update()
                     avg_score = np.mean(scores[-100:])
                     pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
-                    if episode_num> 500 and avg_score < 50:
+                    if episode_num > 500 and avg_score < 50:
                         DEBUG = 0
                     episode_num += 1
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
@@ -134,15 +134,13 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-
-params = Parameters(
-    agent=VAEParameters.best_vae(), # PPOParameters.best_rppo() ,  #   #  #
-    cardsim=CardSimParameters.paper_params(),
-    clf_params=ClassificationParameters.paper_params(),
-    seed_value=2,
-    logdir='logs/VAE/seed-' + str(2) ,
-)
-
+    params = Parameters(
+        agent=VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
+        cardsim=CardSimParameters.paper_params(),
+        clf_params=ClassificationParameters.paper_params(),
+        seed_value=2,
+        logdir="logs/VAE/seed-" + str(2),
+    )
     exp = Experiment.create(params)
     run(params)
 
