@@ -1,7 +1,10 @@
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, overload
+from tqdm import tqdm
 
+import polars as pl
+import multiprocessing as mp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -75,7 +78,12 @@ class ClassificationSystem:
 
     def _predict_dataframe(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
-        l1 = self.ml_classifier.predict(df).astype(np.bool)
+        data = pl.from_pandas(df)
+        l1s = []
+        for x in tqdm(data.iter_slices()):
+            l1s.append(self.ml_classifier.predict(x))
+        l1 = np.concatenate(l1s).astype(np.bool)
+        # l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
         l2 = self.statistical_classifier.predict_dataframe(df)
         logging.debug("Predicting with rule-based")

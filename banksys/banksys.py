@@ -89,21 +89,17 @@ class Banksys:
         labels = []
         handles = list[AsyncResult[np.ndarray]]()
         chunk_size = len(transactions) // n_jobs + 1
-        chunks = [transactions[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs)]
-        current_chunk_num = 0
-        chunk_end = chunks[0][-1].timestamp
+        chunks = (transactions[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs))
         logging.info(f"Extracting features for {len(transactions)} transactions in {n_jobs} parallel jobs")
         pool = mp.Pool(n_jobs)
-        for t in tqdm(transactions, unit="trx"):
+        for i, t in enumerate(tqdm(transactions, unit="trx")):
             self.add_transaction(t)
             labels.append(t.is_fraud)
-            if t.timestamp >= chunk_end and current_chunk_num < n_jobs - 1:
+            if (i + 1) % chunk_size == 0 and len(handles) < n_jobs - 1:
                 # Submit as soon as the related transactions have been added
-                handles.append(pool.apply_async(self.make_batch_features_np, args=(chunks[current_chunk_num],)))
-                current_chunk_num += 1
-                chunk_end = chunks[current_chunk_num][-1].timestamp
+                handles.append(pool.apply_async(self.make_batch_features_np, args=(next(chunks),)))
         # Process the last chunk in this process to avoid memory overhead
-        features = self.make_batch_features_np(chunks[current_chunk_num], with_label=False)
+        features = self.make_batch_features_np(next(chunks), with_label=False)
         results = [h.get() for h in handles] + [features]
         df = pd.DataFrame(np.concatenate(results), columns=self.feature_names)
         return df, np.array(labels, dtype=np.bool)

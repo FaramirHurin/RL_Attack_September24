@@ -1,14 +1,16 @@
 # Import isolation forest
-from typing import TYPE_CHECKING, Callable, overload
+import logging
 import multiprocessing as mp
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Callable, overload
+
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from ..transaction_registry import TransactionsRegistry
 import polars as pl
-from datetime import timedelta
 
 from ..transaction import Transaction
+from ..transaction_registry import TransactionsRegistry
 
 if TYPE_CHECKING:
     from banksys import Banksys
@@ -59,9 +61,8 @@ class RuleBasedClassifier:
                 return True
         return False
 
-    def _predict_job(self, df: pd.DataFrame):
+    def _predict_job(self, data: pl.DataFrame):
         labels = []
-        data = pl.from_pandas(df)
         transactions = [Transaction.from_features(False, **kwargs) for kwargs in data.iter_rows(named=True)]
         for transaction in transactions:
             predicted = self.predict_transaction(transaction)
@@ -69,12 +70,13 @@ class RuleBasedClassifier:
         return np.array(labels, dtype=np.bool)
 
     def predict_dataframe(self, df: pd.DataFrame):
-        # Does not matter whether we put is_fraud=True or False here because we are not using it
-        n_jobs = min(20, mp.cpu_count())
-        chunk_size = len(df) // n_jobs + 1
-        chunks = (df[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs))
+        n_jobs = mp.cpu_count()
+        data = pl.from_pandas(df)
+        logging.debug(f"Starting rule predictions with {n_jobs}, total rows: {len(df)}")
+        start = datetime.now()
         with mp.Pool(n_jobs) as pool:
-            results = pool.map(self._predict_job, chunks)
+            results = pool.map(self._predict_job, data.iter_slices())
+        logging.debug(f"Rule predictions completed in {datetime.now() - start}")
         return np.concatenate(results)
 
     @overload

@@ -11,7 +11,7 @@ def get_test_set():
     logging.info("Generating test set...")
     params = Parameters(
         clf_params=ClassificationParameters.paper_params(),
-        cardsim=CardSimParameters.paper_params(),
+        cardsim=CardSimParameters(),
     )
     cards, terminals, transactions = params.cardsim.get_simulation_data()
     banksys = Banksys(
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment_with_rules, n_trials=100, n_jobs=5)
+    study.optimize(experiment_with_rules, n_trials=100, n_jobs=1)
 
     study = optuna.create_study(
         storage="sqlite:///classifier-tuning.db",
@@ -98,4 +98,4 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment_without_rules, n_trials=100, n_jobs=20)
+    study.optimize(experiment_without_rules, n_trials=100, n_jobs=1)

@@ -484,7 +484,7 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, save: bool = True, save_directory: Optional[str] = None):
+    def create_banksys(self, save: bool = True, save_tests: bool = True, save_directory: Optional[str] = None):
         from banksys import Banksys, TransactionsRegistry
 
         cards, terminals, transactions = self.cardsim.get_simulation_data()
@@ -495,7 +495,7 @@ class Parameters:
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        banksys.fit(TransactionsRegistry(transactions))
+        train_x, train_y = banksys.fit(TransactionsRegistry(transactions))
         if save:
             if save_directory is None:
                 save_directory = self.banksys_dir
