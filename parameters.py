@@ -88,7 +88,7 @@ class ClassificationParameters:
             contamination=0.005,
             training_duration=timedelta(days=150),
             quantiles_features=("amount",),
-            quantiles_values=(0.01, 1.0),
+            quantiles_values=(0.00, 1.0),
             rules={
                 "max_trx_hour": 6,
                 "max_trx_week": 40,
@@ -112,6 +112,8 @@ class PPOParameters:
     grad_norm_clipping: Optional[float]
     train_on: Literal["transition", "episode"]
     is_recurrent: bool
+    normalize_rewards: bool
+    normalize_advantages: bool
 
     def __init__(
         self,
@@ -128,6 +130,8 @@ class PPOParameters:
         minibatch_size: int = 32,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
+        normalize_rewards: bool = True,
+        normalize_advantages: bool = True,
     ):
         self.is_recurrent = is_recurrent
         if self.is_recurrent and not train_on == "episode":
@@ -149,6 +153,8 @@ class PPOParameters:
         self.minibatch_size = minibatch_size
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
+        self.normalize_rewards = normalize_rewards
+        self.normalize_advantages = normalize_advantages
 
     def as_dict(self):
         kwargs = asdict(self)
@@ -201,11 +207,11 @@ class PPOParameters:
             ),
             entropy_c2=Schedule.linear(
                 start_value=0.0957619650038549,
-                end_value=0.007744880113458132,
+                end_value=0.007744880113458132, #
                 n_steps=2537,
             ),
-            train_interval=10,
-            minibatch_size=8,
+            train_interval=40,
+            minibatch_size=20,
             gae_lambda=0.95,
             grad_norm_clipping=8.934885848478487,
         )
@@ -218,18 +224,18 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            gamma=0.99,
+            gamma=0.999,
             lr_actor=0.00117126625357408,
             lr_critic=0.0007648237767940683,
             n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
-                start_value=0.16450187834828542,
+                start_value=0.06450187834828542,
                 end_value=0.45697380802021975,
                 n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.08774192037356557,
+                start_value=0.18774192037356557,
                 end_value=0.017361163706258554,
                 n_steps=1171,
             ),
@@ -267,16 +273,15 @@ class PPOParameters:
             lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01),
             lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
             grad_norm_clipping=grad_norm_clipping,
+            normalize_rewards=trial.suggest_categorical("normalize_rewards", [True, False]),
+            normalize_advantages=trial.suggest_categorical("normalize_advantages", [True, False]),
         )
 
     @staticmethod
     def suggest_ppo(trial: Trial):
         params = PPOParameters.suggest_rppo(trial)
         params.is_recurrent = False
-        if trial.suggest_categorical("train_on_episode", [True, False]):
-            params.train_on = "episode"
-        else:
-            params.train_on = "transition"
+        params.train_on = "transition"
         return params
 
 
@@ -320,17 +325,19 @@ class VAEParameters:
     def best_vae():
         # Best 0 [latent_dim: 6, hidden_dim: 140, lr: 0.00046673940763915635, trees: 84, batch_size: 27, num_epochs: 9238, quantile: 0.9001873838227034]
         # Best 1 latent_dim: 2, hidden_dim: 157, lr: 0.0007161633748676655, trees: 54, batch_size: 29, num_epochs: 6672, quantile: 0.9844833640628634, generated_size: 970
+        # Best 2 (after rework from Daniele on the 28th or May) [latent_dim: 74, hidden_dim: 175, lr: 0.0005289140008626337, trees: 63, batch_size: 22, num_epochs: 8904, quantile: 0.9661441225831466, generated_size: 466, beta: 0.39527769849107575, n_infiltrated_terminals: 17]
         return VAEParameters(
-            n_infiltrated_terminals=100,
-            latent_dim=6,
-            hidden_dim=128,
-            lr=0.0046673940763915635,
-            trees=84,
-            batch_size=27,
-            num_epochs=9238,
-            quantile=0.9001873838227034,
+            latent_dim=74,
+            hidden_dim=175,
+            lr=0.0005289140008626337,
+            trees=63,
+            batch_size=22,
+            num_epochs=8904,
+            quantile=0.9661441225831466,
             supervised=False,
-            generated_size=1000,
+            generated_size=466,
+            n_infiltrated_terminals=17,
+            beta=0.39527769849107575,
         )
 
     @staticmethod
@@ -360,6 +367,7 @@ class Parameters:
     terminal_fract: float
     seed_value: int
     card_pool_size: int
+    include_weekday: bool
     avg_card_block_delay_days: int
     logdir: str
     aggregation_windows: Sequence[timedelta]
@@ -378,6 +386,7 @@ class Parameters:
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
+        include_weekday: bool = True,
         aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
@@ -395,6 +404,7 @@ class Parameters:
         self.avg_card_block_delay_days = avg_card_block_delay_days
         self.clf_params = clf_params
         self.card_pool_size = card_pool_size
+        self.include_weekday = include_weekday
         self.aggregation_windows = []
         for window in aggregation_windows:
             if isinstance(window, (float, int)):
@@ -453,6 +463,7 @@ class Parameters:
             avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
             customer_location_is_known=self.know_client,
             normalize_location=self.agent_name in ("ppo", "rppo"),
+            include_weekday=self.include_weekday,
         )
         env.seed(self.seed_value)
         return env

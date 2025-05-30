@@ -5,11 +5,11 @@ from datetime import datetime
 from datetime import timedelta
 
 from .transaction import Transaction
-from .has_ordered_transactions import OrderedTransactionsRegistry
+from .transaction_registry import TransactionsRegistry
 
 
 @dataclass
-class Terminal(OrderedTransactionsRegistry):
+class Terminal(TransactionsRegistry):
     id: int
     x: float
     y: float

@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from .card import Card
 from .classification import ClassificationSystem
-from .has_ordered_transactions import OrderedTransactionsRegistry
+from .transaction_registry import TransactionsRegistry
 from .terminal import Terminal
 from .transaction import Transaction
 
@@ -75,7 +75,7 @@ class Banksys:
 
     def fit(self, transactions: list[Transaction]):
         logging.info("Fitting the bank system...")
-        registry = OrderedTransactionsRegistry(transactions)
+        registry = TransactionsRegistry(transactions)
         aggregation_duration = max(*self.aggregation_windows)
         training_start = registry[0].timestamp + aggregation_duration
         training_end = training_start + self.clf.training_duration
