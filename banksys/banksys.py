@@ -3,6 +3,7 @@ import os
 import pickle
 import random
 import multiprocessing as mp
+from multiprocessing.pool import AsyncResult
 from datetime import timedelta, datetime
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -85,18 +86,26 @@ class Banksys:
         self.clf.use_anomaly = use_anomaly
 
     def parallel_add_and_make_features(self, transactions: list[Transaction], n_jobs: int = 4):
-        # Sequentially add the transactions to the system (mutable state)
         labels = []
+        handles = list[AsyncResult[np.ndarray]]()
+        chunk_size = len(transactions) // n_jobs + 1
+        chunks = [transactions[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs)]
+        current_chunk_num = 0
+        chunk_end = chunks[0][-1].timestamp
+        logging.info(f"Extracting features for {len(transactions)} transactions in {n_jobs} parallel jobs")
+        pool = mp.Pool(n_jobs)
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
             labels.append(t.is_fraud)
-        # Parallel feature extraction (unmutable state)
-        chunk_size = len(transactions) // n_jobs + 1
-        chunks = (transactions[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs))
-        logging.info(f"Extracting features for {len(transactions)} transactions in {n_jobs} parallel jobs")
-        with mp.Pool(n_jobs) as pool:
-            features = pool.map(self.make_batch_features_np, chunks)
-        df = pd.DataFrame(np.concatenate(features), columns=self.feature_names)
+            if t.timestamp >= chunk_end and current_chunk_num < n_jobs - 1:
+                # Submit as soon as the related transactions have been added
+                handles.append(pool.apply_async(self.make_batch_features_np, args=(chunks[current_chunk_num],)))
+                current_chunk_num += 1
+                chunk_end = chunks[current_chunk_num][-1].timestamp
+        # Process the last chunk in this process to avoid memory overhead
+        features = self.make_batch_features_np(chunks[current_chunk_num], with_label=False)
+        results = [h.get() for h in handles] + [features]
+        df = pd.DataFrame(np.concatenate(results), columns=self.feature_names)
         return df, np.array(labels, dtype=np.bool)
 
     def make_batch_features_np(self, transactions: list[Transaction], with_label: bool = False):
