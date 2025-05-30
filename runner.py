@@ -90,6 +90,8 @@ class Runner:
                     pbar.update()
                     avg_score = np.mean(scores[-100:])
                     pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
+                    if episode_num> 500 and avg_score < 50:
+                        DEBUG = 0
                     episode_num += 1
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                     if self.n_spawned < self.params.n_episodes:
@@ -106,11 +108,11 @@ class Runner:
 
 def main_parallel():
     params = Parameters(
-        agent=PPOParameters.best_ppo(),  #   PPOParameters.best_rppo3(),
+        agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
         seed_value=30,
-        logdir="logs/rppo-3-paper",
+        logdir="logs/VAElocal-paper/seed-30",
     )
     exp = Experiment.create(params)
     with mp.Pool(16) as pool:
@@ -135,11 +137,11 @@ if __name__ == "__main__":
 
 
 params = Parameters(
-    agent= PPOParameters.best_rppo(), #VAEParameters.best_vae() ,  #
+    agent=PPOParameters.best_ppo() ,  # VAEParameters.best_vae(), #   #  #
     cardsim=CardSimParameters.paper_params(),
     clf_params=ClassificationParameters.paper_params(),
     seed_value=1,
-    logdir='logs/RPPOlocal-paper/seed-' + str(1) ,
+    logdir='logs/PPO/seed-' + str(1) ,
 )
 
 exp = Experiment.create(params)

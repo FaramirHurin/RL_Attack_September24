@@ -71,6 +71,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         delta = max(round_timedelta_to_minute(action.timedelta), timedelta(minutes=1))
 
         execution_time = self.t + delta
+        assert execution_time >= self.t, "Action can not be executed in the past"
         self.action_buffer.push((card, np_action), execution_time)
 
     def get_observation(self, card: Card):

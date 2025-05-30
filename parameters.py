@@ -201,11 +201,11 @@ class PPOParameters:
             ),
             entropy_c2=Schedule.linear(
                 start_value=0.0957619650038549,
-                end_value=0.007744880113458132,
+                end_value=0.007744880113458132, #
                 n_steps=2537,
             ),
-            train_interval=10,
-            minibatch_size=8,
+            train_interval=40,
+            minibatch_size=20,
             gae_lambda=0.95,
             grad_norm_clipping=8.934885848478487,
         )
