@@ -1060,6 +1060,7 @@ class Cardsim:
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
         try:
+            logging.debug(f"Loading transactions from {cached_transactions}")
             df = pl.read_csv(
                 cached_transactions,
                 schema={
@@ -1092,7 +1093,8 @@ class Cardsim:
         # Polars is (much) faster for this (≃20x)
         transactions = list[Transaction]()
         start = time.time()
-        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in tqdm(df.iter_rows()):
+        logging.info("Creating transaction objects from DataFrame")
+        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in tqdm(df.iter_rows(), total=len(df)):
             transactions.append(
                 Transaction(
                     amount=amount,

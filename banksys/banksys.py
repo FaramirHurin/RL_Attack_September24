@@ -2,6 +2,7 @@ import logging
 import os
 import pickle
 import random
+import multiprocessing as mp
 from datetime import timedelta, datetime
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -51,7 +52,7 @@ class Banksys:
             self.add_transaction(t)
 
     def _train(self, transactions: list[Transaction]):
-        logging.info(f"Training the system until {self.attack_start.date().isoformat()}")
+        logging.info(f"Building transactions features until {self.attack_start.date().isoformat()} for training")
         rows = []
         labels = []
         for t in tqdm(transactions, unit="trx"):
@@ -60,16 +61,19 @@ class Banksys:
             labels.append(t.is_fraud)
         df = pd.DataFrame(rows, columns=self.feature_names)
         labels = np.array(labels, dtype=np.bool)
+        logging.info("Training the classification system...")
         self.clf.fit(df, labels)
         return df, labels
 
     def _simulate(self, transactions: list[Transaction]):
         logging.info(f"Simulating the system until {self.attack_end.date().isoformat()}")
-        features, labels = [], []
         for t in tqdm(transactions, unit="trx"):
             self.add_transaction(t)
-            features.append(self.make_features_np(t, with_label=False))
-            labels.append(t.is_fraud)
+
+        n_cpus = mp.cpu_count()
+        with mp.Pool(n_cpus - 1) as pool:
+            features = pool.map(self.make_features_np, [(t, False) for t in transactions])
+            labels = [t.is_fraud for t in transactions]
         df = pd.DataFrame(features, columns=self.feature_names)
         return df, np.array(labels, dtype=np.bool)
 

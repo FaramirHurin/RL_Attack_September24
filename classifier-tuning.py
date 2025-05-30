@@ -1,20 +1,15 @@
 import logging
+import optuna
 import os
-from datetime import timedelta, datetime
-import orjson
-from copy import deepcopy
+from datetime import timedelta
 import dotenv
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-from parameters import ClassificationParameters, Parameters, PPOParameters, serialize_unknown, CardSimParameters
+from sklearn.metrics import f1_score
+from parameters import ClassificationParameters, Parameters, PPOParameters, CardSimParameters
 from banksys import Banksys, ClassificationSystem
-import multiprocessing as mp
-
-dotenv.load_dotenv()  # Load the "private" .env file
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def get_test_set(params: Parameters):
+    logging.info("Generating test set...")
     cards, terminals, transactions = params.cardsim.get_simulation_data()
     banksys = Banksys(
         cards=cards,
@@ -23,109 +18,93 @@ def get_test_set(params: Parameters):
         attackable_terminal_factor=params.terminal_fract,
         clf_params=params.clf_params,
     )
+    logging.info("Fitting banksys")
     train_x, train_y, test_x, test_y = banksys.fit(transactions)
+    logging.info("Test set generated")
     return banksys, train_x, train_y, test_x, test_y
 
 
-def process(params: ClassificationParameters, banksys: Banksys, train_x, train_y, test_x, test_y):
-    logging.info(
-        f"Testing with trees={params.n_trees}, contamination={params.contamination}, balance_factor={params.balance_factor}, quantile={params.quantiles_values}"
+def get_params(with_rules: bool, trial: optuna.Trial):
+    params = Parameters(
+        None,
+        clf_params=ClassificationParameters(
+            n_trees=trial.suggest_int("n_trees", 20, 200),
+            contamination=trial.suggest_float("contamination", 0.0001, 0.05),
+            balance_factor=trial.suggest_float("balance_factor", 0.001, 0.25),
+            quantiles_values=[
+                trial.suggest_float("quantiles_low", 0.0, 0.1),
+                trial.suggest_float("quantiles_high", 0.9, 1.0),
+            ],
+            use_anomaly=trial.suggest_categorical("use_anomaly", [True, False]),
+        ),
+        cardsim=CardSimParameters.paper_params(),
     )
+    if with_rules:
+        params.clf_params.rules = {
+            "max_trx_hour": trial.suggest_int("max_trx_hour", 2, 20),
+            "max_trx_day": trial.suggest_int("max_trx_day", 2, 50),
+            "max_trx_week": trial.suggest_int("max_trx_week", 15, 300),
+        }
+    else:
+        params.clf_params.rules = {}
+    return params
+
+
+def experiment(params: ClassificationParameters):
     clf = ClassificationSystem(banksys, params)
-    # Fit the classifier
     clf.fit(train_x, train_y)
     # Predict & compute metrics
     predictions = clf.predict(test_x)
-    accuracy = accuracy_score(test_y, predictions)
+    # accuracy = accuracy_score(test_y, predictions)
     f1 = f1_score(test_y, predictions)
-    recall = recall_score(test_y, predictions)
-    precision = precision_score(test_y, predictions)
-    confusion = confusion_matrix(test_y, predictions)
-
-    results = {
-        "parameters": params,
-        "accuracy": accuracy,
-        "f1_score": f1,
-        "recall": recall,
-        "precision": precision,
-        "confusion_matrix": confusion,
-    }
-    logging.info(results)
-    os.makedirs("results", exist_ok=True)
-    filename = datetime.now().strftime("%Y%m%d_%H%M%S.json")
-    with open(os.path.join("results", filename), "wb") as f:
-        f.write(orjson.dumps(results, default=serialize_unknown, option=orjson.OPT_SERIALIZE_NUMPY))
+    # recall = recall_score(test_y, predictions)
+    # precision = precision_score(test_y, predictions)
+    # confusion = confusion_matrix(test_y, predictions)
+    return float(f1)
 
 
-def cross_validate_classifier():
-    params = Parameters(
-        PPOParameters(), clf_params=ClassificationParameters(training_duration=timedelta(days=150)), cardsim=CardSimParameters(n_days=365)
-    )
-    banksys, train_x, train_y, test_x, test_y = get_test_set(params)
+def experiment_with_rules(trial: optuna.Trial):
+    params = get_params(with_rules=True, trial=trial)
+    return experiment(params.clf_params)
 
-    # Define the parameters for the classification system
-    trees_candidates = [100, 200]
-    contamination_candidates = [0.005, 0.001]
-    balance_factor_candidates = [0.1, 0.05]
-    quantiles = [[0.005, 0.995], [0.01, 0.99], [0.05, 0.95]]
-    anomaly_enabled = [True, False]
-    rules_candidates = [
-        {},
-        {
-            "max_trx_hour": 6,
-            "max_trx_week": 40,
-            "max_trx_day": 15,
-        },
-        {
-            "max_trx_hour": 6,
-            "max_trx_week": 30,
-            "max_trx_day": 10,
-        },
-        {
-            "max_trx_hour": 10,
-            "max_trx_week": 100,
-            "max_trx_day": 20,
-        },
-        {
-            "max_trx_hour": 5,
-            "max_trx_week": 20,
-            "max_trx_day": 10,
-        },
-    ]
 
-    results_list = []
-
-    pool = mp.Pool(8)
-    handles = []
-    # Create a grid of parameters
-    for anomaly in anomaly_enabled:
-        for rules in rules_candidates:
-            for trees in trees_candidates:
-                for contamination in contamination_candidates:
-                    for balance_factor in balance_factor_candidates:
-                        for quantile in quantiles:
-                            params.clf_params.n_trees = trees
-                            params.clf_params.contamination = contamination
-                            params.clf_params.balance_factor = balance_factor
-                            params.clf_params.quantiles_values = quantile
-                            params.clf_params.use_anomaly = anomaly
-                            params.clf_params.rules = rules
-                            handles.append(
-                                pool.apply_async(
-                                    process,
-                                    args=(deepcopy(params.clf_params), banksys, train_x, train_y, test_x, test_y),
-                                )
-                            )
-    logging.info(f"Submitted {len(handles)} tasks")
-    for handle in handles:
-        result = handle.get()
-        results_list.append(result)
-    pool.join()
-    pool.close()
-    print(results_list)
+def experiment_without_rules(trial: optuna.Trial):
+    params = get_params(with_rules=False, trial=trial)
+    return experiment(params.clf_params)
 
 
 if __name__ == "__main__":
-    # with open("params.json", "wb") as f:
-    #    f.write(orjson.dumps(ClassificationParameters(), default=serialize_unknown))
-    cross_validate_classifier()
+    dotenv.load_dotenv()  # Load the "private" .env file
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
+        level=log_level,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+    params = Parameters(
+        PPOParameters(),
+        clf_params=ClassificationParameters(),
+        cardsim=CardSimParameters(),
+    )
+    if not params.banksys_is_in_cache():
+        logging.info("Generating Banksys data...")
+        params.create_banksys()
+
+    global banksys, train_x, train_y, test_x, test_y
+    banksys, train_x, train_y, test_x, test_y = get_test_set(params)
+
+    study = optuna.create_study(
+        storage="sqlite:///classifier-tuning.db",
+        study_name="with-rules",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(experiment_with_rules, n_trials=100, n_jobs=1)
+
+    # study = optuna.create_study(
+    #     storage="sqlite:///classifier-tuning.db",
+    #     study_name="without-rules",
+    #     direction=optuna.study.StudyDirection.MAXIMIZE,
+    #     load_if_exists=True,
+    # )
+    # study.optimize(experiment_without_rules, n_trials=100, n_jobs=20)
