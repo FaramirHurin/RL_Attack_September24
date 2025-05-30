@@ -1,15 +1,18 @@
 import logging
 import optuna
 import os
-from datetime import timedelta
 import dotenv
 from sklearn.metrics import f1_score
-from parameters import ClassificationParameters, Parameters, PPOParameters, CardSimParameters
-from banksys import Banksys, ClassificationSystem
+from parameters import ClassificationParameters, Parameters, CardSimParameters
+from banksys import Banksys, ClassificationSystem, TransactionsRegistry
 
 
-def get_test_set(params: Parameters):
+def get_test_set():
     logging.info("Generating test set...")
+    params = Parameters(
+        clf_params=ClassificationParameters.paper_params(),
+        cardsim=CardSimParameters.paper_params(),
+    )
     cards, terminals, transactions = params.cardsim.get_simulation_data()
     banksys = Banksys(
         cards=cards,
@@ -19,34 +22,32 @@ def get_test_set(params: Parameters):
         clf_params=params.clf_params,
     )
     logging.info("Fitting banksys")
-    train_x, train_y, test_x, test_y = banksys.fit(transactions)
+    registry = TransactionsRegistry(transactions)
+    train_x, train_y = banksys.fit(registry)
+    test_x, test_y = banksys.generate_test_set(registry)
     logging.info("Test set generated")
     return banksys, train_x, train_y, test_x, test_y
 
 
 def get_params(with_rules: bool, trial: optuna.Trial):
-    params = Parameters(
-        None,
-        clf_params=ClassificationParameters(
-            n_trees=trial.suggest_int("n_trees", 20, 200),
-            contamination=trial.suggest_float("contamination", 0.0001, 0.05),
-            balance_factor=trial.suggest_float("balance_factor", 0.001, 0.25),
-            quantiles_values=[
-                trial.suggest_float("quantiles_low", 0.0, 0.1),
-                trial.suggest_float("quantiles_high", 0.9, 1.0),
-            ],
-            use_anomaly=trial.suggest_categorical("use_anomaly", [True, False]),
-        ),
-        cardsim=CardSimParameters.paper_params(),
+    params = ClassificationParameters(
+        n_trees=trial.suggest_int("n_trees", 20, 200),
+        contamination=trial.suggest_float("contamination", 0.0001, 0.05),
+        balance_factor=trial.suggest_float("balance_factor", 0.001, 0.25),
+        quantiles_values=[
+            trial.suggest_float("quantiles_low", 0.0, 0.1),
+            trial.suggest_float("quantiles_high", 0.9, 1.0),
+        ],
+        use_anomaly=trial.suggest_categorical("use_anomaly", [True, False]),
     )
     if with_rules:
-        params.clf_params.rules = {
+        params.rules = {
             "max_trx_hour": trial.suggest_int("max_trx_hour", 2, 20),
             "max_trx_day": trial.suggest_int("max_trx_day", 2, 50),
             "max_trx_week": trial.suggest_int("max_trx_week", 15, 300),
         }
     else:
-        params.clf_params.rules = {}
+        params.rules = {}
     return params
 
 
@@ -65,12 +66,12 @@ def experiment(params: ClassificationParameters):
 
 def experiment_with_rules(trial: optuna.Trial):
     params = get_params(with_rules=True, trial=trial)
-    return experiment(params.clf_params)
+    return experiment(params)
 
 
 def experiment_without_rules(trial: optuna.Trial):
     params = get_params(with_rules=False, trial=trial)
-    return experiment(params.clf_params)
+    return experiment(params)
 
 
 if __name__ == "__main__":
@@ -81,17 +82,7 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    params = Parameters(
-        PPOParameters(),
-        clf_params=ClassificationParameters(),
-        cardsim=CardSimParameters(),
-    )
-    if not params.banksys_is_in_cache():
-        logging.info("Generating Banksys data...")
-        params.create_banksys()
-
-    global banksys, train_x, train_y, test_x, test_y
-    banksys, train_x, train_y, test_x, test_y = get_test_set(params)
+    banksys, train_x, train_y, test_x, test_y = get_test_set()
 
     study = optuna.create_study(
         storage="sqlite:///classifier-tuning.db",
@@ -99,12 +90,12 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment_with_rules, n_trials=100, n_jobs=1)
+    study.optimize(experiment_with_rules, n_trials=100, n_jobs=5)
 
-    # study = optuna.create_study(
-    #     storage="sqlite:///classifier-tuning.db",
-    #     study_name="without-rules",
-    #     direction=optuna.study.StudyDirection.MAXIMIZE,
-    #     load_if_exists=True,
-    # )
-    # study.optimize(experiment_without_rules, n_trials=100, n_jobs=20)
+    study = optuna.create_study(
+        storage="sqlite:///classifier-tuning.db",
+        study_name="without-rules",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(experiment_without_rules, n_trials=100, n_jobs=20)

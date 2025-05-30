@@ -74,12 +74,12 @@ class ClassificationSystem:
         return is_fraud
 
     def _predict_dataframe(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]:
-        logging.debug("Predicting with rule-based")
-        l1 = self.rule_classifier.predict_dataframe(df)
         logging.debug("Predicting with RF")
-        l2 = self.ml_classifier.predict(df).astype(np.bool)
+        l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
-        l3 = self.statistical_classifier.predict_dataframe(df)
+        l2 = self.statistical_classifier.predict_dataframe(df)
+        logging.debug("Predicting with rule-based")
+        l3 = self.rule_classifier.predict_dataframe(df)
         result = l1 | l2 | l3
         if self.use_anomaly:
             logging.debug("Predicting with anomaly detection")

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+import polars as pl
 import numpy as np
 
 N_MINUTES_IN_DAY = 24 * 60
@@ -148,3 +149,20 @@ class Transaction:
             is_online=is_online,
             is_fraud=is_fraud,
         )
+
+    @staticmethod
+    def from_df(df: pl.DataFrame):
+        transactions = list[Transaction]()
+        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in df.iter_rows():
+            transactions.append(
+                Transaction(
+                    amount=amount,
+                    timestamp=date,
+                    terminal_id=payee_id,
+                    card_id=payer_id,
+                    is_online=is_remote,
+                    is_fraud=is_fraud,
+                    predicted_label=None,
+                )
+            )
+        return transactions

@@ -207,7 +207,7 @@ class PPOParameters:
             ),
             entropy_c2=Schedule.linear(
                 start_value=0.0957619650038549,
-                end_value=0.007744880113458132, #
+                end_value=0.007744880113458132,  #
                 n_steps=2537,
             ),
             train_interval=40,
@@ -485,7 +485,7 @@ class Parameters:
         )
 
     def create_banksys(self, save: bool = True, save_directory: Optional[str] = None):
-        from banksys import Banksys
+        from banksys import Banksys, TransactionsRegistry
 
         cards, terminals, transactions = self.cardsim.get_simulation_data()
         banksys = Banksys(
@@ -495,7 +495,7 @@ class Parameters:
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        banksys.fit(transactions)
+        banksys.fit(TransactionsRegistry(transactions))
         if save:
             if save_directory is None:
                 save_directory = self.banksys_dir

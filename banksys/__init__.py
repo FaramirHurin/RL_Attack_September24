@@ -1,3 +1,4 @@
+from .transaction_registry import TransactionsRegistry
 from .card import Card
 from .terminal import Terminal
 from .transaction import Transaction
@@ -6,6 +7,7 @@ from .classification import ClassificationSystem
 
 
 __all__ = [
+    "TransactionsRegistry",
     "Card",
     "Terminal",
     "Transaction",

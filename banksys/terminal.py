@@ -39,15 +39,15 @@ class Terminal(TransactionsRegistry):
         nb = list[float]()
         risk = list[float]()
 
-        for n_days in aggregation_windows:
+        stop_index = self._find_index(current_time)
+        for n_days in sorted(aggregation_windows):
             start_index = self._find_index(current_time - n_days)
-            stop_index = self._find_index(current_time)
             # Select transactions from the last n_days
             trx_days = self.transactions[start_index:stop_index]
             nb.append(len(trx_days))
 
             # Compute risk
-            positive_transactions = [transaction for transaction in trx_days if transaction.predicted_label == 1]
+            positive_transactions = [transaction for transaction in trx_days if transaction.predicted_label]
             if len(positive_transactions) == 0:
                 risk.append(0)
             else:

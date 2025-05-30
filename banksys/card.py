@@ -52,9 +52,9 @@ class Card(TransactionsRegistry):
         # TODO: add the mean/median terminal location ?
         nb = list[float]()
         avg = list[float]()
+        stop_index = self._find_index(current_time)
         for n_days in aggregation_windows:
             start_index = self._find_index(current_time - n_days)
-            stop_index = self._find_index(current_time)
             # Select transactions from the last n_days
             trx_days = self.transactions[start_index:stop_index]
             # Compute count

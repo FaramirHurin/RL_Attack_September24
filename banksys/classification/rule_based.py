@@ -1,6 +1,6 @@
 # Import isolation forest
 from typing import TYPE_CHECKING, Callable, overload
-
+import multiprocessing as mp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -59,15 +59,23 @@ class RuleBasedClassifier:
                 return True
         return False
 
-    def predict_dataframe(self, df: pd.DataFrame):
-        # Does not matter whether we put is_fraud=True or False here because we are not using it
+    def _predict_job(self, df: pd.DataFrame):
+        labels = []
         data = pl.from_pandas(df)
         transactions = [Transaction.from_features(False, **kwargs) for kwargs in data.iter_rows(named=True)]
-        labels = []
         for transaction in transactions:
             predicted = self.predict_transaction(transaction)
             labels.append(predicted)
-        return np.array(labels)
+        return np.array(labels, dtype=np.bool)
+
+    def predict_dataframe(self, df: pd.DataFrame):
+        # Does not matter whether we put is_fraud=True or False here because we are not using it
+        n_jobs = min(20, mp.cpu_count())
+        chunk_size = len(df) // n_jobs + 1
+        chunks = (df[i * chunk_size : (i + 1) * chunk_size] for i in range(n_jobs))
+        with mp.Pool(n_jobs) as pool:
+            results = pool.map(self._predict_job, chunks)
+        return np.concatenate(results)
 
     @overload
     def predict(self, transaction: Transaction, /) -> bool: ...

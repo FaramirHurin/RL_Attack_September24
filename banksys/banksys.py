@@ -52,14 +52,15 @@ class Banksys:
             self.add_transaction(t)
 
     def _train(self, transactions: list[Transaction]):
-        df, labels = self.parallel_add_and_make_features(transactions, n_jobs=4)
+        logging.info("Adding training transactions & computing features...")
+        # Since there are few transactions, we can use a high number of jobs (since the copy of the data is fast)
+        df, labels = self.parallel_add_and_make_features(transactions, n_jobs=8)
         logging.info("Training the classification system...")
         self.clf.fit(df, labels)
         return df, labels
 
-    def fit(self, transactions: list[Transaction]):
+    def fit(self, registry: TransactionsRegistry):
         logging.info("Fitting the bank system...")
-        registry = TransactionsRegistry(transactions)
         aggregation_duration = max(*self.aggregation_windows)
         training_start = registry[0].timestamp + aggregation_duration
         training_end = training_start + self.clf.training_duration
@@ -71,8 +72,13 @@ class Banksys:
 
         self._warmup(registry.get_before(training_start))
         train_x, train_y = self._train(registry.get_between(training_start, training_end))
-        test_x, test_y = self.parallel_add_and_make_features(registry.get_after(training_end))
-        return train_x, train_y, test_x, test_y
+        return train_x, train_y
+
+    def generate_test_set(self, registry: TransactionsRegistry):
+        logging.info("Generating test set...")
+        n_jobs = mp.cpu_count()
+        test_x, test_y = self.parallel_add_and_make_features(registry.get_after(self.attack_start), n_jobs=min(8, n_jobs))
+        return test_x, test_y
 
     def set_up_run(self, rules_values: dict, use_anomaly: bool):
         self.clf.set_rules(rules_values)

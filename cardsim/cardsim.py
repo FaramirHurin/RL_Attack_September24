@@ -2,7 +2,7 @@
 # Cardsim: A Bayesian simulator for payment card fraud detection research
 # Author: Jeff Allen
 # -----------------------------------------------------------------------------#
-
+import multiprocessing as mp
 import logging
 import os
 import sys
@@ -1093,19 +1093,26 @@ class Cardsim:
         # Polars is (much) faster for this (≃20x)
         transactions = list[Transaction]()
         start = time.time()
+        n_jobs = mp.cpu_count()
+        chunk_size = int(len(df) / n_jobs) + 1
+        chunks = [df[i * chunk_size : (i + 1) * chunk_size] for i in range(len(df))]
         logging.info("Creating transaction objects from DataFrame")
-        for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in tqdm(df.iter_rows(), total=len(df)):
-            transactions.append(
-                Transaction(
-                    amount=amount,
-                    timestamp=date,
-                    terminal_id=payee_id,
-                    card_id=payer_id,
-                    is_online=is_remote,
-                    is_fraud=is_fraud,
-                    predicted_label=None,
-                )
-            )
+        with mp.Pool(n_jobs) as pool:
+            results = pool.map(Transaction.from_df, chunks)
+        transactions = [tx for sublist in results for tx in sublist]
+
+        # for _, date, payer_id, _, is_remote, amount, payee_id, _, _, date, _, is_fraud, _ in tqdm(df.iter_rows(), total=len(df)):
+        #     transactions.append(
+        #         Transaction(
+        #             amount=amount,
+        #             timestamp=date,
+        #             terminal_id=payee_id,
+        #             card_id=payer_id,
+        #             is_online=is_remote,
+        #             is_fraud=is_fraud,
+        #             predicted_label=None,
+        #         )
+        #     )
         self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")
         return self.get_cards(payers), self.get_terminals(payees), transactions
 
