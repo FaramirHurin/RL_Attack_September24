@@ -135,14 +135,14 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
+        agent=PPOParameters.best_ppo() ,  # VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=2,
-        logdir="logs/VAE/seed-" + str(2),
+        seed_value=42,
+        logdir="logs/PPO/seed-" + str(42),
     )
-    exp = Experiment.create(params)
-    run(params)
+exp = Experiment.create(params)
+run(params)
 
 
 # Run VAE
