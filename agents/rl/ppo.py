@@ -3,16 +3,15 @@ import numpy as np
 import torch
 import os
 import shutil
-from datetime import datetime
 from marlenv import Transition, Episode
 from marlenv.utils import Schedule
-import logging
 
 from agents import Agent
 
 from .batch import Batch, TransitionBatch, EpisodeBatch
 from .replay_memory import ReplayMemory
 from .networks import ActorCritic
+
 
 class PPO(Agent):
     actor_critic: ActorCritic
@@ -43,6 +42,8 @@ class PPO(Agent):
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
         minibatch_size: int = 32,
+        normalize_rewards: bool = True,
+        normaize_advantages: bool = True,
         device: torch.device = torch.device("cpu"),
         **kwargs,
     ):
@@ -57,10 +58,8 @@ class PPO(Agent):
         self.memory = memory
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.model_directory = f"tmp/{timestamp}"
-
-        os.makedirs(self.model_directory, exist_ok=False)
+        self.normalize_rewards = normalize_rewards
+        self.normalize_advantages = normaize_advantages
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
         self.optimizer = torch.optim.Adam(param_groups)
         if isinstance(critic_c1, (float, int)):
@@ -94,22 +93,23 @@ class PPO(Agent):
         all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
-        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=True)
+        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=self.normalize_advantages)
         returns = advantages + values
         return returns, advantages, log_probs
 
-    def save(self):
-        path = os.path.join(self.model_directory, "best_model.weights")
+    def save(self, path: str):
+        directory = os.path.dirname(path)
+        os.makedirs(directory, exist_ok=True)
         with open(path, "wb") as f:
             torch.save(self.actor_critic.state_dict(), f)
 
-    def load(self):
-        path = os.path.join(self.model_directory, "best_model.weights")
+    def load(self, path: str):
         with open(path, "rb") as f:
             self.actor_critic.load_state_dict(torch.load(f))
 
     def train(self, batch: Batch, step_num: int, episode_num: int):
-        batch.normalize_rewards()
+        if self.normalize_rewards:
+            batch.normalize_rewards()
         self.c1.update(episode_num)
         self.c2.update(episode_num)
         with torch.no_grad():
@@ -211,12 +211,6 @@ class PPO(Agent):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
-
-    def __del__(self):
-        try:
-            shutil.rmtree(self.model_directory)
-        except FileNotFoundError:
-            pass
 
 
 def randomize(init_fn, nn: torch.nn.Module):

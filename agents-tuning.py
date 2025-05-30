@@ -13,14 +13,13 @@ from parameters import CardSimParameters, ClassificationParameters, Parameters, 
 from plots import Experiment, Run
 from runner import Runner
 
-N_PARALLEL = 4
+N_PARALLEL = 8
 TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
 
 
 def run(p: Parameters, trial_num: int):
-    logging.warning(f"Run {trial_num}")
     try:
         if not torch.cuda.is_available():
             device = torch.device("cpu")
@@ -37,14 +36,20 @@ def run(p: Parameters, trial_num: int):
 
 
 def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters | VAEParameters]) -> float:
-    params = Parameters(agent=fn(trial), clf_params=CLF_PARAMS, cardsim=CARDSIM_PARAMS, seed_value=0)
+    params = Parameters(
+        agent=fn(trial),
+        clf_params=CLF_PARAMS,
+        cardsim=CARDSIM_PARAMS,
+        seed_value=0,
+        include_weekday=trial.suggest_categorical("include_weekday", [True, False]),
+        save=False,
+    )
     exp = Experiment.create(params)
     start = datetime.now()
     handles = list[AsyncResult[Run | None]]()
 
     pool = mp.Pool(N_PARALLEL)
     for p in exp.repeat(N_PARALLEL):
-        logging.info(f"Submitting run {p.seed_value} to the pool for trial {trial.number}")
         handles.append(pool.apply_async(run, (p, trial.number)))
 
     amounts = []
@@ -77,7 +82,7 @@ if __name__ == "__main__":
     p = Parameters(
         PPOParameters(),
         clf_params=CLF_PARAMS,
-        # cardsim=CARDSIM_PARAMS,
+        cardsim=CARDSIM_PARAMS,
         save=False,
     )
     # env = p.create_env()
@@ -87,9 +92,18 @@ if __name__ == "__main__":
 
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",
-        study_name="vae-debugged",
+        study_name="ppo-weekday-normalization",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=1)
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=150, n_jobs=4)
+    logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
+
+    study = optuna.create_study(
+        storage="sqlite:///agents-tuning.db",
+        study_name="rppo-weekday-normalization",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=150, n_jobs=4)
     logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
