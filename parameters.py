@@ -88,7 +88,7 @@ class ClassificationParameters:
             contamination=0.005,
             training_duration=timedelta(days=150),
             quantiles_features=("amount",),
-            quantiles_values=(0.01, 1.0),
+            quantiles_values=(0.00, 1.0),
             rules={
                 "max_trx_hour": 6,
                 "max_trx_week": 40,
@@ -207,11 +207,11 @@ class PPOParameters:
             ),
             entropy_c2=Schedule.linear(
                 start_value=0.0957619650038549,
-                end_value=0.007744880113458132,
+                end_value=0.007744880113458132, #
                 n_steps=2537,
             ),
-            train_interval=10,
-            minibatch_size=8,
+            train_interval=40,
+            minibatch_size=20,
             gae_lambda=0.95,
             grad_norm_clipping=8.934885848478487,
         )
@@ -224,18 +224,18 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            gamma=0.99,
+            gamma=0.999,
             lr_actor=0.00117126625357408,
             lr_critic=0.0007648237767940683,
             n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
-                start_value=0.16450187834828542,
+                start_value=0.06450187834828542,
                 end_value=0.45697380802021975,
                 n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.08774192037356557,
+                start_value=0.18774192037356557,
                 end_value=0.017361163706258554,
                 n_steps=1171,
             ),

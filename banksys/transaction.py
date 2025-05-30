@@ -1,8 +1,19 @@
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 import numpy as np
 
 N_MINUTES_IN_DAY = 24 * 60
+
+
+class DeclinedStatus(Enum):
+    CUSTOMER_BLOCKED = "customer_blocked"
+    DAILY_RULES_DETECTED = "daily_rules_detected"
+    WEEKLY_RULES_DETECTED = "weekly_rules_detected"
+    MONTHLY_RULES_DETECTED = "monthly_rules_detected"
+    INSUFFICIENT_FUNDS = "insufficient_funds"
+    ML_DETECTED = "ml_detected"
+    STATISTICAL_DETECTED = "statistical_detected"
 
 
 @dataclass

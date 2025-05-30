@@ -7,11 +7,12 @@ import pandas as pd
 import polars as pl
 
 from ..transaction import Transaction
+from typing import List
 
 if TYPE_CHECKING:
     from banksys import Banksys
 
-
+"""
 def max_trx_day(transaction: Transaction, transactions: list[Transaction], max_number: float) -> bool:
     same_day_transactions = [trx for trx in transactions if trx.timestamp.date() == transaction.timestamp.date()]
     return len(same_day_transactions) > max_number
@@ -25,7 +26,31 @@ def max_trx_hour(transaction: Transaction, transactions: list[Transaction], max_
 def max_trx_week(transaction: Transaction, transactions: list[Transaction], max_number: float) -> bool:
     same_week_transactions = [trx for trx in transactions if trx.timestamp.isocalendar()[1] == transaction.timestamp.isocalendar()[1]]
     return len(same_week_transactions) > max_number
+"""
+def max_trx_day(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
+    same_day_transactions = [
+        trx for trx in transactions
+        if trx.timestamp.date() == transaction.timestamp.date()
+    ]
+    return len(same_day_transactions) > max_number
 
+
+def max_trx_hour(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
+    same_hour_transactions = [
+        trx for trx in transactions
+        if trx.timestamp.date() == transaction.timestamp.date()
+        and trx.timestamp.hour == transaction.timestamp.hour
+    ]
+    return len(same_hour_transactions) > max_number
+
+
+def max_trx_week(transaction: Transaction, transactions: List[Transaction], max_number: float) -> bool:
+    trx_week = transaction.timestamp.isocalendar()
+    same_week_transactions = [
+        trx for trx in transactions
+        if trx.timestamp.isocalendar()[:2] == trx_week[:2]  # compare both year and week number
+    ]
+    return len(same_week_transactions) > max_number
 
 rules_dict = {
     "max_trx_day": max_trx_day,
