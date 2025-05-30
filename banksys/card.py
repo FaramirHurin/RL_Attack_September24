@@ -3,6 +3,7 @@ import numpy as np
 from typing import Sequence
 from datetime import datetime
 from datetime import timedelta
+import pandas as pd
 
 from .transaction import Transaction
 from .transaction_registry import TransactionsRegistry
@@ -70,3 +71,10 @@ class Card(TransactionsRegistry):
 
     def __hash__(self) -> int:
         return self.id
+
+    @staticmethod
+    def from_df(df: pd.DataFrame):
+        cards = list[Card]()
+        for _, (payer_id, payer_x, payer_y, balance) in df[["payer_id", "payer_x", "payer_y", "balance"]].iterrows():
+            cards.append(Card(payer_id, False, payer_x, payer_y, balance))
+        return cards

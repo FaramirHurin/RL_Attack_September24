@@ -3,6 +3,7 @@ from typing import Sequence
 import numpy as np
 from datetime import datetime
 from datetime import timedelta
+import pandas as pd
 
 from .transaction import Transaction
 from .transaction_registry import TransactionsRegistry
@@ -54,3 +55,10 @@ class Terminal(TransactionsRegistry):
                 # Compute the average amount of the transactions
                 risk.append(len(positive_transactions) / len(trx_days))
         return np.array([self.x, self.y] + nb + risk, dtype=np.float32)
+
+    @staticmethod
+    def from_df(df: pd.DataFrame):
+        terminals = list[Terminal]()
+        for _, (payee_id, payee_x, payee_y) in df[["payee_id", "payee_x", "payee_y"]].iterrows():
+            terminals.append(Terminal(payee_id, payee_x, payee_y))
+        return terminals
