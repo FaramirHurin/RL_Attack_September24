@@ -65,7 +65,7 @@ class Run:
         metrics_path = os.path.join(rundir, "metrics.json")
         with open(metrics_path, "wb") as f:
             metrics = [e.metrics for e in episodes]
-            f.write(orjson.dumps(metrics))
+            f.write(orjson.dumps(metrics, option=orjson.OPT_SERIALIZE_NUMPY))
         return Run(rundir, params, [LogItem.from_dict(m) for m in metrics], episodes)
 
     @staticmethod
@@ -205,7 +205,7 @@ class Experiment:
         os.makedirs(logdir, exist_ok=True)
         params_path = os.path.join(logdir, "params.json")
         with open(params_path, "wb") as f:
-            f.write(orjson.dumps(params, default=serialize_unknown))
+            f.write(orjson.dumps(params, default=serialize_unknown, option=orjson.OPT_SERIALIZE_NUMPY))
         return Experiment(logdir, params, {})
 
     @staticmethod

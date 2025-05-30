@@ -96,7 +96,7 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=150, n_jobs=4)
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=150, n_jobs=3)
     logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
 
     study = optuna.create_study(
@@ -105,5 +105,5 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=150, n_jobs=4)
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=150, n_jobs=3)
     logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")

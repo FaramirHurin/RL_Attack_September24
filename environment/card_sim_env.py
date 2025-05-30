@@ -123,6 +123,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             self.card_registry.clear(card)
             done = True
             reward = 0.0
+            trx = None
         else:
             terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
             trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
