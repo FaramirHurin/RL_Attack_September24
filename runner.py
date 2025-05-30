@@ -144,10 +144,8 @@ params = Parameters(
     logdir='logs/VAE/seed-' + str(2) ,
 )
 
-exp = Experiment.create(params)
-run(params)
-
+    exp = Experiment.create(params)
+    run(params)
 
 
 # Run VAE
-
