@@ -22,6 +22,12 @@ from .transaction import Transaction
 if TYPE_CHECKING:
     from parameters import CardSimParameters, ClassificationParameters
 
+# Check for Linux platform
+if os.name == "posix":
+    # Fork uses copy-on-write, which is more efficient for memory usage
+    mp.set_start_method("fork", force=True)
+
+
 # TODO: when a card is blocked, we should remove all its future transactions
 
 

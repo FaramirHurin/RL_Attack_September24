@@ -7,6 +7,7 @@ import numpy.typing as npt
 from tqdm import tqdm
 import pandas as pd
 import polars as pl
+import multiprocessing as mp
 
 from ..transaction import Transaction
 from ..transaction_registry import TransactionsRegistry
@@ -70,13 +71,15 @@ class RuleBasedClassifier:
 
     def predict_dataframe(self, df: pd.DataFrame):
         data = pl.from_pandas(df)
-        labels = []
-        n_rows = len(df)
-        for kwargs in tqdm(data.iter_rows(named=True), total=n_rows):
-            transaction = Transaction.from_features(False, **kwargs)
-            predicted = self.predict_transaction(transaction)
-            labels.append(predicted)
-        return np.array(labels, dtype=np.bool)
+        with mp.Pool(8) as pool:
+            results = pool.map(self._predict_job, data.iter_slices(len(data) // 8 + 1))
+        labels = np.concatenate(results, dtype=np.bool)
+        return labels
+        # for kwargs in tqdm(data.iter_rows(named=True), total=n_rows):
+        #     transaction = Transaction.from_features(False, **kwargs)
+        #     predicted = self.predict_transaction(transaction)
+        #     labels.append(predicted)
+        # return np.array(labels, dtype=np.bool)
 
     @overload
     def predict(self, transaction: Transaction, /) -> bool: ...

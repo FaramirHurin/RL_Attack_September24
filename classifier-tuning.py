@@ -66,10 +66,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    try:
-        PARAMS.load_datasets()
-        logging.info("Datasets already exist, skipping generation.")
-    except FileNotFoundError:
+    if not PARAMS.datasets_exists():
         logging.info("Generating datasets...")
         PARAMS.create_banksys()
 

@@ -510,6 +510,19 @@ class Parameters:
                 test_x.to_csv(os.path.join(save_directory, "test.csv"), index=False)
         return banksys
 
+    def datasets_exists(self, directory: Optional[str] = None) -> bool:
+        """
+        Check if the training and test datasets exist in the specified directory.
+        If no directory is specified, use the default banksys directory.
+        """
+        if directory is None:
+            directory = self.banksys_dir
+        train_path = os.path.join(directory, "train.csv")
+        if not os.path.exists(train_path):
+            return False
+        test_path = os.path.join(directory, "test.csv")
+        return os.path.exists(test_path)
+
     def load_datasets(self, directory: Optional[str] = None):
         """
         Load the training and test datasets from the specified directory.
