@@ -1,11 +1,10 @@
 # Import isolation forest
-import logging
-import multiprocessing as mp
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import TYPE_CHECKING, Callable, overload
 
 import numpy as np
 import numpy.typing as npt
+from tqdm import tqdm
 import pandas as pd
 import polars as pl
 
@@ -70,14 +69,14 @@ class RuleBasedClassifier:
         return np.array(labels, dtype=np.bool)
 
     def predict_dataframe(self, df: pd.DataFrame):
-        n_jobs = mp.cpu_count()
         data = pl.from_pandas(df)
-        logging.debug(f"Starting rule predictions with {n_jobs}, total rows: {len(df)}")
-        start = datetime.now()
-        with mp.Pool(n_jobs) as pool:
-            results = pool.map(self._predict_job, data.iter_slices())
-        logging.debug(f"Rule predictions completed in {datetime.now() - start}")
-        return np.concatenate(results)
+        labels = []
+        n_rows = len(df)
+        for kwargs in tqdm(data.iter_rows(named=True), total=n_rows):
+            transaction = Transaction.from_features(False, **kwargs)
+            predicted = self.predict_transaction(transaction)
+            labels.append(predicted)
+        return np.array(labels, dtype=np.bool)
 
     @overload
     def predict(self, transaction: Transaction, /) -> bool: ...

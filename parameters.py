@@ -1,5 +1,6 @@
 import random
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
+import pandas as pd
 from datetime import timedelta, datetime
 import os
 from optuna import Trial
@@ -484,7 +485,7 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, save: bool = True, save_tests: bool = True, save_directory: Optional[str] = None):
+    def create_banksys(self, save: bool = True, save_datasets: bool = True, save_directory: Optional[str] = None):
         from banksys import Banksys, TransactionsRegistry
 
         cards, terminals, transactions = self.cardsim.get_simulation_data()
@@ -495,12 +496,32 @@ class Parameters:
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        train_x, train_y = banksys.fit(TransactionsRegistry(transactions))
+        registry = TransactionsRegistry(transactions)
+        train_x, train_y = banksys.fit(registry)
         if save:
             if save_directory is None:
                 save_directory = self.banksys_dir
             banksys.save(self.cardsim, save_directory)
+            if save_datasets:
+                train_x["label"] = train_y
+                train_x.to_csv(os.path.join(save_directory, "train.csv"), index=False)
+                test_x, test_y = banksys.generate_test_set(registry)
+                test_x["label"] = test_y
+                test_x.to_csv(os.path.join(save_directory, "test.csv"), index=False)
         return banksys
+
+    def load_datasets(self, directory: Optional[str] = None):
+        """
+        Load the training and test datasets from the specified directory.
+        If no directory is specified, use the default banksys directory.
+        """
+        if directory is None:
+            directory = self.banksys_dir
+        train_x = pd.read_csv(os.path.join(directory, "train.csv"))
+        train_y = train_x.pop("label").to_numpy(dtype=np.bool)
+        test_x = pd.read_csv(os.path.join(directory, "test.csv"))
+        test_y = test_x.pop("label").to_numpy(dtype=np.bool)
+        return train_x, train_y, test_x, test_y
 
     def get_device_by_seed(self) -> torch.device:
         if not torch.cuda.is_available():

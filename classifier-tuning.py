@@ -4,29 +4,10 @@ import os
 import dotenv
 from sklearn.metrics import f1_score
 from parameters import ClassificationParameters, Parameters, CardSimParameters
-from banksys import Banksys, ClassificationSystem, TransactionsRegistry
+from banksys import Banksys, ClassificationSystem
 
 
-def get_test_set():
-    logging.info("Generating test set...")
-    params = Parameters(
-        clf_params=ClassificationParameters.paper_params(),
-        cardsim=CardSimParameters(),
-    )
-    cards, terminals, transactions = params.cardsim.get_simulation_data()
-    banksys = Banksys(
-        cards=cards,
-        terminals=terminals,
-        aggregation_windows=params.aggregation_windows,
-        attackable_terminal_factor=params.terminal_fract,
-        clf_params=params.clf_params,
-    )
-    logging.info("Fitting banksys")
-    registry = TransactionsRegistry(transactions)
-    train_x, train_y = banksys.fit(registry)
-    test_x, test_y = banksys.generate_test_set(registry)
-    logging.info("Test set generated")
-    return banksys, train_x, train_y, test_x, test_y
+PARAMS = Parameters(cardsim=CardSimParameters.paper_params())
 
 
 def get_params(with_rules: bool, trial: optuna.Trial):
@@ -52,6 +33,8 @@ def get_params(with_rules: bool, trial: optuna.Trial):
 
 
 def experiment(params: ClassificationParameters):
+    train_x, train_y, test_x, test_y = PARAMS.load_datasets()
+    banksys = Banksys.load(PARAMS.cardsim, PARAMS.banksys_dir)
     clf = ClassificationSystem(banksys, params)
     clf.fit(train_x, train_y)
     # Predict & compute metrics
@@ -82,7 +65,13 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    banksys, train_x, train_y, test_x, test_y = get_test_set()
+
+    try:
+        PARAMS.load_datasets()
+        logging.info("Datasets already exist, skipping generation.")
+    except FileNotFoundError:
+        logging.info("Generating datasets...")
+        PARAMS.create_banksys()
 
     study = optuna.create_study(
         storage="sqlite:///classifier-tuning.db",

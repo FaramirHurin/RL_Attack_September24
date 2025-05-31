@@ -1,10 +1,7 @@
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, overload
-from tqdm import tqdm
 
-import polars as pl
-import multiprocessing as mp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -44,9 +41,7 @@ class ClassificationSystem:
 
     def fit(self, transactions: pd.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
-        self.ml_classifier.n_jobs = -1  # type: ignore[assignment]
         self.ml_classifier.fit(transactions, is_fraud)
-        self.ml_classifier.n_jobs = 1  # type: ignore[assignment]
         logging.info("Fitting anomaly classifier")
         self.anomaly_detection_classifier.fit(transactions)
         logging.info("Fitting statistical classifier")
@@ -78,12 +73,7 @@ class ClassificationSystem:
 
     def _predict_dataframe(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
-        data = pl.from_pandas(df)
-        l1s = []
-        for x in tqdm(data.iter_slices()):
-            l1s.append(self.ml_classifier.predict(x))
-        l1 = np.concatenate(l1s).astype(np.bool)
-        # l1 = self.ml_classifier.predict(df).astype(np.bool)
+        l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
         l2 = self.statistical_classifier.predict_dataframe(df)
         logging.debug("Predicting with rule-based")
