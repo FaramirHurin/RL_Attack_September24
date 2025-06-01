@@ -22,13 +22,13 @@ def get_params(with_rules: bool, trial: optuna.Trial):
         use_anomaly=trial.suggest_categorical("use_anomaly", [True, False]),
     )
     if with_rules:
-        params.rules = {
+        params._rules = {
             "max_trx_hour": trial.suggest_int("max_trx_hour", 2, 20),
             "max_trx_day": trial.suggest_int("max_trx_day", 2, 50),
             "max_trx_week": trial.suggest_int("max_trx_week", 15, 300),
         }
     else:
-        params.rules = {}
+        params._rules = {}
     return params
 
 

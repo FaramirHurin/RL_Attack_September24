@@ -1061,7 +1061,7 @@ class Cardsim:
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
         try:
             logging.debug(f"Loading transactions from {cached_transactions}")
-            df = pl.read_csv(
+            trx = pl.read_csv(
                 cached_transactions,
                 schema={
                     "day_index": pl.Int32,
@@ -1079,28 +1079,51 @@ class Cardsim:
                     "run_id": pl.Utf8,
                 },
             )
-            payers = pd.read_csv(cached_payers)
-            payees = pd.read_csv(cached_payees)
+            cards = pl.read_csv(cached_payers)
+            terminals = pl.read_csv(cached_payees)
             self.logger.info(f"Loaded transactions from {cached_transactions}")
         except FileNotFoundError:
-            df, payers, payees = self.make_transactions_dataframe(n_payers, n_days, start_date)
+            trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date)
             os.makedirs(cache_dir, exist_ok=True)
-            df.to_csv(cached_transactions, index=False)
-            payers.to_csv(cached_payers, index=False)
-            payees.to_csv(cached_payees, index=False)
-            df = pl.from_pandas(df)
+            trx.to_csv(cached_transactions, index=False)
+            cards.to_csv(cached_payers, index=False)
+            terminals.to_csv(cached_payees, index=False)
+            trx = pl.from_pandas(trx)
+            cards = pl.from_pandas(cards)
+            terminals = pl.from_pandas(terminals)
+
+        trx = trx.rename(
+            {
+                "date_time": "timestamp",
+                "payer_id": "card_id",
+                "payee_id": "terminal_id",
+                "remote": "is_online",
+                "fraud": "is_fraud",
+            }
+        )
+        to_drop = set(trx.columns) - set(Transaction.field_names())
+        trx = trx.drop(*to_drop)
+
+        cards = cards.rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
+        to_drop = set(cards.columns) - set(Card.field_names())
+        cards = cards.drop(*to_drop)
+
+        terminals = terminals.rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
+        to_drop = set(terminals.columns) - set(Terminal.field_names())
+        terminals = terminals.drop(*to_drop)
+        return trx, cards, terminals
 
         # Polars is (much) faster for this (≃20x)
         transactions = list[Transaction]()
         start = time.time()
         n_jobs = mp.cpu_count()
-        chunk_size = int(len(df) / n_jobs) + 1
+        chunk_size = int(len(trx) / n_jobs) + 1
         logging.info("Creating transaction objects from DataFrame")
         with mp.Pool(n_jobs) as pool:
-            transactions = pool.map(Transaction.from_df, df.iter_slices(chunk_size))
+            transactions = pool.map(Transaction.from_df, trx.iter_slices(chunk_size))
         transactions = [tx for sublist in transactions for tx in sublist]
         self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")
-        return Card.from_df(payers), Terminal.from_df(payees), transactions
+        return Card.from_df(cards), Terminal.from_df(terminals), transactions
 
     # Convenience -------------------------------------------------------------
 

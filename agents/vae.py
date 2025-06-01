@@ -298,10 +298,10 @@ class VaeAgent(Agent):
         """
         transactions: list["Transaction"] = []
         for terminal in terminals:
-            for transaction in terminal.transactions:
+            for transaction in terminal.transactions.transactions:
                 transaction.payee_x = terminal.x
                 transaction.payee_y = terminal.y
-            transactions += terminal.transactions
+            transactions += terminal.transactions.transactions
             # Add terminal coordinates to the transactions
 
         transactions = [transaction for transaction in transactions if transaction.timestamp <= current_time]

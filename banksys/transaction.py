@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import Field, dataclass
 from datetime import datetime
 from enum import Enum
 import polars as pl
@@ -45,7 +45,20 @@ class Transaction:
         self.is_online = is_online
         self.card_id = card_id
         self.is_fraud = is_fraud
+        if predicted_label is not None:
+            predicted_label = bool(predicted_label)
         self.predicted_label = predicted_label
+
+    def as_df(self, with_label: bool = False, with_predicted_label: bool = False) -> pl.DataFrame:
+        """
+        Convert the transaction to a Polars DataFrame.
+        """
+        data = {key: [value] for key, value in self.__dict__.items()}
+        if not with_label:
+            data.pop("is_fraud", None)
+        if not with_predicted_label:
+            data.pop("predicted_label", None)
+        return pl.DataFrame(data)
 
     @property
     def features(self):
@@ -166,3 +179,11 @@ class Transaction:
                 )
             )
         return transactions
+
+    @classmethod
+    def field_names(cls) -> list[str]:
+        import inspect
+
+        members = inspect.getmembers(cls)
+        fields = list[Field](dict(members)["__dataclass_fields__"].values())
+        return [field.name for field in fields]

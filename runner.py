@@ -44,7 +44,7 @@ class Runner:
         action, hx = self.agent.choose_action(obs.data, None)
         self.env.buffer_action(action, new_card)
 
-        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t_start, "card_id": new_card.id})
+        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.system.current_date, "card_id": new_card.id})
         self.actions[new_card] = action
         self.observations[new_card] = obs
         self.states[new_card] = state
@@ -89,8 +89,6 @@ class Runner:
                     pbar.update()
                     avg_score = np.mean(scores[-100:])
                     pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
-                    if episode_num > 500 and avg_score < 50:
-                        DEBUG = 0
                     episode_num += 1
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                     if self.n_spawned < self.params.n_episodes:
@@ -127,7 +125,7 @@ def run(params: Parameters):
 
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = os.getenv("LOG_LEVEL", "info").upper()
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
@@ -135,11 +133,11 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=PPOParameters.best_ppo(),  # VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
+        agent=PPOParameters.best_ppo(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=42,
-        logdir="logs/PPO/seed-" + str(42),
+        logdir="logs/test",
+        save=True,
     )
     exp = Experiment.create(params)
     run(params)

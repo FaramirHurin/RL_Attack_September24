@@ -4,7 +4,7 @@ from .terminal import Terminal
 from .transaction import Transaction
 from .banksys import Banksys
 from .classification import ClassificationSystem
-
+from .trx_window import TransactionWindow
 
 __all__ = [
     "TransactionsRegistry",
@@ -13,4 +13,5 @@ __all__ = [
     "Transaction",
     "Banksys",
     "ClassificationSystem",
+    "TransactionWindow",
 ]

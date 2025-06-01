@@ -17,6 +17,7 @@ from .priority_queue import PriorityQueue
 if TYPE_CHECKING:
     from banksys import Banksys
 
+
 def round_timedelta_to_minute(td: timedelta) -> timedelta:
     total_seconds = td.total_seconds()
     rounded_seconds = round(total_seconds / 60) * 60
@@ -42,8 +43,8 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
         action_space = ContinuousSpace(
             low=np.array([0.01] + [0.0] * 4),
-            high=np.array([100_000, 200, 200, 1,  avg_card_block_delay.total_seconds() / 3600]), #avg_card_block_delay.days,
-            labels=["amount", "terminal_x", "terminal_y", "is_online",  "delay_hours"], #"delay_days",
+            high=np.array([100_000, 200, 200, 1, avg_card_block_delay.total_seconds() / 3600]),  # avg_card_block_delay.days,
+            labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"],  # "delay_days",
         )
         super().__init__(
             1,
@@ -52,8 +53,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=(obs_size,),
         )
         self.system = system
-        self.t = system.attack_start
-        self.t_start = deepcopy(system.attack_start)
+        self.t = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.include_weekday = include_weekday
@@ -61,7 +61,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
-        self.t = deepcopy(self.t_start)
+        return
 
     def spawn_card(self):
         card = self.card_registry.release_card(self.t)
@@ -70,10 +70,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def buffer_action(self, np_action: np.ndarray, card: Card):
         action = Action.from_numpy(np_action)
-        if action.delay_hours > 1:
-            DEBUG = False
         delta = max(round_timedelta_to_minute(action.timedelta), timedelta(minutes=1))
-
         execution_time = self.t + delta
         assert execution_time >= self.t, "Action can not be executed in the past"
         self.action_buffer.push((card, np_action), execution_time)
@@ -98,7 +95,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             one_hot_weekday[self.t.weekday()] = 1.0
             features += one_hot_weekday
         if self.customer_location_is_known:
-            x, y = card.customer_x, card.customer_y
+            x, y = card.x, card.y
             if self.normalize_location:
                 x, y = x / 200, y / 200
             features += [x, y]
@@ -125,7 +122,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             reward = 0.0
             trx = None
         else:
-            terminal_id = self.system.get_closest_terminal(card.customer_x, card.customer_y).id
+            terminal_id = self.system.get_closest_terminal(card.x, card.y).id
             trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
             fraud_is_detected = self.system.process_transaction(trx) or card.balance < action.amount
             if fraud_is_detected:

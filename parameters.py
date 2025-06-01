@@ -27,18 +27,18 @@ class CardSimParameters:
         from cardsim import Cardsim
 
         simulator = Cardsim()
-        cards, terminals, transactions = simulator.simulate(
+        transactions, cards, terminals = simulator.simulate(
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
         )
-        return cards, terminals, transactions
+        return transactions, cards, terminals
 
     @staticmethod
     def paper_params():
         return CardSimParameters(
             n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
-            n_payers=20_000,
+            n_payers=10_000,
             start_date="2023-01-01",
         )
 
@@ -52,7 +52,7 @@ class ClassificationParameters:
     training_duration: timedelta
     quantiles_features: Sequence[str]
     quantiles_values: Sequence[float]
-    rules: dict[str, float]
+    _rules: dict[float, float]
 
     def __init__(
         self,
@@ -63,10 +63,10 @@ class ClassificationParameters:
         training_duration: timedelta | float = timedelta(days=30),
         quantiles_features: Sequence[str] = ("amount",),
         quantiles_values: Sequence[float] = (0.01, 0.99),
-        rules: dict[str, float] = {
-            "max_trx_hour": 6,
-            "max_trx_week": 40,
-            "max_trx_day": 15,
+        rules: dict[timedelta, float] = {
+            timedelta(hours=1): 6,
+            timedelta(weeks=1): 40,
+            timedelta(days=1): 15,
         },
     ):
         self.use_anomaly = use_anomaly
@@ -78,22 +78,40 @@ class ClassificationParameters:
         self.training_duration = training_duration
         self.quantiles_features = quantiles_features
         self.quantiles_values = quantiles_values
-        self.rules = rules
+        self._rules = {td.total_seconds(): value for td, value in rules.items()}
+
+    @property
+    def rules(self) -> dict[timedelta, float]:
+        """
+        Returns the rules as a dictionary with timedelta keys.
+        """
+        return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
     @staticmethod
     def paper_params():
+        """
+        - n_trees 174
+        - contamination 0.022485617075180264
+        - balance_factor 0.05143948127466207
+        - quantiles_low 0.026405177100394077
+        - quantiles_high 0.9450416556649487
+        - use_anomaly False
+        - max_trx_hour 7
+        - max_trx_day 12
+        - max_trx_week 80
+        """
         return ClassificationParameters(
             use_anomaly=False,
-            n_trees=100,
-            balance_factor=0.05,
-            contamination=0.005,
+            n_trees=174,
+            balance_factor=0.05143948127466207,
+            contamination=0.022485617075180264,
             training_duration=timedelta(days=150),
             quantiles_features=("amount",),
-            quantiles_values=(0.00, 1.0),
+            quantiles_values=(0, 0.9450416556649487),
             rules={
-                "max_trx_hour": 6,
-                "max_trx_week": 40,
-                "max_trx_day": 15,
+                timedelta(hours=1): 7,
+                timedelta(days=1): 12,
+                timedelta(weeks=1): 80,
             },
         )
 
@@ -388,7 +406,7 @@ class Parameters:
         logdir: Optional[str] = None,
         save: bool = True,
         include_weekday: bool = True,
-        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
@@ -457,8 +475,6 @@ class Parameters:
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
-
-        banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
         env = CardSimEnv(
             system=banksys,
             avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
@@ -485,29 +501,19 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, save: bool = True, save_datasets: bool = True, save_directory: Optional[str] = None):
-        from banksys import Banksys, TransactionsRegistry
+    def create_banksys(self):
+        from banksys import Banksys
 
-        cards, terminals, transactions = self.cardsim.get_simulation_data()
+        transactions, cards, terminals = self.cardsim.get_simulation_data()
         banksys = Banksys(
-            cards=cards,
-            terminals=terminals,
+            transactions,
+            cards,
+            terminals,
             aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        registry = TransactionsRegistry(transactions)
-        train_x, train_y = banksys.fit(registry)
-        if save:
-            if save_directory is None:
-                save_directory = self.banksys_dir
-            banksys.save(self.cardsim, save_directory)
-            if save_datasets:
-                train_x["label"] = train_y
-                train_x.to_csv(os.path.join(save_directory, "train.csv"), index=False)
-                test_x, test_y = banksys.generate_test_set(registry)
-                test_x["label"] = test_y
-                test_x.to_csv(os.path.join(save_directory, "test.csv"), index=False)
+        banksys.fit()
         return banksys
 
     def datasets_exists(self, directory: Optional[str] = None) -> bool:
@@ -590,4 +596,6 @@ def serialize_unknown(data):
     match data:
         case timedelta():
             return data.total_seconds()
+        case dict():
+            print("coucou", data)
     raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")
