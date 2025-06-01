@@ -60,18 +60,23 @@ class ClassificationSystem:
     def predict(self, transaction: Transaction, /) -> bool: ...
 
     def _predict_transaction(self, transaction: Transaction, /):
+        is_fraud = False
         if self.rule_classifier.predict_transaction(transaction):
-            return True
+            return True, 'Rule'
         if self.statistical_classifier.predict_transaction(transaction):
-            return True
-        df = self.banksys.make_features_df(transaction, False)
-        is_fraud = bool(self.ml_classifier.predict(df).item())
+            return True, 'Statistical'
+        else:
+            df = self.banksys.make_features_df(transaction, False)
+            is_fraud = bool(self.ml_classifier.predict(df).item())
+            if self.use_anomaly:
+                is_fraud = is_fraud + self.anomaly_detection_classifier.predict(df).item()
+                is_fraud = is_fraud > 0
         if is_fraud:
-            return True
-        if self.use_anomaly:
-            res = self.anomaly_detection_classifier.predict(df).item()
-            is_fraud = res == -1
-        return is_fraud
+            cause = 'ML'
+        else:
+            cause = 'None'
+        return is_fraud, cause
+
 
     def _predict_dataframe(self, df: pd.DataFrame, /) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with rule-based")
@@ -90,7 +95,8 @@ class ClassificationSystem:
     def predict(self, transaction_or_df, /):
         match transaction_or_df:
             case Transaction() as t:
-                return self._predict_transaction(t)
+                label, cause = self._predict_transaction(t)
+                return label, cause
             case pd.DataFrame() as df:
                 return self._predict_dataframe(df)
         raise ValueError("Invalid input type. Expected `Transaction` or `DataFrame`.")

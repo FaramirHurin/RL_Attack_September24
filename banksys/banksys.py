@@ -111,14 +111,16 @@ class Banksys:
             feature_names = feature_names + ["label"]
         return pd.DataFrame(features.reshape(1, -1), columns=feature_names)
 
-    def process_transaction(self, transaction: Transaction) -> bool:
+    def process_transaction(self, transaction: Transaction):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         """
-        label = self.clf.predict(transaction)
+        label, cause_of_detection = self.clf.predict(transaction)
+        if not label:
+            debug = 0
         transaction.predicted_label = label
         self.add_transaction(transaction)
-        return label
+        return label, cause_of_detection
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
         closest_terminal = None

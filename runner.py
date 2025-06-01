@@ -3,7 +3,7 @@ import os
 from typing import Optional
 from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
-import multiprocessing as mp
+#import multiprocessing as mp
 from plots import Experiment, Run
 import orjson
 from marlenv import Episode, Transition, Observation, State
@@ -44,7 +44,7 @@ class Runner:
         action, hx = self.agent.choose_action(obs.data, None)
         self.env.buffer_action(action, new_card)
 
-        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t_start, "card_id": new_card.id})
+        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t, "card_id": new_card.id})
         self.actions[new_card] = action
         self.observations[new_card] = obs
         self.states[new_card] = state
@@ -80,7 +80,10 @@ class Runner:
                 self.agent.update_transition(transition, step_num, episode_num)
 
                 current_episode = self.episodes[card]
-                current_episode.add(transition)
+                try:
+                    current_episode.add(transition)
+                except:
+                    current_episode.add(transition)
                 if current_episode.is_finished:
                     self.cleanup_card(card)
                     total += current_episode.score[0]
@@ -88,7 +91,7 @@ class Runner:
                     episodes.append(current_episode)
                     pbar.update()
                     avg_score = np.mean(scores[-100:])
-                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
+                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f} - len-avg={np.mean([len(ep) for ep in episodes[-100:]]):.2f}")
                     if episode_num > 500 and avg_score < 50:
                         DEBUG = 0
                     episode_num += 1
@@ -105,6 +108,7 @@ class Runner:
         return episodes
 
 
+"""
 def main_parallel():
     params = Parameters(
         agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
@@ -117,7 +121,7 @@ def main_parallel():
     with mp.Pool(16) as pool:
         pool.map(run, exp.repeat(16))
     logging.info("All runs completed.")
-
+"""
 
 def run(params: Parameters):
     runner = Runner(params)
@@ -135,14 +139,16 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=PPOParameters.best_ppo() ,  # VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
+        agent=PPOParameters.best_ppo(), #VAEParameters.best_vae(), #PPOParameters.best_ppo(), #  # #V,  #  , # # PPOParameters.best_ppo() ,  #    #  #
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=42,
-        logdir="logs/PPO/seed-" + str(42),
+        seed_value=1,
+        n_episodes=5000,
+        logdir="logs/PPO/seed-" + str(5),
     )
-exp = Experiment.create(params)
-run(params)
+
+    exp = Experiment.create(params)
+    run(params)
 
 
 # Run VAE

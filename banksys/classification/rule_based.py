@@ -14,22 +14,27 @@ if TYPE_CHECKING:
     from banksys import Banksys
 
 
-def max_trx_day(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
-    start = transaction.timestamp - timedelta(days=1)
-    same_day_transactions = registry.get_between(start, transaction.timestamp)
-    return len(same_day_transactions) > max_number
-
 
 def max_trx_hour(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
-    start = transaction.timestamp - timedelta(hours=1)
-    same_hour_transactions = registry.get_between(start, transaction.timestamp)
-    return len(same_hour_transactions) > max_number
+    start = transaction.timestamp - timedelta(minutes=60)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp < transaction.timestamp]
+    to_return = len(recent_transactions) >= max_number
+    if to_return:
+        Debug = True
+    return to_return
+
+
+def max_trx_day(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(hours=24)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp <= transaction.timestamp]
+    return len(recent_transactions) >= max_number
 
 
 def max_trx_week(transaction: Transaction, registry: TransactionsRegistry, max_number: float) -> bool:
-    start = transaction.timestamp - timedelta(weeks=1)
-    same_week_transactions = registry.get_between(start, transaction.timestamp)
-    return len(same_week_transactions) > max_number
+    start = transaction.timestamp - timedelta(days=7)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp <= transaction.timestamp]
+    return len(recent_transactions) >= max_number
+
 
 
 rules_dict = {
@@ -52,11 +57,21 @@ class RuleBasedClassifier:
 
     def predict_transaction(self, transaction: Transaction):
         registry = self.banksys.cards[transaction.card_id]
+        assert registry.current_time == transaction.timestamp, "Transaction timestamp does not match registry current time"
+        # If there is another transactions with the same timestamp, return True
+        if any(transaction.timestamp == trx.timestamp for trx in registry.transactions):
+            if transaction not in self.banksys.cards[transaction.card_id].transactions:
+                self.banksys.cards[transaction.card_id].transactions.append(transaction)
+            return True
         for rule_name in self.rules.keys():
             rule = self.rules[rule_name]
             value = self.rule_values[rule_name]
             if rule(transaction, registry, value):
+                if transaction not in self.banksys.cards[transaction.card_id].transactions:
+                    self.banksys.cards[transaction.card_id].transactions.append(transaction)
                 return True
+        if transaction not in self.banksys.cards[transaction.card_id].transactions:
+            self.banksys.cards[transaction.card_id].transactions.append(transaction)
         return False
 
     def predict_dataframe(self, df: pd.DataFrame):

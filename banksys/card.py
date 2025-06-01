@@ -18,6 +18,7 @@ class Card(TransactionsRegistry):
     customer_y: float
     transactions: list[Transaction]
     balance: float
+    current_time: datetime = None
     """Transactions, ordered by timestamp"""
 
     def __init__(
@@ -34,6 +35,7 @@ class Card(TransactionsRegistry):
         self.customer_y = int(y)
         self.balance = balance
         super().__init__()
+        self.attempted_attacks = 0
 
     @staticmethod
     def feature_names(aggregation_windows: Sequence[timedelta]):
@@ -70,3 +72,17 @@ class Card(TransactionsRegistry):
 
     def __hash__(self) -> int:
         return self.id
+
+    def set_current_time(self, current_time: datetime):
+        """
+        Set the current time for the card.
+        """
+        self.current_time = current_time
+
+    def remove_money(self, amount: float):
+        """
+        Remove money from the card's balance.
+        """
+        if amount > self.balance:
+            raise ValueError(f"Not enough balance to remove {amount}. Current balance: {self.balance}")
+        self.balance -= amount
