@@ -92,18 +92,26 @@ if __name__ == "__main__":
 
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",
-        study_name="ppo-weekday-normalization",
+        study_name="ppo",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=150, n_jobs=3)
-    logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=100, n_jobs=3)
 
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",
-        study_name="rppo-weekday-normalization",
+        study_name="rppo",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=150, n_jobs=3)
-    logging.critical(f"Best trial: {study.best_trial.number} with value {study.best_value} and params {study.best_params}")
+    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=100, n_jobs=3)
+
+    study = optuna.create_study(
+        storage="sqlite:///agents-tuning.db",
+        study_name="vae",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=3)
+
+    logging.info("All trials completed.")

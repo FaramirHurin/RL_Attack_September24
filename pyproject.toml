@@ -25,6 +25,8 @@ dependencies = [
     "typed-argparse>=0.3.1",
     "gunicorn>=23.0.0",
     "ipywidgets>=8.1.7",
+    "pyarrow>=20.0.0",
+    "pytest>=8.3.5",
 ]
 
 [tool.uv.sources]
@@ -40,5 +42,7 @@ explicit = true
 [dependency-groups]
 dev = ["ruff>=0.8.0"]
 
-[tool.uv.workspace]
-members = ["RL_Attack_September24"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = "src"

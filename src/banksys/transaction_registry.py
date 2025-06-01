@@ -35,6 +35,7 @@ class TransactionsRegistry:
         """
         Get all transactions between the given start and end timestamps.
         """
+        self.transactions.sort(key=lambda t: t.timestamp)
         start_index = self._find_index(start)
         end_index = self._find_index(end)
         return self.transactions[start_index:end_index]

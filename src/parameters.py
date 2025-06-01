@@ -1,5 +1,6 @@
 import random
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
+import pandas as pd
 from datetime import timedelta, datetime
 import os
 from optuna import Trial
@@ -26,18 +27,18 @@ class CardSimParameters:
         from cardsim import Cardsim
 
         simulator = Cardsim()
-        cards, terminals, transactions = simulator.simulate(
+        transactions, cards, terminals = simulator.simulate(
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
         )
-        return cards, terminals, transactions
+        return transactions, cards, terminals
 
     @staticmethod
     def paper_params():
         return CardSimParameters(
             n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
-            n_payers=20_000,
+            n_payers=10_000,
             start_date="2023-01-01",
         )
 
@@ -51,7 +52,7 @@ class ClassificationParameters:
     training_duration: timedelta
     quantiles_features: Sequence[str]
     quantiles_values: Sequence[float]
-    rules: dict[str, float]
+    _rules: dict[float, float]
 
     def __init__(
         self,
@@ -62,10 +63,10 @@ class ClassificationParameters:
         training_duration: timedelta | float = timedelta(days=30),
         quantiles_features: Sequence[str] = ("amount",),
         quantiles_values: Sequence[float] = (0.01, 0.99),
-        rules: dict[str, float] = {
-            "max_trx_hour": 6,
-            "max_trx_week": 40,
-            "max_trx_day": 15,
+        rules: dict[timedelta, float] = {
+            timedelta(hours=1): 6,
+            timedelta(weeks=1): 40,
+            timedelta(days=1): 15,
         },
     ):
         self.use_anomaly = use_anomaly
@@ -77,22 +78,40 @@ class ClassificationParameters:
         self.training_duration = training_duration
         self.quantiles_features = quantiles_features
         self.quantiles_values = quantiles_values
-        self.rules = rules
+        self._rules = {td.total_seconds(): value for td, value in rules.items()}
+
+    @property
+    def rules(self) -> dict[timedelta, float]:
+        """
+        Returns the rules as a dictionary with timedelta keys.
+        """
+        return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
     @staticmethod
     def paper_params():
+        """
+        - n_trees 174
+        - contamination 0.022485617075180264
+        - balance_factor 0.05143948127466207
+        - quantiles_low 0.026405177100394077
+        - quantiles_high 0.9450416556649487
+        - use_anomaly False
+        - max_trx_hour 7
+        - max_trx_day 12
+        - max_trx_week 80
+        """
         return ClassificationParameters(
             use_anomaly=False,
-            n_trees=100,
-            balance_factor=0.05,
-            contamination=0.005,
+            n_trees=174,
+            balance_factor=0.05143948127466207,
+            contamination=0.022485617075180264,
             training_duration=timedelta(days=150),
             quantiles_features=("amount",),
-            quantiles_values=(0.00, 1.0),
+            quantiles_values=(0.00, 1),
             rules={
-                "max_trx_hour": 6,
-                "max_trx_week": 40,
-                "max_trx_day": 15,
+                timedelta(hours=1): 2,
+                timedelta(weeks=1): 400,
+                timedelta(days=1): 105,
             },
         )
 
@@ -123,7 +142,7 @@ class PPOParameters:
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
         n_epochs: int = 20,
-        eps_clip: float = 0.2,
+        eps_clip: float = 0.5,
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
         train_interval: int = 64,
@@ -195,11 +214,11 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
-            gamma=0.99,
+            gamma=0.9,
             lr_actor=0.0013655647166021928,
             lr_critic=0.007255685546096761,
-            n_epochs=27,
-            eps_clip=0.2,
+            n_epochs=13,
+            eps_clip=0.1,
             critic_c1=Schedule.linear(
                 start_value=0.9375751577962954,
                 end_value=0.38048446480609044,
@@ -207,12 +226,12 @@ class PPOParameters:
             ),
             entropy_c2=Schedule.linear(
                 start_value=0.0957619650038549,
-                end_value=0.007744880113458132, #
+                end_value=0.007744880113458132,  #
                 n_steps=2537,
             ),
-            train_interval=40,
-            minibatch_size=20,
-            gae_lambda=0.95,
+            train_interval=100,
+            minibatch_size=80,
+            gae_lambda=0.99,
             grad_norm_clipping=8.934885848478487,
         )
 
@@ -224,9 +243,9 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            gamma=0.999,
+            gamma=1,
             lr_actor=0.00117126625357408,
-            lr_critic=0.0007648237767940683,
+            lr_critic=0.007648237767940683,
             n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
@@ -235,13 +254,13 @@ class PPOParameters:
                 n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.18774192037356557,
+                start_value=0.58774192037356557,
                 end_value=0.017361163706258554,
-                n_steps=1171,
+                n_steps=3000,
             ),
-            train_interval=22,
+            train_interval=62,
             minibatch_size=20,
-            gae_lambda=0.95,
+            gae_lambda=0.8,
             grad_norm_clipping=None,
         )
 
@@ -387,7 +406,7 @@ class Parameters:
         logdir: Optional[str] = None,
         save: bool = True,
         include_weekday: bool = True,
-        aggregation_windows: Sequence[timedelta | float] = (timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
@@ -452,12 +471,11 @@ class Parameters:
         from banksys import Banksys
 
         try:
-            banksys = Banksys.load(self.cardsim, self.banksys_dir)
+            banksys = Banksys.load(self.banksys_dir)
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
-
-        banksys.set_up_run(rules_values=self.clf_params.rules, use_anomaly=self.clf_params.use_anomaly)
+            banksys.save(self.banksys_dir)
         env = CardSimEnv(
             system=banksys,
             avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
@@ -484,23 +502,46 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, save: bool = True, save_directory: Optional[str] = None):
+    def create_banksys(self):
         from banksys import Banksys
 
-        cards, terminals, transactions = self.cardsim.get_simulation_data()
+        transactions, cards, terminals = self.cardsim.get_simulation_data()
         banksys = Banksys(
-            cards=cards,
-            terminals=terminals,
+            transactions,
+            cards,
+            terminals,
             aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        banksys.fit(transactions)
-        if save:
-            if save_directory is None:
-                save_directory = self.banksys_dir
-            banksys.save(self.cardsim, save_directory)
+        banksys.fit()
         return banksys
+
+    def datasets_exists(self, directory: Optional[str] = None) -> bool:
+        """
+        Check if the training and test datasets exist in the specified directory.
+        If no directory is specified, use the default banksys directory.
+        """
+        if directory is None:
+            directory = self.banksys_dir
+        train_path = os.path.join(directory, "train.csv")
+        if not os.path.exists(train_path):
+            return False
+        test_path = os.path.join(directory, "test.csv")
+        return os.path.exists(test_path)
+
+    def load_datasets(self, directory: Optional[str] = None):
+        """
+        Load the training and test datasets from the specified directory.
+        If no directory is specified, use the default banksys directory.
+        """
+        if directory is None:
+            directory = self.banksys_dir
+        train_x = pd.read_csv(os.path.join(directory, "train.csv"))
+        train_y = train_x.pop("label").to_numpy(dtype=np.bool)
+        test_x = pd.read_csv(os.path.join(directory, "test.csv"))
+        test_y = test_x.pop("label").to_numpy(dtype=np.bool)
+        return train_x, train_y, test_x, test_y
 
     def get_device_by_seed(self) -> torch.device:
         if not torch.cuda.is_available():

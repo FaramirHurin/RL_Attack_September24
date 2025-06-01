@@ -1,24 +1,17 @@
 import logging
 import os
 from typing import Optional
-from environment import CardSimEnv, AttackPeriodExpired
+from environment import CardSimEnv
+from exceptions import AttackPeriodExpired
 import numpy as np
-import multiprocessing as mp
+
 from plots import Experiment, Run
-import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
 from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
-
-
-def save_episodes(episodes: list[Episode], directory: str):
-    os.makedirs(directory, exist_ok=True)
-    filename = os.path.join(directory, "episodes.json")
-    with open(filename, "wb") as f:
-        f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
 class Runner:
@@ -44,7 +37,7 @@ class Runner:
         action, hx = self.agent.choose_action(obs.data, None)
         self.env.buffer_action(action, new_card)
 
-        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t_start, "card_id": new_card.id})
+        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.system.current_date, "card_id": new_card.id})
         self.actions[new_card] = action
         self.observations[new_card] = obs
         self.states[new_card] = state
@@ -65,47 +58,62 @@ class Runner:
 
         # Main loop
         episodes = list[Episode]()
-        step_num = 0
-        total = 0.0
-        episode_num = 0
+        step_num, episode_num = 0, 0
+        total, avg_score, avg_length = 0.0, 0.0, 0.0
         scores = list[float]()
-        pbar = tqdm(total=self.params.n_episodes, desc="Training", disable=self.quiet)
-        try:
-            while episode_num < self.params.n_episodes:
-                logging.debug(f"{self.env.t.isoformat()} - {step_num}")
-                step_num += 1
+        pbar = tqdm(total=self.params.n_episodes, disable=self.quiet, unit="episode")
+
+        while episode_num < self.params.n_episodes:
+            logging.debug(f"{self.env.t.isoformat()} - {step_num}")
+            step_num += 1
+            try:
                 card, step = self.env.step()
+                total += step.reward.item()
+                pbar.set_postfix(trx=step_num, refresh=False)
+                pbar.set_description(
+                    f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
+                )
+            except AttackPeriodExpired as e:
+                logging.warning(f"Attack period expired: {e}")
+                return episodes
 
-                transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
+            transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
+            try:
                 self.agent.update_transition(transition, step_num, episode_num)
+            except ValueError as e:
+                logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+                return episodes
 
-                current_episode = self.episodes[card]
-                current_episode.add(transition)
-                if current_episode.is_finished:
-                    self.cleanup_card(card)
-                    total += current_episode.score[0]
-                    scores.append(current_episode.score[0])
-                    episodes.append(current_episode)
-                    pbar.update()
-                    avg_score = np.mean(scores[-100:])
-                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
-                    if episode_num > 500 and avg_score < 50:
-                        DEBUG = 0
-                    episode_num += 1
+            current_episode = self.episodes[card]
+            current_episode.add(transition)
+            if current_episode.is_finished:
+                self.cleanup_card(card)
+                scores.append(current_episode.score[0])
+                episodes.append(current_episode)
+                avg_score = np.mean(scores[-100:])
+                avg_length = np.mean([len(ep) for ep in episodes[-100:]])
+                pbar.update()
+                pbar.set_description(
+                    f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
+                )
+                episode_num += 1
+                try:
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
-                    if self.n_spawned < self.params.n_episodes:
-                        self.spawn_card_and_buffer_action()
-                else:
-                    action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
-                    self.env.buffer_action(action, card)
-        except AttackPeriodExpired as e:
-            logging.warning(f"Attack period expired: {e}")
-        except ValueError as e:
-            logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+                except ValueError as e:
+                    logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+                    return episodes
+
+                if self.n_spawned < self.params.n_episodes:
+                    self.spawn_card_and_buffer_action()
+            else:
+                action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
+                self.env.buffer_action(action, card)
         return episodes
 
 
 def main_parallel():
+    import multiprocessing as mp
+
     params = Parameters(
         agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
@@ -127,7 +135,7 @@ def run(params: Parameters):
 
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = os.getenv("LOG_LEVEL", "info").upper()
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
@@ -135,14 +143,11 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=PPOParameters.best_ppo() ,  # VAEParameters.best_vae(),  # PPOParameters.best_rppo() ,  #   #  #
+        agent=PPOParameters.best_ppo(),
         cardsim=CardSimParameters.paper_params(),
         clf_params=ClassificationParameters.paper_params(),
-        seed_value=42,
-        logdir="logs/PPO/seed-" + str(42),
+        logdir="logs/test",
+        save=True,
     )
-exp = Experiment.create(params)
-run(params)
-
-
-# Run VAE
+    exp = Experiment.create(params)
+    run(params)

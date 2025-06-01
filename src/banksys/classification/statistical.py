@@ -24,6 +24,8 @@ class StatisticalClassifier:
         for feature in self.considered_features:
             value = getattr(transaction, feature)
             mmin, mmax = self.quantiles_df[feature]
+            #mmax = 50
+            #TODO Bring it back and eventually make it tunable at run time
             if not mmin <= value <= mmax:
                 return True
         return False
