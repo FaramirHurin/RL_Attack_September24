@@ -83,7 +83,7 @@ class PPO(Agent):
         with torch.no_grad():
             obs_data = torch.from_numpy(observation).unsqueeze(0).to(self.device, non_blocking=True)
             distribution, hx = self.actor_critic.policy(obs_data, hx)
-        np_action = distribution.sample().squeeze(0).numpy(force=True)
+        np_action = torch.nn.functional.softplus(distribution.sample().squeeze(0)).numpy(force=True)
         return np_action, hx
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

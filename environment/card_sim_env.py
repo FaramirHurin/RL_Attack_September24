@@ -138,13 +138,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             fraud_is_detected, cause_of_detection = self.system.process_transaction(trx) or card.balance < action.amount
             state = self.compute_state(card)
             if fraud_is_detected or card.balance < action.amount:
-                reward = 0
-                print(cause_of_detection)
-                if cause_of_detection == 'Rule':
-                    reward = float(np_action[-1]) * 10
-                    print(float(np_action[-1]))
+                reward = 10 * ( action.delay_hours - 1 ) if action.delay_hours < 1 else 0
             else:
-                reward = action.amount * (state[0]) ** 0.5
+                reward = action.amount * ((state[0]) ** 0.5)
                 card.remove_money(action.amount)
             done = fraud_is_detected
 
