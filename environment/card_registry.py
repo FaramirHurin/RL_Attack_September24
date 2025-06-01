@@ -19,7 +19,7 @@ class CardRegistry:
         """
         index = random.randint(0, len(self.cards) - 1)
         card = self.cards.pop(index)
-
+        card.set_current_time(t)
         expected_expiration = t + self.avg_card_block_delay
         self.release_dates[card] = t
         self.expected_expirations[card] = expected_expiration
@@ -45,6 +45,7 @@ class CardRegistry:
             return 1.0
         expected_expiration = self.expected_expirations[card]
         remaining = expected_expiration - t
-        remaining_seconds = remaining.total_seconds()
-        elapsed_seconds = self.expected_lifespan - remaining_seconds
-        return elapsed_seconds / self.expected_lifespan
+        remaining_hours = remaining.total_seconds() / 3600 /168
+        # TODO Verify, I am chnging to remaining hours
+        #elapsed_seconds = self.expected_lifespan - remaining_seconds
+        return  remaining_hours #  elapsed_seconds # / self.expected_lifespan

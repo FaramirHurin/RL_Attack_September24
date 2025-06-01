@@ -3,22 +3,14 @@ import os
 from typing import Optional
 from environment import CardSimEnv, AttackPeriodExpired
 import numpy as np
-import multiprocessing as mp
+
 from plots import Experiment, Run
-import orjson
 from marlenv import Episode, Transition, Observation, State
 import torch
 from tqdm import tqdm
 from banksys import Card
 from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
-
-
-def save_episodes(episodes: list[Episode], directory: str):
-    os.makedirs(directory, exist_ok=True)
-    filename = os.path.join(directory, "episodes.json")
-    with open(filename, "wb") as f:
-        f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
 
 
 class Runner:
@@ -88,7 +80,9 @@ class Runner:
                     episodes.append(current_episode)
                     pbar.update()
                     avg_score = np.mean(scores[-100:])
-                    pbar.set_description(f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f}")
+                    pbar.set_description(
+                        f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - total={total:.2f} - len-avg={np.mean([len(ep) for ep in episodes[-100:]]):.2f}"
+                    )
                     episode_num += 1
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                     if self.n_spawned < self.params.n_episodes:
@@ -104,6 +98,8 @@ class Runner:
 
 
 def main_parallel():
+    import multiprocessing as mp
+
     params = Parameters(
         agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
         cardsim=CardSimParameters.paper_params(),
@@ -141,6 +137,3 @@ if __name__ == "__main__":
     )
     exp = Experiment.create(params)
     run(params)
-
-
-# Run VAE

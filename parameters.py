@@ -107,11 +107,11 @@ class ClassificationParameters:
             contamination=0.022485617075180264,
             training_duration=timedelta(days=150),
             quantiles_features=("amount",),
-            quantiles_values=(0, 0.9450416556649487),
+            quantiles_values=(0.00, 1),
             rules={
-                timedelta(hours=1): 7,
-                timedelta(days=1): 12,
-                timedelta(weeks=1): 80,
+                "max_trx_hour": 2,
+                "max_trx_week": 400,
+                "max_trx_day": 105,
             },
         )
 
@@ -142,7 +142,7 @@ class PPOParameters:
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
         n_epochs: int = 20,
-        eps_clip: float = 0.2,
+        eps_clip: float = 0.5,
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
         train_interval: int = 64,
@@ -214,11 +214,11 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
-            gamma=0.99,
+            gamma=0.9,
             lr_actor=0.0013655647166021928,
             lr_critic=0.007255685546096761,
-            n_epochs=27,
-            eps_clip=0.2,
+            n_epochs=13,
+            eps_clip=0.1,
             critic_c1=Schedule.linear(
                 start_value=0.9375751577962954,
                 end_value=0.38048446480609044,
@@ -229,9 +229,9 @@ class PPOParameters:
                 end_value=0.007744880113458132,  #
                 n_steps=2537,
             ),
-            train_interval=40,
-            minibatch_size=20,
-            gae_lambda=0.95,
+            train_interval=100,
+            minibatch_size=80,
+            gae_lambda=0.99,
             grad_norm_clipping=8.934885848478487,
         )
 
@@ -243,9 +243,9 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            gamma=0.999,
+            gamma=1,
             lr_actor=0.00117126625357408,
-            lr_critic=0.0007648237767940683,
+            lr_critic=0.007648237767940683,
             n_epochs=21,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
@@ -254,13 +254,13 @@ class PPOParameters:
                 n_steps=3291,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.18774192037356557,
+                start_value=0.58774192037356557,
                 end_value=0.017361163706258554,
-                n_steps=1171,
+                n_steps=3000,
             ),
-            train_interval=22,
+            train_interval=62,
             minibatch_size=20,
-            gae_lambda=0.95,
+            gae_lambda=0.8,
             grad_norm_clipping=None,
         )
 

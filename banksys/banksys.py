@@ -7,7 +7,6 @@ from datetime import timedelta, datetime
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import numpy as np
-import orjson
 import polars as pl
 
 
@@ -17,7 +16,7 @@ from .terminal import Terminal
 from .transaction import Transaction
 
 if TYPE_CHECKING:
-    from parameters import CardSimParameters, ClassificationParameters
+    from parameters import ClassificationParameters
 
 # TODO: when a card is blocked, we should remove all its future transactions
 
@@ -43,10 +42,14 @@ class Banksys:
         self.clf = ClassificationSystem(clf_params)
 
         self._transactions_df = (
-            transactions_df.sort("timestamp").with_columns(self._approximate_labels(transactions_df)).set_sorted("timestamp")
-        )
-        self._transactions_df = self._transactions_df.with_columns(
-            pl.when(pl.col("timestamp") > self.attack_start).then(None).otherwise(pl.col("predicted_label")).alias("predicted_label")
+            transactions_df.sort("timestamp")  # Sort by timestamp
+            .with_columns(self._approximate_labels(transactions_df).alias("predicted_label"))  # Add training "predicted_label"
+            .with_columns(
+                pl.when(pl.col("timestamp") > self.attack_start)  # Remove 'predicted_label' for the attack set.
+                .then(None)
+                .otherwise(pl.col("predicted_label"))
+                .alias("predicted_label")
+            )
         )
         self.cards = sorted(Card.from_df(cards_df), key=lambda c: c.id)
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
@@ -166,6 +169,12 @@ class Banksys:
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         """
+        # label, cause_of_detection = self.clf.predict(transaction)
+        # if not label:
+        #     debug = 0
+        # transaction.predicted_label = label
+        # self.add_transaction(transaction)
+        # return label, cause_of_detection
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
         trx.predicted_label = self.clf.predict(features).item()

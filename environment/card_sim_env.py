@@ -18,12 +18,6 @@ if TYPE_CHECKING:
     from banksys import Banksys
 
 
-def round_timedelta_to_minute(td: timedelta) -> timedelta:
-    total_seconds = td.total_seconds()
-    rounded_seconds = round(total_seconds / 60) * 60
-    return timedelta(seconds=rounded_seconds)
-
-
 class CardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
@@ -65,14 +59,24 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def spawn_card(self):
         card = self.card_registry.release_card(self.t)
-        state = self.compute_state(card)
+        try:
+            state = self.compute_state(card)
+        except Exception:
+            card.attempted_attacks = 0
+            state = self.compute_state(card)
+
         return card, Observation(state, self.available_actions()), State(state)
 
     def buffer_action(self, np_action: np.ndarray, card: Card):
         action = Action.from_numpy(np_action)
-        delta = max(round_timedelta_to_minute(action.timedelta), timedelta(minutes=1))
-        execution_time = self.t + delta
-        assert execution_time >= self.t, "Action can not be executed in the past"
+        card.attempted_attacks += 1
+
+        # execution_time = action.hour + one minute to self.t
+        delta = timedelta(hours=action.delay_hours) + timedelta(minutes=1)
+
+        execution_time = card.current_time + delta
+        card.set_current_time(execution_time)
+
         self.action_buffer.push((card, np_action), execution_time)
 
     def get_observation(self, card: Card):
@@ -89,7 +93,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def compute_state(self, card: Card):
         time_ratio = self.card_registry.get_time_ratio(card, self.t)
-        features = [time_ratio, card.is_credit, self.t.hour / 24, self.t.day / 31]
+        features = [card.attempted_attacks, time_ratio, card.is_credit, card.current_time.hour / 24]  # , self.t.day / 31
         if self.include_weekday:
             one_hot_weekday = [0.0] * 7
             one_hot_weekday[self.t.weekday()] = 1.0
@@ -107,6 +111,8 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         """
         t, (card, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
+        if action.delay_hours == 0:
+            debug = 0
         assert t >= self.t, "Actions can not be executed in the past"
         if t >= self.system.attack_end:
             raise AttackPeriodExpired(
@@ -124,14 +130,19 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         else:
             terminal_id = self.system.get_closest_terminal(card.x, card.y).id
             trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
-            fraud_is_detected = self.system.process_transaction(trx) or card.balance < action.amount
-            if fraud_is_detected:
-                reward = 0.0
+            fraud_is_detected, cause_of_detection = self.system.process_transaction(trx) or card.balance < action.amount
+            state = self.compute_state(card)
+            if fraud_is_detected or card.balance < action.amount:
+                reward = 0
+                print(cause_of_detection)
+                if cause_of_detection == "Rule":
+                    reward = float(np_action[-1]) * 10
+                    print(float(np_action[-1]))
             else:
-                reward = action.amount
-                logging.debug(card.id, card.balance, action.amount)
-                card.balance -= action.amount
+                reward = action.amount * (state[0]) ** 0.5
+                card.remove_money(action.amount)
             done = fraud_is_detected
+
         state = self.compute_state(card)
         return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info={"trx": trx})
 

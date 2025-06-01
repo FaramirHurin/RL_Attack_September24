@@ -5,6 +5,36 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from ..transaction import Transaction
+
+
+def max_trx_hour(transaction: Transaction, registry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(minutes=60)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp < transaction.timestamp]
+    to_return = len(recent_transactions) >= max_number
+    if to_return:
+        Debug = True
+    return to_return
+
+
+def max_trx_day(transaction: Transaction, registry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(hours=24)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp <= transaction.timestamp]
+    return len(recent_transactions) >= max_number
+
+
+def max_trx_week(transaction: Transaction, registry, max_number: float) -> bool:
+    start = transaction.timestamp - timedelta(days=7)
+    recent_transactions = [trx for trx in registry.transactions if start <= trx.timestamp <= transaction.timestamp]
+    return len(recent_transactions) >= max_number
+
+
+rules_dict = {
+    "max_trx_day": max_trx_day,
+    "max_trx_hour": max_trx_hour,
+    "max_trx_week": max_trx_week,
+}
+
 
 class RuleBasedClassifier:
     def __init__(

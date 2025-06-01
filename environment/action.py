@@ -21,7 +21,7 @@ class Action:
         is_online: bool,
         delay_hours: float,
     ):
-        self.amount = max(0.01, min(100_000, amount))
+        self.amount = max(0.0, min(100_000, amount))
         self.terminal_x = max(0, min(200, terminal_x))
         self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
@@ -39,8 +39,11 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        is_online, amount, terminal_x, terminal_y, delay_hours = array.flatten()  # , delay_days
+        is_online, amount, terminal_x, terminal_y, delay_hours = array  # , delay_days
         is_online = is_online > 0.5
+        delay_hours = max(0, delay_hours)
+        # delay_hours = delay_hours + 2
+        # TODO Remove this hack
         to_return = Action(
             amount=np.round(float(amount), 2),
             terminal_x=float(terminal_x),
@@ -49,6 +52,7 @@ class Action:
             # delay_days=int(delay_days),
             delay_hours=float(delay_hours),
         )
+
         return to_return
 
     def to_numpy(self):
