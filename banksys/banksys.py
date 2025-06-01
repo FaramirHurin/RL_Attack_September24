@@ -131,10 +131,10 @@ class Banksys:
             end_idx = self.current_offset + len(batch)
             features = self.make_features(self._transactions_df[self.current_offset : end_idx])
             self.current_offset = end_idx
-            labels = self.clf.predict(features)
+            labels, _ = self.clf.predict(features)
             for label, trx in zip(labels, batch):
                 trx.predicted_label = bool(label)
-                self.add_transaction(trx)
+                self.add_transaction(trx, update_balance=False)
 
         pbar = tqdm(
             self._transactions_df[self.current_offset :].iter_rows(named=True),
@@ -165,21 +165,16 @@ class Banksys:
         pbar.close()
         self.current_date = until_date
 
-    def process_transaction(self, trx: Transaction) -> bool:
+    def process_transaction(self, trx: Transaction):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         """
-        # label, cause_of_detection = self.clf.predict(transaction)
-        # if not label:
-        #     debug = 0
-        # transaction.predicted_label = label
-        # self.add_transaction(transaction)
-        # return label, cause_of_detection
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        trx.predicted_label = self.clf.predict(features).item()
-        self.add_transaction(trx)
-        return trx.predicted_label
+        label, cause = self.clf.predict(features)
+        trx.predicted_label = label.item()
+        self.add_transaction(trx, update_balance=True)
+        return trx.predicted_label, cause
 
     def make_transaction_features(self, trx: Transaction):
         trx_df = trx.as_df()
@@ -207,9 +202,9 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def add_transaction(self, transaction: Transaction):
+    def add_transaction(self, transaction: Transaction, update_balance: bool):
         self.terminals[transaction.terminal_id].add(transaction)
-        self.cards[transaction.card_id].add(transaction)
+        self.cards[transaction.card_id].add(transaction, update_balance)
 
     def save(self, directory: str = "cache"):
         if not os.path.exists(directory):

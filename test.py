@@ -13,6 +13,12 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
+
+    import polars as pl
+
+    df = pl.read_csv("/home/yann/projects/python/RL_Attack_September24/cache/cardsim/payees-10000.csv")
+    print(df[0].to_dicts()[0])
+    exit()
     p = Parameters()
     b = p.create_banksys()
     trx = Transaction(

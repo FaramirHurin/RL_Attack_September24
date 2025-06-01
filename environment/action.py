@@ -39,11 +39,9 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        is_online, amount, terminal_x, terminal_y, delay_hours = array  # , delay_days
+        is_online, amount, terminal_x, terminal_y, delay_hours = array
         is_online = is_online > 0.5
         delay_hours = max(0, delay_hours)
-        # delay_hours = delay_hours + 2
-        # TODO Remove this hack
         to_return = Action(
             amount=np.round(float(amount), 2),
             terminal_x=float(terminal_x),

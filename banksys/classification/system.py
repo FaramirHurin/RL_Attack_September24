@@ -43,16 +43,18 @@ class ClassificationSystem:
         self.statistical_classifier.fit(transactions.to_pandas())
         logging.info("Done !")
 
-    def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
+    def predict(self, df: pl.DataFrame) -> tuple[npt.NDArray[np.bool], pl.DataFrame]:
         logging.debug("Predicting with RF")
         l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
         l2 = self.statistical_classifier.predict_dataframe(df.to_pandas())
         logging.debug("Predicting with rule-based")
-        l3 = self.rule_classifier.predict(df)
+        l3, detected_by = self.rule_classifier.predict(df)
+        detected_by = detected_by.with_columns(pl.Series("BRF", l1), pl.Series("Statistical", l2), pl.Series("Rules", l3))
         result = l1 | l2 | l3
         if self.use_anomaly:
             logging.debug("Predicting with anomaly detection")
             l4 = self.anomaly_detection_classifier.predict(df) == -1
+            detected_by = detected_by.with_columns(pl.Series("Anomaly", l4))
             result = result | l4
-        return result  # type: ignore[return-value]
+        return result, detected_by

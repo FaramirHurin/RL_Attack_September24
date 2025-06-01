@@ -44,12 +44,14 @@ class RuleBasedClassifier:
         self.max_values = max_values
         self.rule_values = max_values
 
-    def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
+    def predict(self, df: pl.DataFrame):
+        detected_by = pl.DataFrame()
         labels = np.full(len(df), False, dtype=np.bool)
         for td, max_value in self.max_values.items():
             colname = f"card_n_trx_last_{td}"
             if colname not in df.columns:
                 raise ValueError(f"DataFrame does not contain column for {td}.")
             y = df[colname] > max_value
+            detected_by = detected_by.with_columns(pl.Series(colname, y))
             labels = labels | y.to_numpy().astype(np.bool)
-        return labels
+        return labels, detected_by

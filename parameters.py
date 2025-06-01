@@ -109,9 +109,9 @@ class ClassificationParameters:
             quantiles_features=("amount",),
             quantiles_values=(0.00, 1),
             rules={
-                "max_trx_hour": 2,
-                "max_trx_week": 400,
-                "max_trx_day": 105,
+                timedelta(hours=1): 2,
+                timedelta(weeks=1): 400,
+                timedelta(days=1): 105,
             },
         )
 

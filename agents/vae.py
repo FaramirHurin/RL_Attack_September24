@@ -10,7 +10,6 @@ import torch.optim as optim
 from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
-import matplotlib.pyplot as plt
 
 if TYPE_CHECKING:
     from banksys import Card, Terminal, Transaction
@@ -299,8 +298,14 @@ class VaeAgent(Agent):
         transactions: list["Transaction"] = []
         for terminal in terminals:
             for transaction in terminal.transactions.transactions:
-                transaction.payee_x = terminal.x
-                transaction.payee_y = terminal.y
+                #################################################
+                #                                               #
+                #             THIS IS LIKELY GOING TO FAIL      #
+                #       DO WE NEED TO TAKE THE DF AS INPUT ?    #
+                #                                               #
+                #################################################
+                transaction.payee_x = terminal.x  # type: ignore
+                transaction.payee_y = terminal.y  # type: ignore
             transactions += terminal.transactions.transactions
             # Add terminal coordinates to the transactions
 

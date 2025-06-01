@@ -2,16 +2,16 @@ import logging
 import random
 from copy import deepcopy
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
 from banksys import Card, Transaction
+from exceptions import AttackPeriodExpired, InsufficientFundsError
 
 from .action import Action
 from .card_registry import CardRegistry
-from .exceptions import AttackPeriodExpired
 from .priority_queue import PriorityQueue
 
 if TYPE_CHECKING:
@@ -70,13 +70,8 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def buffer_action(self, np_action: np.ndarray, card: Card):
         action = Action.from_numpy(np_action)
         card.attempted_attacks += 1
-
-        # execution_time = action.hour + one minute to self.t
-        delta = timedelta(hours=action.delay_hours) + timedelta(minutes=1)
-
-        execution_time = card.current_time + delta
-        card.set_current_time(execution_time)
-
+        # delta = timedelta(hours=action.delay_hours) + timedelta(minutes=1)
+        execution_time = self.t + timedelta(hours=action.delay_hours)
         self.action_buffer.push((card, np_action), execution_time)
 
     def get_observation(self, card: Card):
@@ -93,7 +88,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def compute_state(self, card: Card):
         time_ratio = self.card_registry.get_time_ratio(card, self.t)
-        features = [card.attempted_attacks, time_ratio, card.is_credit, card.current_time.hour / 24]  # , self.t.day / 31
+        features = [card.attempted_attacks, time_ratio, card.is_credit, self.t.hour / 24]
         if self.include_weekday:
             one_hot_weekday = [0.0] * 7
             one_hot_weekday[self.t.weekday()] = 1.0
@@ -111,40 +106,37 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         """
         t, (card, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
-        if action.delay_hours == 0:
-            debug = 0
         assert t >= self.t, "Actions can not be executed in the past"
         if t >= self.system.attack_end:
             raise AttackPeriodExpired(
                 f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()})"
             )
         self.t = t
+        info = dict[str, Any](t=self.t.isoformat())
         if self.normalize_location:
             action.terminal_x *= 200
             action.terminal_y *= 200
         if self.card_registry.has_expired(card, self.t):
             self.card_registry.clear(card)
-            done = True
             reward = 0.0
-            trx = None
+            done = True
+            info["expired"] = True
         else:
             terminal_id = self.system.get_closest_terminal(card.x, card.y).id
             trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
-            fraud_is_detected, cause_of_detection = self.system.process_transaction(trx) or card.balance < action.amount
-            state = self.compute_state(card)
-            if fraud_is_detected or card.balance < action.amount:
-                reward = 0
-                print(cause_of_detection)
-                if cause_of_detection == "Rule":
-                    reward = float(np_action[-1]) * 10
-                    print(float(np_action[-1]))
-            else:
-                reward = action.amount * (state[0]) ** 0.5
-                card.remove_money(action.amount)
+            try:
+                fraud_is_detected, cause_of_detection = self.system.process_transaction(trx)
+                if fraud_is_detected:
+                    info |= cause_of_detection.to_dicts()[0]
+                transaction_denied = fraud_is_detected
+            except InsufficientFundsError:
+                info["insufficient_funds"] = True
+                fraud_is_detected = False
+                transaction_denied = True
             done = fraud_is_detected
-
+            reward = 0.0 if transaction_denied else trx.amount
         state = self.compute_state(card)
-        return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info={"trx": trx})
+        return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info)
 
     def seed(self, seed_value: int):
         random.seed(seed_value)
