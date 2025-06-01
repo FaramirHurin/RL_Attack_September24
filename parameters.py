@@ -471,10 +471,11 @@ class Parameters:
         from banksys import Banksys
 
         try:
-            banksys = Banksys.load(self.cardsim, self.banksys_dir)
+            banksys = Banksys.load(self.banksys_dir)
         except (FileNotFoundError, ValueError):
             print("Banksys not found, creating a new one")
             banksys = self.create_banksys()
+            banksys.save(self.banksys_dir)
         env = CardSimEnv(
             system=banksys,
             avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
@@ -596,6 +597,4 @@ def serialize_unknown(data):
     match data:
         case timedelta():
             return data.total_seconds()
-        case dict():
-            print("coucou", data)
     raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")

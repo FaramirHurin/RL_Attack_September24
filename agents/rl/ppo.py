@@ -2,11 +2,11 @@ from typing import Literal, Optional
 import numpy as np
 import torch
 import os
-import shutil
 from marlenv import Transition, Episode
 from marlenv.utils import Schedule
 
 from agents import Agent
+
 
 from .batch import Batch, TransitionBatch, EpisodeBatch
 from .replay_memory import ReplayMemory

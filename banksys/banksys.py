@@ -123,6 +123,8 @@ class Banksys:
             raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
 
         def flush(batch: list[Transaction]):
+            if len(batch) == 0:
+                return
             end_idx = self.current_offset + len(batch)
             features = self.make_features(self._transactions_df[self.current_offset : end_idx])
             self.current_offset = end_idx
@@ -207,19 +209,13 @@ class Banksys:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(params: Optional["CardSimParameters"] = None, directory: str = "cache") -> "Banksys":
+    def load(directory: str = "cache"):
         """
         Load the banksys from the given directory.
 
         If `params` is given, it will check if the parameters match the saved ones.
         """
-        from parameters import CardSimParameters
 
-        if params is not None:
-            with open(os.path.join(directory, "params.json"), "rb") as f:
-                simulation_params = CardSimParameters(**orjson.loads(f.read()))
-            if simulation_params != params:
-                raise ValueError("Simulation parameters do not match the given parameters.")
         with open(os.path.join(directory, "banksys.pkl"), "rb") as f:
             banksys = pickle.load(f)
             assert isinstance(banksys, Banksys)

@@ -129,7 +129,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 reward = 0.0
             else:
                 reward = action.amount
-                print(card.id, card.balance, action.amount)
+                logging.debug(card.id, card.balance, action.amount)
                 card.balance -= action.amount
             done = fraud_is_detected
         state = self.compute_state(card)
