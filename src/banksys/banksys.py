@@ -220,7 +220,7 @@ class Banksys:
     def __setstate__(self, state):
         self.__dict__.update(state)
         # Recreate the transactions iterator
-        remaining_trx = self._transactions_df.filter(pl.col("timestamp") < self.next_trx.timestamp)
+        remaining_trx = self._transactions_df.filter(pl.col("timestamp") > self.next_trx.timestamp)
         self.trx_iterator = remaining_trx.iter_rows(named=True)
 
 
