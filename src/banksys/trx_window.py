@@ -62,3 +62,16 @@ class TransactionWindow:
             results[f"terminal_n_trx_last_{duration}"] = n
             results[f"terminal_risk_last_{duration}"] = n_frauds / n if n > 0 else 0.0
         return results
+
+    def __len__(self):
+        return len(self.transactions)
+
+    def __iter__(self):
+        return iter(self.transactions)
+
+    def __getitem__(self, item: int):
+        return self.transactions[item]
+
+    @property
+    def is_empty(self):
+        return len(self.transactions) == 0

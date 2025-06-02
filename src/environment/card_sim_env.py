@@ -55,16 +55,14 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
+        self.card_registry.reset(self.system.cards)
+        self.action_buffer.clear()
+        self.t = deepcopy(self.system.attack_start)
         return
 
     def spawn_card(self):
         card = self.card_registry.release_card(self.t)
-        try:
-            state = self.compute_state(card)
-        except Exception:
-            card.attempted_attacks = 0
-            state = self.compute_state(card)
-
+        state = self.compute_state(card)
         return card, Observation(state, self.available_actions()), State(state)
 
     def buffer_action(self, np_action: np.ndarray, card: Card):
@@ -87,7 +85,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         return self.observation_shape[0]
 
     def compute_state(self, card: Card):
-        time_ratio = self.card_registry.get_time_ratio(card, self.t)
+        time_ratio = self.card_registry.get_remaining_time_ratio(card, self.t)
         features = [card.attempted_attacks, time_ratio, card.is_credit, self.t.hour / 24]
         if self.include_weekday:
             one_hot_weekday = [0.0] * 7

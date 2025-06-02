@@ -34,17 +34,21 @@ class CardRegistry:
     def has_expired(self, card: Card, t: datetime):
         return self.expected_expirations[card] < t
 
+    def reset(self, cards: list[Card]):
+        self.expected_expirations.clear()
+        self.actual_expirations.clear()
+        self.release_dates.clear()
+        self.cards = cards.copy()
+
     def clear(self, card: Card):
         self.expected_expirations.pop(card, None)
         self.actual_expirations.pop(card, None)
         self.release_dates.pop(card, None)
 
-    def get_time_ratio(self, card: Card, t: datetime):
+    def get_remaining_time_ratio(self, card: Card, t: datetime):
         if card not in self.expected_expirations:
             return 1.0
         expected_expiration = self.expected_expirations[card]
         remaining = expected_expiration - t
-        remaining_hours = remaining.total_seconds() / 3600 / 168
-        # TODO Verify, I am chnging to remaining hours
-        # elapsed_seconds = self.expected_lifespan - remaining_seconds
-        return remaining_hours  #  elapsed_seconds # / self.expected_lifespan
+        elapsed_seconds = self.expected_lifespan - remaining.total_seconds()
+        return 1 - (elapsed_seconds / self.expected_lifespan)

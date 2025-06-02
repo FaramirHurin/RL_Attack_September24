@@ -2,18 +2,18 @@ import logging
 import os
 import pickle
 import random
-from tqdm import tqdm
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import numpy as np
 import polars as pl
-
+from tqdm import tqdm
 
 from .card import Card
 from .classification import ClassificationSystem
 from .terminal import Terminal
 from .transaction import Transaction
+from .trx_window import TransactionWindow
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -30,12 +30,17 @@ class Banksys:
         aggregation_windows: Sequence[timedelta],
         clf_params: "ClassificationParameters",
         attackable_terminal_factor: float = 1.0,
+        fp_rate=0.01,
+        fn_rate=0.01,
     ):
-        self.max_aggregation_duration = max(*aggregation_windows)
+        self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
         self.t0: datetime = transactions_df["timestamp"].min()  # type: ignore
         self.training_start = self.t0 + self.max_aggregation_duration
         self.attack_start = self.training_start + clf_params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
+
+        assert self.attack_start < self.attack_end, "Attack start must be before attack end."
+
         self.current_date = self.t0
         self.current_offset = 0
         self.clf_features = None
@@ -43,7 +48,7 @@ class Banksys:
 
         self._transactions_df = (
             transactions_df.sort("timestamp")  # Sort by timestamp
-            .with_columns(self._approximate_labels(transactions_df).alias("predicted_label"))  # Add training "predicted_label"
+            .with_columns(self._approximate_labels(transactions_df, fp_rate=fp_rate, fn_rate=fn_rate))  # Add training "predicted_label"
             .with_columns(
                 pl.when(pl.col("timestamp") > self.attack_start)  # Remove 'predicted_label' for the attack set.
                 .then(None)
@@ -55,6 +60,7 @@ class Banksys:
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
+        self._fit()
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):
         assert 0 <= fp_rate <= 1.0 and 0 <= fn_rate <= 1.0, "Rates must be between 0 and 1"
@@ -69,7 +75,7 @@ class Banksys:
             .otherwise(pl.col("is_fraud"))
             .alias("predicted_label")
         )
-        from sklearn.metrics import confusion_matrix, accuracy_score, recall_score, precision_score, f1_score
+        from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
         truth = trx["is_fraud"]
         pred = trx["predicted_label"]
@@ -82,9 +88,11 @@ class Banksys:
         logging.info(f"F1 Score: {f1_score(truth, pred):.4f}")
         return trx["predicted_label"]
 
-    def fit(self):
+    def _fit(self):
         """
         Fit the classification system and process the training transactions.
+
+        Automatically called from the constructor.
         """
         logging.info("Computing training features...")
         df = self._transactions_df.filter(pl.col("timestamp") < self.attack_start)
@@ -106,9 +114,17 @@ class Banksys:
 
     def make_features(self, df: pl.DataFrame):
         trx_df = extract_trx_features(df).drop("is_fraud")
-        card_agg = df.group_by("card_id", maintain_order=True).map_groups(lambda g: card_aggregation(self.aggregation_windows, g))
-        terminal_agg = df.group_by("terminal_id", maintain_order=True).map_groups(
-            lambda g: terminal_aggregation(self.aggregation_windows, g)
+        card_agg = (
+            df.group_by("card_id")
+            .map_groups(lambda group: card_aggregation(self.aggregation_windows, group))
+            .sort("timestamp")
+            .drop("timestamp")
+        )
+        terminal_agg = (
+            df.group_by("terminal_id")
+            .map_groups(lambda group: terminal_aggregation(self.aggregation_windows, group))
+            .sort("timestamp")
+            .drop("timestamp")
         )
         features = pl.concat([trx_df, card_agg, terminal_agg], how="horizontal")
         if self.clf_features is not None:
@@ -125,8 +141,9 @@ class Banksys:
         if until_date >= self.attack_end:
             raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
 
-        def flush(batch: list[Transaction]):
-            if len(batch) == 0:
+        def flush(batch: TransactionWindow):
+            batch.update(until_date, self.max_aggregation_duration)
+            if batch.is_empty:
                 return
             end_idx = self.current_offset + len(batch)
             features = self.make_features(self._transactions_df[self.current_offset : end_idx])
@@ -143,25 +160,23 @@ class Banksys:
             disable=not show_progress,
         )
         end = until_date.date().isoformat()
+        window = TransactionWindow()
         cards = set[int]()
         terminals = set[int]()
-        batch = list[Transaction]()
         for kwargs in pbar:
             trx = Transaction(**kwargs)
             if trx.timestamp >= until_date:
-                flush(batch)
+                flush(window)
                 break
             if trx.card_id in cards or trx.terminal_id in terminals:
                 pbar.set_description(f"{trx.timestamp.date().isoformat()}/{end}")
-                flush(batch)
+                flush(window)
                 cards.clear()
                 terminals.clear()
-                batch.clear()
-            batch.append(trx)
+
+            window.add(trx)
             cards.add(trx.card_id)
             terminals.add(trx.terminal_id)
-            # features = self.make_transaction_features(trx)
-            # trx.predicted_label = self.clf.predict(features).item()
         pbar.close()
         self.current_date = until_date
 
@@ -232,16 +247,16 @@ def card_aggregation(agg_windows: Sequence[timedelta], card_df: pl.DataFrame):
         count, mean = count_and_mean(card_df["timestamp"].to_list(), card_df["amount"].to_list(), delta)
         results.append(pl.Series(name=f"card_n_trx_last_{delta}", values=count))
         results.append(pl.Series(name=f"card_mean_amount_last_{delta}", values=mean))
-    return pl.DataFrame(results)
+    return pl.DataFrame(results).with_columns(card_df["timestamp"])
 
 
 def terminal_aggregation(agg_windows: Sequence[timedelta], term_df: pl.DataFrame):
     results = list[pl.Series]()
     for delta in agg_windows:
-        count, risk = count_and_risk(term_df["timestamp"].to_list(), term_df["predicted_label"].to_list(), delta)
+        count, risk = count_and_mean(term_df["timestamp"].to_list(), term_df["predicted_label"].to_list(), delta)
         results.append(pl.Series(name=f"terminal_n_trx_last_{delta}", values=count))
         results.append(pl.Series(name=f"terminal_risk_last_{delta}", values=risk))
-    return pl.DataFrame(results)
+    return pl.DataFrame(results).with_columns(term_df["timestamp"])
 
 
 def extract_trx_features(df: pl.DataFrame):
@@ -256,41 +271,23 @@ def extract_trx_features(df: pl.DataFrame):
     return trx_df.drop("timestamp")
 
 
-def count_and_mean(timestamps: Sequence[datetime], amounts: Sequence[float], delta: timedelta):
-    counts, means = [], []
-    start_idx = 0
-    window_amount = 0.0
-    window_vals = []
-    for end_index in range(len(timestamps)):
-        # Add current transaction to window
-        window_vals.append(amounts[end_index])
-        window_amount += amounts[end_index]
+def count_and_mean(timestamps: Sequence[datetime], values: Sequence[float], delta: timedelta, start_index=1):
+    counts, means = [0], [0.0]  # The count and mean for the first transaction is always 0
+    window_values = values[0]
+    left = 0
+    window_vals = [window_values]
+    # Do not take the current transaction into account for its own aggregation
+    for right in range(start_index, len(timestamps)):
         # Slide left boundary of the window
-        while start_idx < end_index and timestamps[start_idx] < timestamps[end_index] - delta:
-            window_amount -= window_vals[0]
-            window_vals.pop(0)
-            start_idx += 1
-        count = len(window_vals)
+        while left < right and timestamps[left] < timestamps[right] - delta:
+            window_values -= window_vals.pop(0)
+            left += 1
+        # Add the data to the window
+        count = right - left
         counts.append(count)
-        means.append(window_amount / count if count > 0 else 0.0)
+        means.append(window_values / count if count > 0 else 0.0)
+
+        # Then update the windows to include the current transaction
+        window_vals.append(values[right])
+        window_values += values[right]
     return counts, means
-
-
-def count_and_risk(timestamps: Sequence[datetime], predicted_label: Sequence[bool], delta: timedelta):
-    counts, risks = [], []
-    start_idx = 0
-    for stop_idx, t_end in enumerate(timestamps):
-        # Move left pointer to maintain window
-        start = t_end - delta
-        while timestamps[start_idx] < start:
-            start_idx += 1
-        # Count of transactions within the window excluding the current one
-        length = stop_idx - start_idx
-        counts.append(length)
-        # Compute risk as the proportion of fraudulent transactions
-        if length > 0:
-            # We assume that only a portion of the frauds are detected
-            risks.append(sum(predicted_label[start_idx:stop_idx]) / length)
-        else:
-            risks.append(0.0)
-    return counts, risks
