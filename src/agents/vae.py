@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import polars as pl
+from environment import Action
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,22 +19,7 @@ if TYPE_CHECKING:
 
 from .agent import Agent
 
-COLUMNS = [
-    "payer_id",
-    "credit_card",
-    "is_online",
-    "amount",
-    "payee_id",
-    "distance",
-    "time_seconds",
-    "date_time",
-    "hour",
-    "fraud",
-    "run_id",
-    "label",
-]
-
-VAE_COLUMNS = ["is_online", "amount", "payee_x", "payee_y", "hour"]
+VAE_COLUMNS = ["is_online", "amount", "terminal_x", "terminal_y", "hour"]
 VAE_CLIENT_COLUMNS = ["is_online", "amount", "delta_x", "delta_y", "hour"]
 
 OBSERVATION_FEATURES = ["remaining_time", "is_credit", "hour", "day"]
@@ -78,12 +65,6 @@ class VAE(nn.Module):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         reconstructed = self.decoder(z)
-        # Apply sigmoid only to one node
-        # reconstructed = reconstructed.clone()
-        # reconstructed = torch.sigmoid(reconstructed)
-        # reconstructed[:, 0] = torch.sigmoid(reconstructed[:, 0])
-        # assert min(reconstructed[:, 0]) >= 0
-        # assert max(reconstructed[:, 0]) <= 1
         return reconstructed, mu, logvar
 
 
@@ -224,8 +205,13 @@ class VaeAgent(Agent):
         """
         Preprocess the data and return a DataFrame with the transactions
         """
-        terminals = [terminal for terminal in self.banksys.terminals if terminal in self.terminals]
-        transactions_df = self.get_trx_from_terminals(terminals, self.current_time)
+        assert self.banksys.current_time == self.banksys.attack_start
+        terminal_ids = [t.id for t in self.terminals]
+        transactions_df = self.banksys.training_set.filter(pl.col("terminal_id").is_in(terminal_ids)).to_pandas()
+
+        # Add x and y of the transaction (from terminal)
+        terminals_df = pd.DataFrame([{"terminal_id": t.id, "terminal_x": t.x, "terminal_y": t.y} for t in self.terminals])
+        transactions_df = transactions_df.merge(terminals_df, on="terminal_id", how="left")
 
         if self.know_client:
             customers = self.banksys.cards
@@ -252,40 +238,50 @@ class VaeAgent(Agent):
         batch["amount"] = batch["amount"].round(2)
         if self.know_client:
             # TODO How to pass observation[payer_x]. Possibly -2, -1
-            batch["payee_x"] = observation[-2] + batch["delta_x"]
-            batch["payee_y"] = observation[-1] + batch["delta_y"]
+            batch["temrinal_x"] = observation[-2] + batch["delta_x"]
+            batch["temrinal_y"] = observation[-1] + batch["delta_y"]
         else:
-            batch["payee_x"] = batch["payee_x"].astype(int)
-            batch["payee_y"] = batch["payee_y"].astype(int)
+            batch["terminal_x"] = batch["terminal_x"].astype(int)
+            batch["terminal_y"] = batch["terminal_y"].astype(int)
 
         batch = batch.sort_values(by="amount", ascending=True)
 
         # Filter the highest amounts based on the quantile
         batch = batch[batch["amount"] >= batch["amount"].quantile(self.quantile)]
 
-        """
-        plt.plot(batch["payee_x"], batch["payee_y"], "o", markersize=1, alpha=0.5)
-        plt.plot()
-        """
-
         # Compute delay hours and delay days for all transactions
         small_df = batch.copy()
-        small_df["delay_hours"] = small_df["hour"].astype(int) - observation[-2] + (observation[-2] >= small_df["hour"].astype(int)) * 24
+        current_time = self.banksys.current_time
+        # If the predicted hour is less than the current hour, we assume the transaction is for the next day
+        small_df["timestamp"] = small_df["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))
+        is_past = small_df["timestamp"] < current_time
+        small_df.loc[is_past, "timestamp"] += pd.Timedelta(days=1)
+        small_df["delay_hours"] = (small_df["timestamp"] - current_time).dt.total_seconds() / 3600.0
 
-        # Sort small_df by delay_hours and select the closest
-        small_df = small_df.sort_values(by="delay_hours", ascending=True)
-        # Reset index
-        small_df = small_df.reset_index(drop=True)
-        trx = small_df.loc[0, ["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]  # type: ignore
-        trx["delay_day"] = 0
-        # Move delay_hours to the last column
-        trx = trx[["is_online", "amount", "payee_x", "payee_y", "delay_hours"]]
-        # Print payee_x and payee_y, amount, is_online and delay_hours
-        # print(f"Chosen transaction: {trx['payee_x']}, {trx['payee_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
-        trx = trx
-        trx = trx.astype(np.float32)
-        trx = trx.to_numpy().reshape(1, -1)
-        return trx, None
+        # Select the closest transaction in time
+        trx = small_df.loc[small_df["delay_hours"].idxmin()]
+        as_dict = trx.to_dict()
+        action = Action(
+            amount=as_dict["amount"],
+            terminal_x=as_dict["terminal_x"],
+            terminal_y=as_dict["terminal_y"],
+            is_online=as_dict["is_online"],
+            delay_hours=as_dict["delay_hours"],
+        )
+        return action.to_numpy(), None
+
+        # # Reset index
+        # small_df = small_df.reset_index(drop=True)
+        # trx = small_df.loc[0, ["is_online", "amount", "terminal_x", "terminal_y", "delay_hours"]]  # type: ignore
+        # trx["delay_day"] = 0
+        # # Move delay_hours to the last column
+        # trx = trx[["is_online", "amount", "terminal_x", "terminal_y", "delay_hours"]]
+        # # Print terminal_x and terminal_y, amount, is_online and delay_hours
+        # # print(f"Chosen transaction: {trx['terminal_x']}, {trx['terminal_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
+        # trx = trx
+        # trx = trx.astype(np.float32)
+        # trx = trx.to_numpy().reshape(1, -1)
+        # return trx, None
 
     @staticmethod
     def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:

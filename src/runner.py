@@ -64,7 +64,6 @@ class Runner:
         pbar = tqdm(total=self.params.n_episodes, disable=self.quiet, unit="episode")
 
         while episode_num < self.params.n_episodes:
-            logging.debug(f"{self.env.t.isoformat()} - {step_num}")
             step_num += 1
             try:
                 card, step = self.env.step()
@@ -146,7 +145,8 @@ if __name__ == "__main__":
 
     params = Parameters(
         agent=PPOParameters.best_ppo(),
-        cardsim=CardSimParameters.paper_params(),
+        # agent=VAEParameters.best_vae(),
+        cardsim=CardSimParameters(),
         clf_params=ClassificationParameters.paper_params(),
         logdir="logs/test",
         save=True,

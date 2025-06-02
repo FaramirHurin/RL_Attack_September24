@@ -1,6 +1,7 @@
 import logging
 import os
 import pickle
+from functools import cached_property
 import random
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Optional, Sequence
@@ -31,11 +32,10 @@ class Banksys:
         fn_rate=0.01,
     ):
         self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
-        self.t0: datetime = transactions_df["timestamp"].min()  # type: ignore
-        self.training_start = self.t0 + self.max_aggregation_duration
+        self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
+        self.training_start = self.current_time + self.max_aggregation_duration
         self.attack_start = self.training_start + clf_params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
-
         assert self.attack_start < self.attack_end, "Attack start must be before attack end."
 
         self.clf_features = None
@@ -123,6 +123,7 @@ class Banksys:
             self.next_trx = Transaction(**next(self.trx_iterator))
             pbar.set_description(f"{self.next_trx.timestamp.date().isoformat()}")
             pbar.update()
+        self.current_time = until_date
         return features
 
     def process_transaction(self, trx: Transaction, update_balance: bool = True, with_cause: bool = False):
@@ -183,6 +184,10 @@ class Banksys:
             banksys = pickle.load(f)
             assert isinstance(banksys, Banksys)
         return banksys
+
+    @cached_property
+    def training_set(self):
+        return self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start))
 
     @property
     def max_attack_duration(self):
