@@ -17,8 +17,6 @@ from .transaction import Transaction
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
 
-# TODO: when a card is blocked, we should remove all its future transactions
-
 
 class Banksys:
     def __init__(
@@ -108,25 +106,6 @@ class Banksys:
         )
         self.clf.fit(pl.DataFrame(train_x), train_y)
 
-    def make_features_old(self, df: pl.DataFrame):
-        trx_df = extract_trx_features(df).drop("is_fraud")
-        card_agg = (
-            df.group_by("card_id")
-            .map_groups(lambda group: card_aggregation(self.aggregation_windows, group))
-            .sort("timestamp")
-            .drop("timestamp")
-        )
-        terminal_agg = (
-            df.group_by("terminal_id")
-            .map_groups(lambda group: terminal_aggregation(self.aggregation_windows, group))
-            .sort("timestamp")
-            .drop("timestamp")
-        )
-        features = pl.concat([trx_df, card_agg, terminal_agg], how="horizontal")
-        if self.clf_features is not None:
-            features = features.select(self.clf_features)
-        return features
-
     def simulate_until(self, until_date: datetime, *, n: Optional[int] = None):
         """
         Simulate the system until the given date, processing all transactions up to that date.
@@ -136,12 +115,13 @@ class Banksys:
             raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
 
         features = list[dict[str, Any]]()
-        pbar = tqdm(total=n, desc="Simulating transactions", unit="trx")
+        pbar = tqdm(total=n, desc=f"{self.next_trx.timestamp.date().isoformat()}", unit="trx")
         while self.next_trx.timestamp <= until_date:
             # Simulated transactions should not affect the balance of the cards
             _, f, _ = self.process_transaction(self.next_trx, update_balance=False)
             features.append(f)
             self.next_trx = Transaction(**next(self.trx_iterator))
+            pbar.set_description(f"{self.next_trx.timestamp.date().isoformat()}")
             pbar.update()
         return features
 
@@ -224,24 +204,6 @@ class Banksys:
         self.trx_iterator = remaining_trx.iter_rows(named=True)
 
 
-def card_aggregation(agg_windows: Sequence[timedelta], card_df: pl.DataFrame):
-    results = list[pl.Series]()
-    for delta in agg_windows:
-        count, mean = count_and_mean(card_df["timestamp"].to_list(), card_df["amount"].to_list(), delta)
-        results.append(pl.Series(name=f"card_n_trx_last_{delta}", values=count))
-        results.append(pl.Series(name=f"card_mean_amount_last_{delta}", values=mean))
-    return pl.DataFrame(results).with_columns(card_df["timestamp"])
-
-
-def terminal_aggregation(agg_windows: Sequence[timedelta], term_df: pl.DataFrame):
-    results = list[pl.Series]()
-    for delta in agg_windows:
-        count, risk = count_and_mean(term_df["timestamp"].to_list(), term_df["predicted_label"].to_list(), delta)
-        results.append(pl.Series(name=f"terminal_n_trx_last_{delta}", values=count))
-        results.append(pl.Series(name=f"terminal_risk_last_{delta}", values=risk))
-    return pl.DataFrame(results).with_columns(term_df["timestamp"])
-
-
 def extract_trx_features(df: pl.DataFrame):
     weekday = df["timestamp"].dt.weekday()
     trx_df = df.with_columns(
@@ -252,25 +214,3 @@ def extract_trx_features(df: pl.DataFrame):
         *[pl.Series(name=day, values=(weekday == (i + 1)).cast(pl.Float32)) for i, day in enumerate("Mon Tue Wed Thu Fri Sat Sun".split())],
     )
     return trx_df.drop("timestamp")
-
-
-def count_and_mean(timestamps: Sequence[datetime], values: Sequence[float], delta: timedelta, start_index=1):
-    counts, means = [0], [0.0]  # The count and mean for the first transaction is always 0
-    window_values = values[0]
-    left = 0
-    window_vals = [window_values]
-    # Do not take the current transaction into account for its own aggregation
-    for right in range(start_index, len(timestamps)):
-        # Slide left boundary of the window
-        while left < right and timestamps[left] < timestamps[right] - delta:
-            window_values -= window_vals.pop(0)
-            left += 1
-        # Add the data to the window
-        count = right - left
-        counts.append(count)
-        means.append(window_values / count if count > 0 else 0.0)
-
-        # Then update the windows to include the current transaction
-        window_vals.append(values[right])
-        window_values += values[right]
-    return counts, means

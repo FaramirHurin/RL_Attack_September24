@@ -37,7 +37,7 @@ class Runner:
         action, hx = self.agent.choose_action(obs.data, None)
         self.env.buffer_action(action, new_card)
 
-        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.system.current_date, "card_id": new_card.id})
+        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t, "card_id": new_card.id})
         self.actions[new_card] = action
         self.observations[new_card] = obs
         self.states[new_card] = state
@@ -83,6 +83,8 @@ class Runner:
             except ValueError as e:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
                 return episodes
+            if step_num > 2_500:
+                print()
 
             current_episode = self.episodes[card]
             current_episode.add(transition)

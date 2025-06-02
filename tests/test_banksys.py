@@ -31,7 +31,14 @@ def test_invalid_dates():
 
 
 def test_simulate_until():
-    assert False, "Test that the system indeed simulated until the given date"
+    """
+    Test that the system indeed simulated until the given date
+    """
+    bs = mock_banksys()
+    assert bs.next_trx.timestamp >= bs.attack_start
+
+    bs.simulate_until(bs.attack_start + bs.max_aggregation_duration / 2)
+    assert bs.next_trx.timestamp >= bs.attack_start + bs.max_aggregation_duration / 2
 
 
 def test_balance_and_date():

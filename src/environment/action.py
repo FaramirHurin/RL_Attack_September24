@@ -21,7 +21,7 @@ class Action:
         is_online: bool,
         delay_hours: float,
     ):
-        self.amount = max(0.0, min(100_000, amount))
+        self.amount = max(0.01, min(100_000, amount))
         self.terminal_x = max(0, min(200, terminal_x))
         self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
