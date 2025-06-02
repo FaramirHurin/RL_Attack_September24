@@ -1,9 +1,15 @@
 from dataclasses import Field, dataclass
+from typing import Sequence
 
 import polars as pl
 
+from datetime import datetime, timedelta
 from .transaction import Transaction
 from .trx_window import TransactionWindow
+
+
+COLUMN_PREFIX_COUNT = "term_trx_count_"
+COLUMN_PREFIX_AMOUNT = "term_trx_amount_"
 
 
 @dataclass
@@ -20,6 +26,9 @@ class Terminal:
 
     def add(self, transaction: Transaction):
         self.transactions.add(transaction)
+
+    def get_features(self, agg: Sequence[timedelta], timestamp: datetime):
+        return self.transactions.count_and_risk(agg, timestamp)
 
     @staticmethod
     def from_df(df: pl.DataFrame):

@@ -62,6 +62,14 @@ def test_balance_and_date():
     assert system.cards[trx.card_id].balance == 500 - trx.amount, "Balance should be updated after transaction"
 
 
+def test_n_transacations_per_card():
+    assert False
+
+
+def test_n_transactions_per_terminal():
+    assert False
+
+
 def test_make_features():
     cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])

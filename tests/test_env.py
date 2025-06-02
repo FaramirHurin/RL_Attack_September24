@@ -1,6 +1,7 @@
 from environment import CardSimEnv, Action
 from banksys import Card, Banksys
 from datetime import timedelta
+from copy import deepcopy
 
 
 from .mocks import mock_banksys
@@ -56,3 +57,37 @@ def test_card_blocked_zero_reward():
     assert time_remaining == 23 / 24
     assert bool(is_credit) == card.is_credit
     assert hour_ratio == env.t.hour / 24
+
+
+def test_time_going():
+    bs = mock_banksys()
+    env = CardSimEnv(bs, timedelta(days=1))
+
+    card1 = env.spawn_card()[0]
+    card2 = env.spawn_card()[0]
+
+    t_0 = deepcopy(env.t)
+
+    action1 = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
+    env.buffer_action(action1.to_numpy(), card1)
+
+    action2 = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1.5)
+    env.buffer_action(action2.to_numpy(), card2)
+
+    card, step = env.step()
+    assert card == card1
+    assert env.t == t_0 + timedelta(hours=action1.delay_hours)
+    assert step.reward.item() == action1.amount
+
+    action3 = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=2)
+    env.buffer_action(action3.to_numpy(), card1)
+
+    card, step = env.step()
+    assert card == card2
+    assert env.t == t_0 + timedelta(hours=action2.delay_hours)
+    assert step.reward.item() == action2.amount
+
+    card, step = env.step()
+    assert card == card1
+    assert env.t == t_0 + timedelta(hours=action1.delay_hours + action3.delay_hours)
+    assert step.reward.item() == action3.amount

@@ -3,17 +3,15 @@ import os
 import pickle
 import random
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 import numpy as np
 import polars as pl
-from tqdm import tqdm
 
 from .card import Card
 from .classification import ClassificationSystem
 from .terminal import Terminal
 from .transaction import Transaction
-from .trx_window import TransactionWindow
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -42,7 +40,6 @@ class Banksys:
         assert self.attack_start < self.attack_end, "Attack start must be before attack end."
 
         self.current_date = self.t0
-        self.current_offset = 0
         self.clf_features = None
         self.clf = ClassificationSystem(clf_params)
 
@@ -60,7 +57,9 @@ class Banksys:
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
-        self._fit()
+        self.trx_iterator = iter([dict[str, Any]()])
+        self.next_transaction = Transaction(0, datetime.min, 0, 0, False, False)
+        self._setup()
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):
         assert 0 <= fp_rate <= 1.0 and 0 <= fn_rate <= 1.0, "Rates must be between 0 and 1"
@@ -88,7 +87,7 @@ class Banksys:
         logging.info(f"F1 Score: {f1_score(truth, pred):.4f}")
         return trx["predicted_label"]
 
-    def _fit(self):
+    def _setup(self):
         """
         Fit the classification system and process the training transactions.
 
@@ -106,11 +105,14 @@ class Banksys:
         train_x = df_train.select(self.clf_features)
         train_y = df_train["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(train_x, train_y)
-
+        print(df)
+        print(df_train)
         logging.info("Adding training transactions to the system...")
         # Set the current offset to the transactions that have to be processed for aggregation
-        self.current_offset = df.filter(pl.col("timestamp") < (self.attack_start - self.max_aggregation_duration)).height
-        self.simulate_until(self.attack_start, show_progress=True, n_transactions_to_process=df.height - self.current_offset)
+        start_offset = df.filter(pl.col("timestamp") < (self.attack_start - self.max_aggregation_duration * 2)).height
+        self.trx_iterator = iter(self._transactions_df[start_offset:].iter_rows(named=True))
+        self.next_transaction = Transaction(**next(self.trx_iterator))
+        self.simulate_until(self.attack_start)
 
     def make_features(self, df: pl.DataFrame):
         trx_df = extract_trx_features(df).drop("is_fraud")
@@ -131,53 +133,40 @@ class Banksys:
             features = features.select(self.clf_features)
         return features
 
-    def simulate_until(self, until_date: datetime, /, show_progress: bool = False, n_transactions_to_process: Optional[int] = None):
+    def simulate_until(self, until_date: datetime):
         """
         Simulate the system until the given date, processing all transactions up to that date.
         A "predicted label" is assigned to each transaction via the classification system.
         """
         if until_date < self.current_date:
-            raise ValueError(f"Cannot forward to {until_date}, current date is {self.current_date}.")
+            raise ValueError(f"Cannot go back in time. Current date is {self.current_date}, required date is {until_date}.")
         if until_date >= self.attack_end:
             raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
 
-        def flush(batch: TransactionWindow):
-            batch.update(until_date, self.max_aggregation_duration)
-            if batch.is_empty:
-                return
-            end_idx = self.current_offset + len(batch)
-            features = self.make_features(self._transactions_df[self.current_offset : end_idx])
-            self.current_offset = end_idx
-            labels, _ = self.clf.predict(features)
-            for label, trx in zip(labels, batch):
-                trx.predicted_label = bool(label)
-                self.add_transaction(trx, update_balance=False)
-
-        pbar = tqdm(
-            self._transactions_df[self.current_offset :].iter_rows(named=True),
-            unit="trx",
-            total=n_transactions_to_process,
-            disable=not show_progress,
-        )
-        end = until_date.date().isoformat()
-        window = TransactionWindow()
         cards = set[int]()
         terminals = set[int]()
-        for kwargs in pbar:
-            trx = Transaction(**kwargs)
-            if trx.timestamp >= until_date:
-                flush(window)
-                break
-            if trx.card_id in cards or trx.terminal_id in terminals:
-                pbar.set_description(f"{trx.timestamp.date().isoformat()}/{end}")
-                flush(window)
-                cards.clear()
-                terminals.clear()
-
-            window.add(trx)
-            cards.add(trx.card_id)
-            terminals.add(trx.terminal_id)
-        pbar.close()
+        features, transactions = [], list[Transaction]()
+        while self.next_transaction.timestamp < until_date:
+            if self.next_transaction.predicted_label is None:
+                # Compute its features for classification
+                transactions.append(self.next_transaction)
+                features.append(self.make_transaction_features(self.next_transaction))
+                # We only classify the transactions when the same card or terminal has been seen before,
+                # since otherwise the features would not take into account previous transactions from the same
+                # card or terminal.
+                if self.next_transaction.card_id in cards or self.next_transaction.terminal_id in terminals:
+                    # We need to process the transactions
+                    df = pl.DataFrame(features)
+                    labels = self.clf.predict(df)
+                    for label, trx in zip(labels, transactions):
+                        trx.predicted_label = label
+                    cards.clear()
+                    terminals.clear()
+            # Then add it to the system
+            cards.add(self.next_transaction.card_id)
+            terminals.add(self.next_transaction.terminal_id)
+            self.add_transaction(self.next_transaction, update_balance=False)
+            self.next_transaction = Transaction(**next(self.trx_iterator))
         self.current_date = until_date
 
     def process_transaction(self, trx: Transaction):
