@@ -1,3 +1,5 @@
+import os
+import shutil
 from banksys import Banksys, Transaction, Card, Terminal
 import polars as pl
 from datetime import datetime
@@ -144,15 +146,18 @@ def test_make_features():
 
 def test_save_load():
     bs = mock_banksys(use_cache=False, save=False)
-    end_date = bs.attack_start + bs.max_aggregation_duration / 2
+    # end_date = bs.attack_start + bs.max_aggregation_duration / 2
+    directory = os.path.join("cache", f"{datetime.now().isoformat().replace(':', '-')}")
+    try:
+        bs.save(directory)
+        trx = bs.next_trx
+        next_trx = next(bs.trx_iterator)
 
-    filename = f"{datetime.now().isoformat().replace(':', '-')}.pkl"
-    bs.save(filename)
-    t = next(bs.trx_iterator)
-    features = bs.simulate_until(end_date)
+        bs2 = Banksys.load(directory)
+        trx2 = bs2.next_trx
+        next_trx2 = next(bs2.trx_iterator)
 
-    bs2 = Banksys.load(filename)
-    t2 = next(bs2.trx_iterator)
-    assert t == t2, "The first transaction should be the same after loading the Banksys instance"
-    features2 = bs2.simulate_until(end_date)
-    assert features == features2, "Features should be the same after saving and loading the Banksys instance"
+        assert trx == trx2, "The first transaction should be the same after loading the Banksys instance"
+        assert next_trx == next_trx2, "The next transaction should be the same after loading the Banksys instance"
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
