@@ -62,6 +62,9 @@ def test_card_blocked_zero_reward():
 def test_time_going():
     bs = mock_banksys()
     env = CardSimEnv(bs, timedelta(days=1))
+    # Timeline
+    # Card 1  Spawn  --- 1h buffer action ----------------------- 3h action --
+    # Card 2  Spawn  -------------------------1h30 action --------------------
 
     card1 = env.spawn_card()[0]
     card2 = env.spawn_card()[0]

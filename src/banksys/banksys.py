@@ -3,10 +3,11 @@ import os
 import pickle
 import random
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 import numpy as np
 import polars as pl
+from tqdm import tqdm
 
 from .card import Card
 from .classification import ClassificationSystem
@@ -39,7 +40,6 @@ class Banksys:
 
         assert self.attack_start < self.attack_end, "Attack start must be before attack end."
 
-        self.current_date = self.t0
         self.clf_features = None
         self.clf = ClassificationSystem(clf_params)
 
@@ -53,12 +53,13 @@ class Banksys:
                 .alias("predicted_label")
             )
         )
+        self.trx_iterator = self._transactions_df.iter_rows(named=True)
+        self.next_trx = Transaction(**next(self.trx_iterator))
+
         self.cards = sorted(Card.from_df(cards_df), key=lambda c: c.id)
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
-        self.trx_iterator = iter([dict[str, Any]()])
-        self.next_transaction = Transaction(0, datetime.min, 0, 0, False, False)
         self._setup()
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):
@@ -93,28 +94,21 @@ class Banksys:
 
         Automatically called from the constructor.
         """
-        logging.info("Computing training features...")
-        df = self._transactions_df.filter(pl.col("timestamp") < self.attack_start)
-        # Since there is no trained predictor yet, we approximate the labels
-        all_features = self.make_features(df)
-        self.clf_features = all_features.drop("is_fraud", "predicted_label", "timestamp", strict=False).columns
-        all_features = all_features.with_columns(df["timestamp"], df["is_fraud"])
+        logging.info("System warmup for training feature aggregation...")
+        n = self._transactions_df.filter(pl.col("timestamp") < self.training_start).height
+        self.simulate_until(self.training_start, n=n)
 
-        # Only keep training transactions and discard warm-up transactions (required for aggregation)
-        df_train = all_features.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start))
-        train_x = df_train.select(self.clf_features)
-        train_y = df_train["is_fraud"].to_numpy().astype(np.bool)
-        self.clf.fit(train_x, train_y)
-        print(df)
-        print(df_train)
-        logging.info("Adding training transactions to the system...")
-        # Set the current offset to the transactions that have to be processed for aggregation
-        start_offset = df.filter(pl.col("timestamp") < (self.attack_start - self.max_aggregation_duration * 2)).height
-        self.trx_iterator = iter(self._transactions_df[start_offset:].iter_rows(named=True))
-        self.next_transaction = Transaction(**next(self.trx_iterator))
-        self.simulate_until(self.attack_start)
+        logging.info("Building classifier training features...")
+        n = self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start)).height
+        train_x = self.simulate_until(self.attack_start, n=n)
+        train_y = (
+            self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start))["is_fraud"]
+            .to_numpy()
+            .astype(np.bool)
+        )
+        self.clf.fit(pl.DataFrame(train_x), train_y)
 
-    def make_features(self, df: pl.DataFrame):
+    def make_features_old(self, df: pl.DataFrame):
         trx_df = extract_trx_features(df).drop("is_fraud")
         card_agg = (
             df.group_by("card_id")
@@ -133,66 +127,51 @@ class Banksys:
             features = features.select(self.clf_features)
         return features
 
-    def simulate_until(self, until_date: datetime):
+    def simulate_until(self, until_date: datetime, *, n: Optional[int] = None):
         """
         Simulate the system until the given date, processing all transactions up to that date.
         A "predicted label" is assigned to each transaction via the classification system.
         """
-        if until_date < self.current_date:
-            raise ValueError(f"Cannot go back in time. Current date is {self.current_date}, required date is {until_date}.")
         if until_date >= self.attack_end:
             raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
 
-        cards = set[int]()
-        terminals = set[int]()
-        features, transactions = [], list[Transaction]()
-        while self.next_transaction.timestamp < until_date:
-            if self.next_transaction.predicted_label is None:
-                # Compute its features for classification
-                transactions.append(self.next_transaction)
-                features.append(self.make_transaction_features(self.next_transaction))
-                # We only classify the transactions when the same card or terminal has been seen before,
-                # since otherwise the features would not take into account previous transactions from the same
-                # card or terminal.
-                if self.next_transaction.card_id in cards or self.next_transaction.terminal_id in terminals:
-                    # We need to process the transactions
-                    df = pl.DataFrame(features)
-                    labels = self.clf.predict(df)
-                    for label, trx in zip(labels, transactions):
-                        trx.predicted_label = label
-                    cards.clear()
-                    terminals.clear()
-            # Then add it to the system
-            cards.add(self.next_transaction.card_id)
-            terminals.add(self.next_transaction.terminal_id)
-            self.add_transaction(self.next_transaction, update_balance=False)
-            self.next_transaction = Transaction(**next(self.trx_iterator))
-        self.current_date = until_date
+        features = list[dict[str, Any]]()
+        pbar = tqdm(total=n, desc="Simulating transactions", unit="trx")
+        while self.next_trx.timestamp <= until_date:
+            # Simulated transactions should not affect the balance of the cards
+            _, f, _ = self.process_transaction(self.next_trx, update_balance=False)
+            features.append(f)
+            self.next_trx = Transaction(**next(self.trx_iterator))
+            pbar.update()
+        return features
 
-    def process_transaction(self, trx: Transaction):
+    def process_transaction(self, trx: Transaction, update_balance: bool = True, with_cause: bool = False):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         """
-        self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        label, cause = self.clf.predict(features)
-        trx.predicted_label = label.item()
-        self.add_transaction(trx, update_balance=True)
-        return trx.predicted_label, cause
+        cause = None
+        if trx.predicted_label is None:
+            if with_cause:
+                label, cause = self.clf.predict_with_cause(pl.DataFrame(features))
+            else:
+                label = self.clf.predict(pl.DataFrame(features))
+            trx.predicted_label = label.item()
+        self.terminals[trx.terminal_id].add(trx)
+        self.cards[trx.card_id].add(trx, update_balance=update_balance)
+        return trx.predicted_label, features, cause
 
     def make_transaction_features(self, trx: Transaction):
-        trx_df = trx.as_df()
-        trx_features = extract_trx_features(trx_df)
-        f = pl.DataFrame(
-            [
-                {
-                    **self.cards[trx.terminal_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
-                    **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
-                }
-            ]
-        )
-        # Concat and re-order the columns to match the training features
-        features = pl.concat([trx_features, f], how="horizontal").select(self.clf_features)
+        weekday = [0.0] * 7
+        weekday[trx.timestamp.weekday()] = 1.0
+        features = {
+            "hour": trx.timestamp.hour,
+            "is_online": trx.is_online,
+            "amount": trx.amount,
+            **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
+            **self.cards[trx.terminal_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
+            **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
+        }
         return features
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
@@ -205,10 +184,6 @@ class Banksys:
                 closest_distance = distance
         assert closest_terminal is not None
         return closest_terminal
-
-    def add_transaction(self, transaction: Transaction, update_balance: bool):
-        self.terminals[transaction.terminal_id].add(transaction)
-        self.cards[transaction.card_id].add(transaction, update_balance)
 
     def save(self, directory: str = "cache"):
         if not os.path.exists(directory):
@@ -228,6 +203,25 @@ class Banksys:
             banksys = pickle.load(f)
             assert isinstance(banksys, Banksys)
         return banksys
+
+    @property
+    def max_attack_duration(self):
+        """
+        Returns the maximum duration of the attack, which is the difference between the attack end and attack start.
+        """
+        return self.attack_end - self.attack_start
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Remove the transactions iterator to avoid pickling it
+        del state["trx_iterator"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Recreate the transactions iterator
+        remaining_trx = self._transactions_df.filter(pl.col("timestamp") < self.next_trx.timestamp)
+        self.trx_iterator = remaining_trx.iter_rows(named=True)
 
 
 def card_aggregation(agg_windows: Sequence[timedelta], card_df: pl.DataFrame):

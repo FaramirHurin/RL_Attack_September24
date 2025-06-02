@@ -28,6 +28,10 @@ def test_invalid_dates():
         pass
 
 
+def test_simulate_until():
+    assert False, "Test that the system indeed simulated until the given date"
+
+
 def test_balance_and_date():
     transactions = [
         # Warmup
@@ -75,20 +79,19 @@ def test_make_features():
     terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
 
     transactions = [
-        # Warmup
-        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 0
-        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 1
-        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 2
-        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 3
-        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 4
-        Transaction(90, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 5
-        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 6
-        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 7
-        # Training data
-        Transaction(170, datetime(2023, 2, 1), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 8
-        Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
-        # Test transaction (to prevent the system from crashing because there are no transactions to process)
-        Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(390, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(170, datetime(2023, 2, 14), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(160, datetime(2023, 2, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        # Transaction far in the future to allow for an attack
+        Transaction(190, datetime(2024, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
@@ -101,44 +104,55 @@ def test_make_features():
         fp_rate=0,
         fn_rate=0,
     )
-    print(trx_df[:-1])
-    # Create features for all transactions except the last one that has not been processed yet
-    features = system.make_features(system._transactions_df[:-1])
-    assert features.height == len(transactions) - 1
-    for i, trx in enumerate(transactions[:-1]):
-        assert trx.amount == features[i, "amount"]
-        assert trx.is_online == features[i, "is_online"]
-        assert trx.terminal_id == features[i, "terminal_id"]
-        assert trx.card_id == features[i, "card_id"]
 
-    def check_card_features(transactions: list[Transaction], features: pl.DataFrame):
-        for i, trx in enumerate(transactions):
-            for dt in system.aggregation_windows:
-                preceding_transactions = [t for t in transactions[:i] if (t.timestamp + dt) >= trx.timestamp]
-                count = len(preceding_transactions)
-                mean = sum(t.amount for t in preceding_transactions) / count if count > 0 else 0.0
-                fc = features[i, f"card_n_trx_last_{dt}"]
-                fm = features[i, f"card_mean_amount_last_{dt}"]
-                assert count == fc, f"Expected {count} transactions, got {fc} for card {trx.card_id} at index {i}"
-                assert mean == fm, f"Expected mean {mean}, got {fm} for card {trx.card_id} at index {i}"
+    def make_check(trx: Transaction):
+        system.simulate_until(trx.timestamp)
 
-    card_0_trx = [t for t in transactions[:-1] if t.card_id == 0]
-    card_1_trx = [t for t in transactions[:-1] if t.card_id == 1]
-    check_card_features(card_0_trx, features.filter(pl.col("card_id") == 0))
-    check_card_features(card_1_trx, features.filter(pl.col("card_id") == 1))
+        card_transactions = [t for t in transactions if t.card_id == trx.card_id]
+        term_transactions = [t for t in transactions if t.terminal_id == trx.terminal_id]
+        card_trx_per_agg = dict[timedelta, list[Transaction]]()
+        term_trx_per_agg = dict[timedelta, list[Transaction]]()
+        for delta in system.aggregation_windows:
+            card_trx_per_agg[delta] = [t for t in card_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
+            term_trx_per_agg[delta] = [t for t in term_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
 
-    def check_terminal_features(transactions: list[Transaction], features: pl.DataFrame):
-        for i, trx in enumerate(transactions):
-            for dt in system.aggregation_windows:
-                preceding_transactions = [t for t in transactions[:i] if (t.timestamp + dt) >= trx.timestamp]
-                count = len(preceding_transactions)
-                risk = sum(t.is_fraud for t in preceding_transactions) / count if count > 0 else 0.0
-                ft = features[i, f"terminal_n_trx_last_{dt}"]
-                fr = features[i, f"terminal_risk_last_{dt}"]
-                assert count == ft, f"Expected {count} transactions, got {ft} for terminal {trx.terminal_id} at index {i}"
-                assert risk == fr, f"Expected risk {risk}, got {fr} for terminal {trx.terminal_id} at index {i}"
+        _, features, _ = system.process_transaction(trx, update_balance=True)
+        assert features.pop("amount") == trx.amount
+        assert features.pop("is_online") == trx.is_online
+        assert features.pop("hour") == trx.timestamp.hour
+        days = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        weekday_num = trx.timestamp.weekday()
+        for day in days:
+            if day == days[weekday_num]:
+                assert features.pop(day) == 1
+            else:
+                assert features.pop(day) == 0
 
-    terminal_0_trx = [t for t in transactions[:-1] if t.terminal_id == 0]
-    terminal_1_trx = [t for t in transactions[:-1] if t.terminal_id == 1]
-    check_terminal_features(terminal_0_trx, features.filter(pl.col("terminal_id") == 0))
-    check_terminal_features(terminal_1_trx, features.filter(pl.col("terminal_id") == 1))
+        for delta in system.aggregation_windows:
+            n_trx_per_card = len(card_trx_per_agg[delta])
+            mean_amount = sum(t.amount for t in card_trx_per_agg[delta]) / n_trx_per_card if n_trx_per_card > 0 else 0
+            n_trx_per_term = len(term_trx_per_agg[delta])
+            risk_score = sum(t.is_fraud for t in term_trx_per_agg[delta]) / n_trx_per_term if n_trx_per_term > 0 else 0
+            assert features.pop(f"card_n_trx_last_{delta}") == n_trx_per_card
+            assert features.pop(f"card_mean_amount_last_{delta}") == mean_amount
+            assert features.pop(f"terminal_n_trx_last_{delta}") == n_trx_per_term
+            assert features.pop(f"terminal_risk_last_{delta}") == risk_score
+        assert len(features) == 0, f"All features should be tested but {features.keys()} remain untested"
+
+    make_check(Transaction(180, datetime(2023, 3, 3), terminal_id=0, card_id=0, is_online=True, is_fraud=False))
+
+
+def test_save_load():
+    bs = mock_banksys(use_cache=False, save=False)
+    end_date = bs.attack_start + bs.max_aggregation_duration / 2
+
+    filename = f"{datetime.now().isoformat().replace(':', '-')}.pkl"
+    bs.save(filename)
+    t = next(bs.trx_iterator)
+    features = bs.simulate_until(end_date)
+
+    bs2 = Banksys.load(filename)
+    t2 = next(bs2.trx_iterator)
+    assert t == t2, "The first transaction should be the same after loading the Banksys instance"
+    features2 = bs2.simulate_until(end_date)
+    assert features == features2, "Features should be the same after saving and loading the Banksys instance"

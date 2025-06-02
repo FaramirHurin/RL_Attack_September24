@@ -25,7 +25,7 @@ def test_update():
     assert len(window) == 2
 
 
-def test_count_and_mean():
+def test_count_and_mean_and_risk():
     agg = (timedelta(days=1), timedelta(days=7))
     window = TransactionWindow()
     features = window.count_and_mean(agg, datetime(2023, 1, 10))

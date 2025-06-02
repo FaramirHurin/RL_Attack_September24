@@ -123,8 +123,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             terminal_id = self.system.get_closest_terminal(card.x, card.y).id
             trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
             try:
-                fraud_is_detected, cause_of_detection = self.system.process_transaction(trx)
+                fraud_is_detected, _, cause_of_detection = self.system.process_transaction(trx, with_cause=True)
                 if fraud_is_detected:
+                    assert cause_of_detection is not None, "Cause of detection should not be None if fraud is detected"
                     info |= cause_of_detection.to_dicts()[0]
                 transaction_denied = fraud_is_detected
             except InsufficientFundsError:
