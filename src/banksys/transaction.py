@@ -1,9 +1,6 @@
 from dataclasses import Field, dataclass
 from datetime import datetime
 import polars as pl
-import numpy as np
-
-N_MINUTES_IN_DAY = 24 * 60
 
 
 @dataclass

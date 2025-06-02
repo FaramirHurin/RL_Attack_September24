@@ -37,14 +37,12 @@ rules_dict = {
 
 
 class RuleBasedClassifier:
-    def __init__(
-        self,
-        max_values: dict[timedelta, float],
-    ):
+    def __init__(self, max_values: dict[timedelta, float]):
         self.max_values = max_values
         self.rule_values = max_values
 
     def predict(self, df: pl.DataFrame):
+        # We assume that rules are based on features that are already computed in the DataFrame
         detected_by = pl.DataFrame()
         labels = np.full(len(df), False, dtype=np.bool)
         for td, max_value in self.max_values.items():

@@ -1,10 +1,80 @@
-from datetime import datetime, timedelta
-from banksys import Transaction, Card, Terminal, Banksys
+from banksys import Banksys, Transaction, Card, Terminal
 import polars as pl
+from datetime import datetime
+from parameters import Parameters, CardSimParameters, ClassificationParameters
 
-from parameters import ClassificationParameters
+from datetime import timedelta
+from .mocks import mock_banksys
 
-if __name__ == "__main__":
+
+def test_invalid_dates():
+    params = Parameters(
+        cardsim=CardSimParameters(n_days=50, n_payers=100),
+        clf_params=ClassificationParameters(training_duration=timedelta(days=30)),
+        aggregation_windows=(timedelta(days=30),),
+    )  # Not enough data for the classification system
+    transactions, cards, terminals = params.cardsim.get_simulation_data()
+    try:
+        Banksys(
+            transactions,
+            cards,
+            terminals,
+            params.aggregation_windows,
+            params.clf_params,
+            params.terminal_fract,
+        )
+        assert False, "Expected ValueError for insufficient data"
+    except AssertionError:
+        pass
+
+
+def test_simulate_until():
+    assert False, "Test that the system indeed simulated until the given date"
+
+
+def test_balance_and_date():
+    transactions = [
+        # Warmup
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 0
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 1
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 2
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 3
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 4
+        Transaction(90, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 5
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 6
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 7
+        # Training data
+        Transaction(170, datetime(2023, 2, 1), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 8
+        Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
+        # Test transaction (to prevent the system from crashing because there are no transactions to process)
+        Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+    ]
+    trx_df = pl.DataFrame(transactions)
+    system = Banksys(
+        trx_df,
+        pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)]),
+        pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)]),
+        aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
+        attackable_terminal_factor=1.0,
+        fp_rate=0,
+        fn_rate=0,
+    )
+    trx = transactions[-1]
+    system.cards[trx.card_id].balance = 500
+    system.process_transaction(trx)
+    assert system.cards[trx.card_id].balance == 500 - trx.amount, "Balance should be updated after transaction"
+
+
+def test_n_transacations_per_card():
+    assert False
+
+
+def test_n_transactions_per_terminal():
+    assert False
+
+
+def test_make_features():
     cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
 
@@ -46,7 +116,7 @@ if __name__ == "__main__":
             card_trx_per_agg[delta] = [t for t in card_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
             term_trx_per_agg[delta] = [t for t in term_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
 
-        _, features = system.process_transaction(trx, update_balance=True)
+        _, features, _ = system.process_transaction(trx, update_balance=True)
         assert features.pop("amount") == trx.amount
         assert features.pop("is_online") == trx.is_online
         assert features.pop("hour") == trx.timestamp.hour
@@ -70,3 +140,19 @@ if __name__ == "__main__":
         assert len(features) == 0, f"All features should be tested but {features.keys()} remain untested"
 
     make_check(Transaction(180, datetime(2023, 3, 3), terminal_id=0, card_id=0, is_online=True, is_fraud=False))
+
+
+def test_save_load():
+    bs = mock_banksys(use_cache=False, save=False)
+    end_date = bs.attack_start + bs.max_aggregation_duration / 2
+
+    filename = f"{datetime.now().isoformat().replace(':', '-')}.pkl"
+    bs.save(filename)
+    t = next(bs.trx_iterator)
+    features = bs.simulate_until(end_date)
+
+    bs2 = Banksys.load(filename)
+    t2 = next(bs2.trx_iterator)
+    assert t == t2, "The first transaction should be the same after loading the Banksys instance"
+    features2 = bs2.simulate_until(end_date)
+    assert features == features2, "Features should be the same after saving and loading the Banksys instance"

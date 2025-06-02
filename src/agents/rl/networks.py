@@ -71,6 +71,7 @@ class ActorCritic(torch.nn.Module, ABC):
         *dims, _ = outputs.shape
         outputs = outputs.view(-1, self.output_size)
         means = outputs[:, : self.n_actions]
+        means = torch.nn.functional.softplus(means)
         cov = outputs[:, self.n_actions :]
         cov = cov.reshape(-1, self.n_actions, self.n_actions)
         norm = torch.norm(cov, p="fro", dim=(1, 2), keepdim=True)

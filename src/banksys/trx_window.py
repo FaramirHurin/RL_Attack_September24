@@ -22,14 +22,15 @@ class TransactionWindow:
     def get_window(self) -> list[Transaction]:
         return self.transactions
 
-    def count_and_mean(self, aggregation_windows: Sequence[timedelta], timestamp: datetime):
+    def count_and_mean(self, aggregation_windows: Sequence[timedelta], timestamp: datetime, update=True):
         """
         Count the number of transactions in the given time windows.
         Note: aggregation_windows must be sorted in ascending order.
         """
         results = dict[str, float]()
         total_amount = 0
-        self.update(timestamp, max(aggregation_windows))
+        if update:
+            self.update(timestamp, max(aggregation_windows))
         window_size = len(self.transactions)
         i = len(self.transactions) - 1
         for delta in aggregation_windows:
@@ -42,14 +43,15 @@ class TransactionWindow:
             results[f"card_mean_amount_last_{delta}"] = total_amount / n if n > 0 else 0.0
         return results
 
-    def count_and_risk(self, aggregation_windows: Sequence[timedelta], timestamp: datetime):
+    def count_and_risk(self, aggregation_windows: Sequence[timedelta], timestamp: datetime, update=True):
         """
         Count the number of transactions in the given time windows and compute the risk.
         Note: aggregation_windows must be sorted in ascending order.
         """
         results = dict[str, float]()
         n_frauds = 0
-        self.update(timestamp, max(aggregation_windows))
+        if update:
+            self.update(timestamp, max(aggregation_windows))
         window_size = len(self.transactions)
         i = len(self.transactions) - 1
         for duration in aggregation_windows:
@@ -62,3 +64,16 @@ class TransactionWindow:
             results[f"terminal_n_trx_last_{duration}"] = n
             results[f"terminal_risk_last_{duration}"] = n_frauds / n if n > 0 else 0.0
         return results
+
+    def __len__(self):
+        return len(self.transactions)
+
+    def __iter__(self):
+        return iter(self.transactions)
+
+    def __getitem__(self, item: int):
+        return self.transactions[item]
+
+    @property
+    def is_empty(self):
+        return len(self.transactions) == 0

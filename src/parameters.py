@@ -506,7 +506,7 @@ class Parameters:
         from banksys import Banksys
 
         transactions, cards, terminals = self.cardsim.get_simulation_data()
-        banksys = Banksys(
+        return Banksys(
             transactions,
             cards,
             terminals,
@@ -514,8 +514,6 @@ class Parameters:
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
         )
-        banksys.fit()
-        return banksys
 
     def datasets_exists(self, directory: Optional[str] = None) -> bool:
         """
