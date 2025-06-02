@@ -69,11 +69,47 @@ def test_balance_and_date():
 
 
 def test_n_transacations_per_card():
-    assert False
+    transactions = [
+        # Warmup
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 0
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 1
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 2
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 3
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 4
+        Transaction(90, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 5
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 6
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 7
+        # Training data
+        Transaction(170, datetime(2023, 2, 1), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 8
+        Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
+        # Test transaction (to prevent the system from crashing because there are no transactions to process)
+        Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+    ]
+    trx_df = pl.DataFrame(transactions)
+    system = Banksys(
+        trx_df,
+        pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)]),
+        pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)]),
+        aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
+        attackable_terminal_factor=1.0,
+        fp_rate=0,
+        fn_rate=0,
+    )
+    window = 30
+    trx = Transaction(120, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=True)  # 10
+    card = system.cards[trx.card_id]
+    past_transactions = card.transactions.get_window()
+    system.process_transaction(trx, update_balance=True)
+    future_transactions = card.transactions.get_window()
 
+    assert trx in future_transactions and trx not in past_transactions, "Transaction should be added to the card's transaction window"
 
-def test_n_transactions_per_terminal():
-    assert False
+    # Assert all transactions in window are in future transactions
+    for t in past_transactions:
+        if t.timestamp >= trx.timestamp - timedelta(days=window):
+            assert t in future_transactions, "All transactions in the window should be in the future transactions"
+
 
 
 def test_make_features():
