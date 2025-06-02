@@ -1,6 +1,5 @@
 import logging
 import random
-from copy import deepcopy
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -47,7 +46,6 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=(obs_size,),
         )
         self.system = system
-        self.t = deepcopy(system.attack_start)
         self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
         self.customer_location_is_known = customer_location_is_known
         self.include_weekday = include_weekday
@@ -57,7 +55,6 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def reset(self):
         self.card_registry.reset(self.system.cards)
         self.action_buffer.clear()
-        self.t = deepcopy(self.system.attack_start)
         return
 
     def spawn_card(self):
@@ -98,41 +95,43 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             features += [x, y]
         return np.array(features, dtype=np.float32)
 
+    @property
+    def t(self):
+        return self.system.current_time
+
     def step(self):
         """
         Performs the next action in the queue.
         """
         t, (card, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
-        assert t >= self.t, "Actions can not be executed in the past"
         if t >= self.system.attack_end:
             raise AttackPeriodExpired(
                 f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()})"
             )
-        self.t = t
-        info = dict[str, Any](t=self.t.isoformat())
+        info = dict[str, Any](t=t.isoformat())
         if self.normalize_location:
             action.terminal_x *= 200
             action.terminal_y *= 200
-        if self.card_registry.has_expired(card, self.t):
+        if self.card_registry.has_expired(card, t):
             self.card_registry.clear(card)
             reward = 0.0
             done = True
             info["expired"] = True
+            self.system.simulate_until(t)
         else:
             terminal_id = self.system.get_closest_terminal(card.x, card.y).id
-            trx = Transaction(action.amount, self.t, terminal_id, card.id, action.is_online, is_fraud=True)
+            trx = Transaction(action.amount, t, terminal_id, card.id, action.is_online, is_fraud=True)
             try:
-                fraud_is_detected, _, cause_of_detection = self.system.process_transaction(trx, with_cause=True)
-                if fraud_is_detected:
-                    assert cause_of_detection is not None, "Cause of detection should not be None if fraud is detected"
-                    info |= cause_of_detection.to_dicts()[0]
-                transaction_denied = fraud_is_detected
+                self.system.process_transaction(trx)
+                transaction_denied = False
+                if trx.fraud_is_detected:
+                    info |= self.system.clf.get_details().to_dicts()[0]
+                    transaction_denied = True
             except InsufficientFundsError:
                 info["insufficient_funds"] = True
-                fraud_is_detected = False
                 transaction_denied = True
-            done = fraud_is_detected
+            done = trx.fraud_is_detected
             reward = 0.0 if transaction_denied else trx.amount
         state = self.compute_state(card)
         return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info)

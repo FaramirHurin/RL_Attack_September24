@@ -4,7 +4,7 @@ import pickle
 from functools import cached_property
 import random
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
 import numpy as np
 import polars as pl
@@ -38,7 +38,6 @@ class Banksys:
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, "Attack start must be before attack end."
 
-        self.clf_features = None
         self.clf = ClassificationSystem(clf_params)
 
         self._transactions_df = (
@@ -53,12 +52,114 @@ class Banksys:
         )
         self.trx_iterator = self._transactions_df.iter_rows(named=True)
         self.next_trx = Transaction(**next(self.trx_iterator))
-
         self.cards = sorted(Card.from_df(cards_df), key=lambda c: c.id)
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
-        self._setup()
+        self.fit()
+
+    def fit(self):
+        """
+        Fit the classification system and process the training transactions.
+
+        Automatically called from the constructor.
+        """
+        logging.info("System warmup for training feature aggregation...")
+        self.fast_forward(self.training_start)
+
+        logging.info("Building classifier training features...")
+        features = self.fast_forward(self.attack_start)
+        train_x = pl.DataFrame(features)
+        train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
+        self.clf.fit(pl.DataFrame(train_x), train_y)
+
+    def fast_forward(self, until: datetime):
+        """
+        Fast forward the system to the given date, adding all the transactions to the
+        system but without classifying them.
+        """
+        if until > self.attack_end:
+            raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
+        start = self.next_trx.timestamp
+        stop = min(until, self.attack_end)
+        n = self._transactions_df.filter(pl.col("timestamp").is_between(start, stop)).height
+        pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx")
+        features = list()
+        while self.next_trx.timestamp < stop:
+            features.append(self.make_transaction_features(self.next_trx))
+            self.cards[self.next_trx.card_id].add(self.next_trx, update_balance=False)
+            self.terminals[self.next_trx.terminal_id].add(self.next_trx)
+            pbar.set_description(f"{self.next_trx.timestamp.date().isoformat()}")
+            pbar.update()
+            self.next_trx = Transaction(**next(self.trx_iterator))
+        pbar.close()
+        self.current_time = until
+        return features
+
+    def simulate_until(self, until: datetime):
+        """
+        Simulate the system until the given date, processing all transactions up to that date.
+        A "predicted label" is assigned to each transaction via the classification system.
+        """
+        if until > self.attack_end:
+            raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
+
+        cards = set[int]()
+        terms = set[int]()
+        batch = list[Transaction]()
+        features = list()
+        while self.next_trx.timestamp <= until:
+            if self.next_trx.card_id in cards or self.next_trx.terminal_id in terms:
+                features.append(self.process_transactions(batch, False))
+                cards.clear()
+                terms.clear()
+                batch.clear()
+            cards.add(self.next_trx.card_id)
+            terms.add(self.next_trx.terminal_id)
+            batch.append(self.next_trx)
+            self.next_trx = Transaction(**next(self.trx_iterator))
+        if len(batch) > 0:
+            features.append(self.process_transactions(batch, False))
+        self.current_time = until
+        return features
+
+    def process_transaction(self, trx: Transaction, update_balance: bool = True):
+        """
+        Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
+        """
+        self.simulate_until(trx.timestamp)
+        features = self.make_transaction_features(trx)
+        if trx.predicted_label is None:
+            label = self.clf.predict(pl.DataFrame(features))
+            trx.predicted_label = label.item()
+        self.terminals[trx.terminal_id].add(trx)
+        self.cards[trx.card_id].add(trx, update_balance=update_balance)
+        return features
+
+    def process_transactions(self, transactions: list[Transaction], update_balance: bool):
+        """
+        Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
+        """
+        df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
+        labels = self.clf.predict(df)
+        for trx, label in zip(transactions, labels):
+            trx.predicted_label = label
+            self.terminals[trx.terminal_id].add(trx)
+            self.cards[trx.card_id].add(trx, update_balance=update_balance)
+        return df
+
+    def make_transaction_features(self, trx: Transaction):
+        weekday = [0.0] * 7
+        weekday[trx.timestamp.weekday()] = 1.0
+        features = {
+            "hour": trx.timestamp.hour,
+            "is_online": trx.is_online,
+            "amount": trx.amount,
+            **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
+            **self.cards[trx.terminal_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
+            **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
+        }
+        return features
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):
         assert 0 <= fp_rate <= 1.0 and 0 <= fn_rate <= 1.0, "Rates must be between 0 and 1"
@@ -85,75 +186,6 @@ class Banksys:
         logging.info(f"Precision: {precision_score(truth, pred):.4f}")
         logging.info(f"F1 Score: {f1_score(truth, pred):.4f}")
         return trx["predicted_label"]
-
-    def _setup(self):
-        """
-        Fit the classification system and process the training transactions.
-
-        Automatically called from the constructor.
-        """
-        logging.info("System warmup for training feature aggregation...")
-        n = self._transactions_df.filter(pl.col("timestamp") < self.training_start).height
-        self.simulate_until(self.training_start, n=n)
-
-        logging.info("Building classifier training features...")
-        n = self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start)).height
-        train_x = self.simulate_until(self.attack_start, n=n)
-        train_y = (
-            self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start))["is_fraud"]
-            .to_numpy()
-            .astype(np.bool)
-        )
-        self.clf.fit(pl.DataFrame(train_x), train_y)
-
-    def simulate_until(self, until_date: datetime, *, n: Optional[int] = None):
-        """
-        Simulate the system until the given date, processing all transactions up to that date.
-        A "predicted label" is assigned to each transaction via the classification system.
-        """
-        if until_date >= self.attack_end:
-            raise ValueError(f"Cannot forward to {until_date}, it is beyond the attack end date {self.attack_end}.")
-
-        features = list[dict[str, Any]]()
-        pbar = tqdm(total=n, desc=f"{self.next_trx.timestamp.date().isoformat()}", unit="trx")
-        while self.next_trx.timestamp <= until_date:
-            # Simulated transactions should not affect the balance of the cards
-            _, f, _ = self.process_transaction(self.next_trx, update_balance=False)
-            features.append(f)
-            self.next_trx = Transaction(**next(self.trx_iterator))
-            pbar.set_description(f"{self.next_trx.timestamp.date().isoformat()}")
-            pbar.update()
-        self.current_time = until_date
-        return features
-
-    def process_transaction(self, trx: Transaction, update_balance: bool = True, with_cause: bool = False):
-        """
-        Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
-        """
-        features = self.make_transaction_features(trx)
-        cause = None
-        if trx.predicted_label is None:
-            if with_cause:
-                label, cause = self.clf.predict_with_cause(pl.DataFrame(features))
-            else:
-                label = self.clf.predict(pl.DataFrame(features))
-            trx.predicted_label = label.item()
-        self.terminals[trx.terminal_id].add(trx)
-        self.cards[trx.card_id].add(trx, update_balance=update_balance)
-        return trx.predicted_label, features, cause
-
-    def make_transaction_features(self, trx: Transaction):
-        weekday = [0.0] * 7
-        weekday[trx.timestamp.weekday()] = 1.0
-        features = {
-            "hour": trx.timestamp.hour,
-            "is_online": trx.is_online,
-            "amount": trx.amount,
-            **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
-            **self.cards[trx.terminal_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
-            **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
-        }
-        return features
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:
         closest_terminal = None

@@ -147,7 +147,7 @@ if __name__ == "__main__":
         agent=PPOParameters.best_ppo(),
         # agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters(),
-        clf_params=ClassificationParameters.paper_params(),
+        clf_params=ClassificationParameters(),
         logdir="logs/test",
         save=True,
     )

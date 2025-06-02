@@ -36,7 +36,7 @@ if __name__ == "__main__":
     )
 
     def make_check(trx: Transaction):
-        system.simulate_until(trx.timestamp)
+        system.process_until(trx.timestamp)
 
         card_transactions = [t for t in transactions if t.card_id == trx.card_id]
         term_transactions = [t for t in transactions if t.terminal_id == trx.terminal_id]

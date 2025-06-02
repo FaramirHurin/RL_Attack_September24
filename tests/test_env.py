@@ -1,5 +1,5 @@
 from environment import CardSimEnv, Action
-from banksys import Card, Banksys
+from banksys import Card
 from datetime import timedelta
 from copy import deepcopy
 
@@ -94,3 +94,7 @@ def test_time_going():
     assert card == card1
     assert env.t == t_0 + timedelta(hours=action1.delay_hours + action3.delay_hours)
     assert step.reward.item() == action3.amount
+
+
+def test_compute_state():
+    assert False, "TODO"

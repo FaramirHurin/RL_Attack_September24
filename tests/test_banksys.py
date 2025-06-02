@@ -57,6 +57,7 @@ def test_balance_and_date():
         Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
         # Test transaction (to prevent the system from crashing because there are no transactions to process)
         Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 11), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
@@ -69,7 +70,7 @@ def test_balance_and_date():
         fp_rate=0,
         fn_rate=0,
     )
-    trx = transactions[-1]
+    trx = transactions[-2]
     system.cards[trx.card_id].balance = 500
     system.process_transaction(trx)
     assert system.cards[trx.card_id].balance == 500 - trx.amount, "Balance should be updated after transaction"
@@ -99,16 +100,13 @@ def test_n_transacations_per_card():
         pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)]),
         aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
-        attackable_terminal_factor=1.0,
-        fp_rate=0,
-        fn_rate=0,
     )
     window = 30
     trx = Transaction(120, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=True)  # 10
     card = system.cards[trx.card_id]
-    past_transactions = card.transactions.get_window()
+    past_transactions = card.transactions.get_window().copy()
     system.process_transaction(trx, update_balance=True)
-    future_transactions = card.transactions.get_window()
+    future_transactions = card.transactions.get_window().copy()
 
     assert trx in future_transactions and trx not in past_transactions, "Transaction should be added to the card's transaction window"
 
@@ -118,12 +116,12 @@ def test_n_transacations_per_card():
             assert t in future_transactions, "All transactions in the window should be in the future transactions"
 
 
-
 def test_make_features():
     cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
 
     transactions = [
+        # Training data
         Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),
         Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
         Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
@@ -132,6 +130,7 @@ def test_make_features():
         Transaction(390, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
         Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
         Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        # Actual agregation
         Transaction(170, datetime(2023, 2, 14), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
         Transaction(160, datetime(2023, 2, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
         Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
@@ -151,8 +150,6 @@ def test_make_features():
     )
 
     def make_check(trx: Transaction):
-        system.simulate_until(trx.timestamp)
-
         card_transactions = [t for t in transactions if t.card_id == trx.card_id]
         term_transactions = [t for t in transactions if t.terminal_id == trx.terminal_id]
         card_trx_per_agg = dict[timedelta, list[Transaction]]()
@@ -161,7 +158,7 @@ def test_make_features():
             card_trx_per_agg[delta] = [t for t in card_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
             term_trx_per_agg[delta] = [t for t in term_transactions if trx.timestamp - delta <= t.timestamp < trx.timestamp]
 
-        _, features, _ = system.process_transaction(trx, update_balance=True)
+        features = system.process_transaction(trx, update_balance=True)
         assert features.pop("amount") == trx.amount
         assert features.pop("is_online") == trx.is_online
         assert features.pop("hour") == trx.timestamp.hour
@@ -188,7 +185,7 @@ def test_make_features():
 
 
 def test_save_load():
-    bs = mock_banksys(use_cache=False, save=False)
+    bs = mock_banksys()
     # end_date = bs.attack_start + bs.max_aggregation_duration / 2
     directory = os.path.join("cache", f"{datetime.now().isoformat().replace(':', '-')}")
     try:

@@ -35,6 +35,12 @@ class Transaction:
             predicted_label = bool(predicted_label)
         self.predicted_label = predicted_label
 
+    @property
+    def fraud_is_detected(self):
+        if self.predicted_label is None:
+            return False
+        return self.predicted_label
+
     def as_df(self, with_label: bool = False, with_predicted_label: bool = False) -> pl.DataFrame:
         """
         Convert the transaction to a Polars DataFrame.

@@ -88,7 +88,7 @@ if __name__ == "__main__":
     # env = p.create_env()
     if not p.banksys_is_in_cache():
         logging.info("Creating banksys...")
-        p.create_banksys(save=True)
+        p.create_banksys()
 
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",

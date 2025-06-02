@@ -217,7 +217,7 @@ class PPOParameters:
             gamma=0.9,
             lr_actor=0.0013655647166021928,
             lr_critic=0.007255685546096761,
-            n_epochs=13,
+            n_epochs=50,
             eps_clip=0.1,
             critic_c1=Schedule.linear(
                 start_value=0.9375751577962954,
@@ -229,8 +229,8 @@ class PPOParameters:
                 end_value=0.007744880113458132,  #
                 n_steps=2537,
             ),
-            train_interval=100,
-            minibatch_size=80,
+            train_interval=25,
+            minibatch_size=12,
             gae_lambda=0.99,
             grad_norm_clipping=8.934885848478487,
         )
