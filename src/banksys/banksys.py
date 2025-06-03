@@ -110,7 +110,7 @@ class Banksys:
         features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.card_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch, False))
+                features.append(self.process_transactions(batch, update_balance=False, real_label=True))
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -119,29 +119,37 @@ class Banksys:
             batch.append(self.next_trx)
             self.next_trx = Transaction(**next(self.trx_iterator))
         if len(batch) > 0:
-            features.append(self.process_transactions(batch, False))
+            features.append(self.process_transactions(batch, update_balance=False, real_label=True))
         self.current_time = until
         return features
 
-    def process_transaction(self, trx: Transaction, update_balance: bool = True):
+    def process_transaction(self, trx: Transaction, update_balance: bool = True, real_label: Optional[bool] = False):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
+        If `real_label` is True, it will use the real label from the transaction.
         """
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
         if trx.predicted_label is None:
-            label = self.clf.predict(pl.DataFrame(features))
-            trx.predicted_label = label.item()
+            if real_label == True:
+                trx.predicted_label = trx.is_fraud
+            else:
+                label = self.clf.predict(pl.DataFrame(features))
+                trx.predicted_label = label.item()
         self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
         return features
 
-    def process_transactions(self, transactions: list[Transaction], update_balance: bool):
+    def process_transactions(self, transactions: list[Transaction], update_balance: bool, real_label=False):
         """
         Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
+        If `real_label` is True, it will use the real label from the transaction.
         """
         df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
-        labels = self.clf.predict(df)
+        if real_label:
+           labels = np.array([trx.is_fraud for trx in transactions])
+        else:
+            labels = self.clf.predict(df)
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)

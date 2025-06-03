@@ -144,12 +144,13 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=PPOParameters.best_ppo(),
+        agent=PPOParameters.best_rppo(),
         # agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters(),
         clf_params=ClassificationParameters(),
         logdir="logs/test",
         save=True,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
     exp = Experiment.create(params)
     run(params)
