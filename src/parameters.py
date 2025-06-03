@@ -308,16 +308,16 @@ class PPOParameters:
 @dataclass(eq=True)
 class VAEParameters:
     latent_dim: int = 10
-    hidden_dim: int = 120
+    hidden_dim: int = 50
     lr: float = 0.0005
     trees: int = 20
-    batch_size: int = 8
-    num_epochs: int = 4000
-    quantile: float = 0.95
+    batch_size: int = 32
+    num_epochs: int = 2000
+    quantile: float = 0.99
     supervised: bool = False
-    generated_size: int = 1000
-    n_infiltrated_terminals: int = 5
-    beta: float = 0.1
+    generated_size: int = 3000
+    n_infiltrated_terminals: int = 100
+    beta: float = 0.2
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent

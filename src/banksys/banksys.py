@@ -129,14 +129,6 @@ class Banksys:
         If `real_label` is True, it will use the real label from the transaction.
         """
         self.simulate_until(trx.timestamp)
-        features = self.make_transaction_features(trx)
-        if trx.predicted_label is None:
-            if real_label == True:
-                trx.predicted_label = trx.is_fraud
-            else:
-                label = self.clf.predict(pl.DataFrame(features))
-                trx.predicted_label = label.item()
-
         if not real_label:
             try:
                 self.seen_cards[trx.card_id] = \
@@ -146,6 +138,15 @@ class Banksys:
                 self.seen_cards = {trx.card_id: 1}
             if self.seen_cards[trx.card_id]  >= 9:
                 debug =0
+
+        features = self.make_transaction_features(trx)
+        if trx.predicted_label is None:
+            if real_label == True:
+                trx.predicted_label = trx.is_fraud
+            else:
+                label = self.clf.predict(pl.DataFrame(features))
+                trx.predicted_label = label.item()
+
 
         self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
@@ -175,7 +176,7 @@ class Banksys:
             "is_online": trx.is_online,
             "amount": trx.amount,
             **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
-            **self.cards[trx.terminal_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
+            **self.cards[trx.card_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
             **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
         }
         return features

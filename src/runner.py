@@ -16,6 +16,7 @@ import dotenv
 
 class Runner:
     def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False, device: Optional[torch.device] = None):
+        device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.observations = dict[Card, Observation]()
@@ -144,13 +145,12 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        # agent=PPOParameters.best_ppo(),
-        agent=VAEParameters.best_vae(),
+        agent=PPOParameters.best_ppo(),
+        #agent=VAEParaeters.best_vae(),
         cardsim=CardSimParameters(),
         clf_params=ClassificationParameters(),
         logdir="logs/test",
         save=True,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     )
     exp = Experiment.create(params)
     run(params)

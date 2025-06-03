@@ -50,6 +50,7 @@ class Action:
             # delay_days=int(delay_days),
             delay_hours=float(delay_hours),
         )
+        #print(terminal_x, terminal_y)
 
         return to_return
 

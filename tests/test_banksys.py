@@ -209,7 +209,7 @@ def test_save_load():
 
 def test_aggregated_features():
     cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
-    terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
+    terminals = pl.DataFrame([Terminal(index, 75, 95) for index in range(20)])
 
     transactions = [
         # Training data
@@ -248,7 +248,7 @@ def test_aggregated_features():
 
     for index in range(4):
         day = index + 1
-        trx_1 = Transaction(200, datetime(2023, 8,  1 + day), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
+        trx_1 = Transaction(200, datetime(2023, 8,  1 + day), terminal_id=index, card_id=0, is_online=False, is_fraud=True)
         features_1 = system.make_transaction_features(trx_1)
         aggr_1_day = features_1.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
         system.process_transaction(trx_1, update_balance=False)
