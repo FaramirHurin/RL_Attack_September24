@@ -110,7 +110,7 @@ class Banksys:
         features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.card_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch, update_balance=False, real_label=True))
+                features.append(self.process_transactions(batch, update_balance=False, real_label=False))
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -123,7 +123,7 @@ class Banksys:
         self.current_time = until
         return features
 
-    def process_transaction(self, trx: Transaction, update_balance: bool = True, real_label: Optional[bool] = False):
+    def process_transaction(self, trx: Transaction, update_balance: bool = True, real_label: bool = False):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
@@ -131,22 +131,21 @@ class Banksys:
         self.simulate_until(trx.timestamp)
         if not real_label:
             try:
-                self.seen_cards[trx.card_id] = \
-                    self.seen_cards[trx.card_id] = self.seen_cards[trx.card_id] + 1 \
-                    if trx.card_id in self.seen_cards.keys() else 1
+                self.seen_cards[trx.card_id] = self.seen_cards[trx.card_id] = (
+                    self.seen_cards[trx.card_id] + 1 if trx.card_id in self.seen_cards.keys() else 1
+                )
             except:
                 self.seen_cards = {trx.card_id: 1}
-            if self.seen_cards[trx.card_id]  >= 9:
-                debug =0
+            if self.seen_cards[trx.card_id] >= 9:
+                debug = 0
 
         features = self.make_transaction_features(trx)
         if trx.predicted_label is None:
-            if real_label == True:
+            if real_label:
                 trx.predicted_label = trx.is_fraud
             else:
                 label = self.clf.predict(pl.DataFrame(features))
                 trx.predicted_label = label.item()
-
 
         self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
@@ -159,7 +158,7 @@ class Banksys:
         """
         df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
         if real_label:
-           labels = np.array([trx.is_fraud for trx in transactions])
+            labels = np.array([trx.is_fraud for trx in transactions])
         else:
             labels = self.clf.predict(df)
         for trx, label in zip(transactions, labels):

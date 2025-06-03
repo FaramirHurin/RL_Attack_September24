@@ -51,8 +51,7 @@ class ClassificationParameters:
     balance_factor: float
     contamination: float
     training_duration: timedelta
-    quantiles_features: Sequence[str]
-    quantiles_values: Sequence[float]
+    quantiles: dict[str, tuple[float, float]]
     _rules: dict[float, float]
 
     def __init__(
@@ -62,8 +61,7 @@ class ClassificationParameters:
         balance_factor: float = 0.1,
         contamination: float = 0.005,
         training_duration: timedelta | float = timedelta(days=30),
-        quantiles_features: Sequence[str] = ("amount",),
-        quantiles_values: Sequence[float] = (0.001, 0.999),
+        quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
         rules: dict[timedelta, float] = {
             timedelta(hours=1): 1,
             timedelta(weeks=1): 40,
@@ -77,8 +75,7 @@ class ClassificationParameters:
         if isinstance(training_duration, (float, int)):
             training_duration = timedelta(seconds=training_duration)
         self.training_duration = training_duration
-        self.quantiles_features = quantiles_features
-        self.quantiles_values = quantiles_values
+        self.quantiles = quantiles
         self._rules = {td.total_seconds(): value for td, value in rules.items()}
 
     @property
@@ -107,8 +104,7 @@ class ClassificationParameters:
             balance_factor=0.05143948127466207,
             contamination=0.022485617075180264,
             training_duration=timedelta(days=150),
-            quantiles_features=("amount",),
-            quantiles_values=(0.00, 1),
+            quantiles={"amount": (0.00, 1)},
             rules={
                 timedelta(hours=1): 2,
                 timedelta(weeks=1): 400,
@@ -233,7 +229,7 @@ class PPOParameters:
             train_interval=25,
             minibatch_size=20,
             gae_lambda=0.99,
-            grad_norm_clipping=None, #8.934885848478487
+            grad_norm_clipping=None,  # 8.934885848478487
         )
 
     @staticmethod
@@ -364,14 +360,14 @@ class VAEParameters:
     def suggest(trial: Trial):
         logging.info("Suggesting VAE parameters")
         return VAEParameters(
-            latent_dim=trial.suggest_int("latent_dim", 8, 92),
-            hidden_dim=trial.suggest_int("hidden_dim", 64, 192),
-            lr=trial.suggest_float("lr", 0.0001, 0.001),
+            latent_dim=trial.suggest_int("latent_dim", 2, 92),
+            hidden_dim=trial.suggest_int("hidden_dim", 16, 192),
+            lr=trial.suggest_float("lr", 1e-5, 1e-3),
             trees=trial.suggest_int("trees", 20, 100),
-            batch_size=trial.suggest_int("batch_size", 8, 32),
+            batch_size=trial.suggest_int("batch_size", 8, 64),
             num_epochs=trial.suggest_int("num_epochs", 1000, 10_000),
-            quantile=trial.suggest_float("quantile", 0.9, 0.999),
-            generated_size=trial.suggest_int("generated_size", 100, 1000),
+            quantile=trial.suggest_float("quantile", 0.9, 1.0),
+            generated_size=trial.suggest_int("generated_size", 10, 1000),
             beta=trial.suggest_float("beta", 0.0, 1.0),
             n_infiltrated_terminals=trial.suggest_int("n_infiltrated_terminals", 1, 100),
         )
@@ -462,7 +458,7 @@ class Parameters:
             device = self.get_device_by_seed()
         match self.agent:
             case VAEParameters():
-                return self.agent.get_agent(env, device, self.know_client, self.clf_params.quantiles_values[0])
+                return self.agent.get_agent(env, device, self.know_client, self.agent.quantile)
             case PPOParameters():
                 return self.agent.get_agent(env, device)
             case _:
@@ -484,7 +480,6 @@ class Parameters:
             normalize_location=self.agent_name in ("ppo", "rppo"),
             include_weekday=self.include_weekday,
         )
-        env.seed(self.seed_value)
         return env
 
     def banksys_is_in_cache(self):

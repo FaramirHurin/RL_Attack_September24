@@ -25,7 +25,7 @@ class ClassificationSystem:
     def __init__(self, params: "ClassificationParameters"):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
         self.anomaly_detection_classifier = IsolationForest(n_estimators=params.n_trees, n_jobs=1, contamination=params.contamination)
-        self.statistical_classifier = StatisticalClassifier(params.quantiles_features, params.quantiles_values)
+        self.statistical_classifier = StatisticalClassifier(params.quantiles)
         self.rule_classifier = RuleBasedClassifier(params.rules)
         self.use_anomaly = params.use_anomaly
         self.training_duration = params.training_duration
@@ -42,14 +42,14 @@ class ClassificationSystem:
         logging.info("Fitting anomaly classifier")
         self.anomaly_detection_classifier.fit(transactions)
         logging.info("Fitting statistical classifier")
-        self.statistical_classifier.fit(transactions.to_pandas())
+        self.statistical_classifier.fit(transactions)
         logging.info("Done !")
 
     def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
         self.l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
-        self.l2 = self.statistical_classifier.predict_dataframe(df.to_pandas())
+        self.l2 = self.statistical_classifier.predict(df)
         logging.debug("Predicting with rule-based")
         self.l3 = self.rule_classifier.predict(df)
         result = self.l1 | self.l2 | self.l3
