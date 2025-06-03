@@ -112,6 +112,27 @@ class ClassificationParameters:
             },
         )
 
+    @staticmethod
+    def suggest(trial: Trial):
+        return ClassificationParameters(
+            training_duration=timedelta(days=90),
+            n_trees=trial.suggest_int("n_trees", 20, 200),
+            contamination=trial.suggest_float("contamination", 0, 0.05),
+            balance_factor=trial.suggest_float("balance_factor", 0, 0.25),
+            quantiles={
+                "amount": (
+                    trial.suggest_float("quantiles_amount_low", 0.0, 0.1),
+                    trial.suggest_float("quantiles_amount_high", 0.9, 1.0),
+                ),
+            },
+            use_anomaly=True,
+            rules={
+                timedelta(hours=1): trial.suggest_int("max_trx_hour", 2, 10),
+                timedelta(days=1): trial.suggest_int("max_trx_day", 2, 20),
+                timedelta(weeks=1): trial.suggest_int("max_trx_week", 15, 50),
+            },
+        )
+
 
 @dataclass(eq=True)
 class PPOParameters:

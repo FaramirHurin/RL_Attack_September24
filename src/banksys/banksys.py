@@ -28,8 +28,9 @@ class Banksys:
         aggregation_windows: Sequence[timedelta],
         clf_params: "ClassificationParameters",
         attackable_terminal_factor: float = 0.1,
-        fp_rate=0.0,
-        fn_rate=0.0,
+        fp_rate=0.01,
+        fn_rate=0.01,
+        silent: bool = False,
     ):
         self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
@@ -37,7 +38,7 @@ class Banksys:
         self.attack_start = self.training_start + clf_params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
-
+        self.silent = silent
         self.clf = ClassificationSystem(clf_params)
 
         self._transactions_df = (
@@ -83,7 +84,7 @@ class Banksys:
         start = self.next_trx.timestamp
         stop = min(until, self.attack_end)
         n = self._transactions_df.filter(pl.col("timestamp").is_between(start, stop)).height
-        pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx")
+        pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=self.silent)
         features = list()
         while self.next_trx.timestamp < stop:
             features.append(self.make_transaction_features(self.next_trx))

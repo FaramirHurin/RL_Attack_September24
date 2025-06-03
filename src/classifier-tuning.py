@@ -31,7 +31,9 @@ def experiment(trial: optuna.Trial):
             },
         ),
     )
-    banksys = params.create_banksys(use_cache=True)
+    banksys = params.create_banksys(use_cache=False)
+    banksys.silent = True
+    logging.info("Producing test set via simulation")
     df_list = banksys.simulate_until(banksys.attack_start + timedelta(days=50))
     features = pl.concat(df_list)
     predicted = banksys.clf.predict(features)
@@ -40,9 +42,6 @@ def experiment(trial: optuna.Trial):
     truth = df["is_fraud"].to_numpy().astype(np.bool)
 
     f1 = f1_score(truth, predicted)
-    # recall = recall_score(test_y, predictions)
-    # precision = precision_score(test_y, predictions)
-    # confusion = confusion_matrix(test_y, predictions)
     return float(f1)
 
 
@@ -61,4 +60,4 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment, n_trials=100, n_jobs=1)
+    study.optimize(experiment, n_trials=100, n_jobs=10)

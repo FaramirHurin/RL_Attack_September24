@@ -135,7 +135,21 @@ def run(params: Parameters):
     Run.create(params, episodes)
 
 
+def main():
+    params = Parameters(
+        agent=PPOParameters.best_ppo(),
+        # agent=VAEParaeters.best_vae(),
+        cardsim=CardSimParameters(),
+        clf_params=ClassificationParameters(),
+        logdir="logs/test",
+        save=True,
+    )
+    Experiment.create(params)
+    run(params)
+
+
 if __name__ == "__main__":
+    # setup logging
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "info").upper()
     logging.basicConfig(
@@ -143,14 +157,8 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-
-    params = Parameters(
-        agent=PPOParameters.best_ppo(),
-        #agent=VAEParaeters.best_vae(),
-        cardsim=CardSimParameters(),
-        clf_params=ClassificationParameters(),
-        logdir="logs/test",
-        save=True,
-    )
-    exp = Experiment.create(params)
-    run(params)
+    try:
+        main()
+    except Exception as e:
+        logging.error(f"An error occurred: {e}", exc_info=True)
+        raise e
