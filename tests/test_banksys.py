@@ -92,6 +92,7 @@ def test_n_transacations_per_card():
         Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
         # Test transaction (to prevent the system from crashing because there are no transactions to process)
         Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 15), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
@@ -101,7 +102,7 @@ def test_n_transacations_per_card():
         aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
     )
-    window = 30
+
     trx = Transaction(120, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=True)  # 10
     card = system.cards[trx.card_id]
     past_transactions = card.transactions.get_window().copy()
@@ -112,7 +113,7 @@ def test_n_transacations_per_card():
 
     # Assert all transactions in window are in future transactions
     for t in past_transactions:
-        if t.timestamp >= trx.timestamp - timedelta(days=window):
+        if t.timestamp >= trx.timestamp - timedelta(days=30):
             assert t in future_transactions, "All transactions in the window should be in the future transactions"
 
 

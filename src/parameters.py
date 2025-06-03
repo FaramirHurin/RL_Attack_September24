@@ -23,7 +23,7 @@ class CardSimParameters:
     start_date: str = "2023-01-01"
     n_payers: int = 10_000
 
-    def get_simulation_data(self):
+    def get_simulation_data(self, use_cache: bool = True):
         from cardsim import Cardsim
 
         simulator = Cardsim()
@@ -31,6 +31,7 @@ class CardSimParameters:
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
+            use_cache=use_cache,
         )
         return transactions, cards, terminals
 
@@ -502,10 +503,10 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self):
+    def create_banksys(self, use_cache: bool = True):
         from banksys import Banksys
 
-        transactions, cards, terminals = self.cardsim.get_simulation_data()
+        transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache)
         return Banksys(
             transactions,
             cards,

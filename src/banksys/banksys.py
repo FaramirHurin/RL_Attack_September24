@@ -36,7 +36,7 @@ class Banksys:
         self.training_start = self.current_time + self.max_aggregation_duration
         self.attack_start = self.training_start + clf_params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
-        assert self.attack_start < self.attack_end, "Attack start must be before attack end."
+        assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
 
         self.clf = ClassificationSystem(clf_params)
 
@@ -107,8 +107,8 @@ class Banksys:
         cards = set[int]()
         terms = set[int]()
         batch = list[Transaction]()
-        features = list()
-        while self.next_trx.timestamp <= until:
+        features = list[pl.DataFrame]()
+        while self.next_trx.timestamp < until:
             if self.next_trx.card_id in cards or self.next_trx.terminal_id in terms:
                 features.append(self.process_transactions(batch, False))
                 cards.clear()

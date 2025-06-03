@@ -1032,11 +1032,40 @@ class Cardsim:
         self.logger.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
         return df, payers, payees
 
+    def load(self, n_payers: int = 10_000, n_days: int = 365, start_date: str = "2023-01-01"):
+        cache_dir = os.path.join("cache", "cardsim")
+        cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
+        cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
+        cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
+        logging.debug(f"Loading transactions from {cached_transactions}")
+        trx = pl.read_csv(
+            cached_transactions,
+            schema={
+                "day_index": pl.Int32,
+                "date": pl.Date,
+                "payer_id": pl.Int32,
+                "credit_card": pl.Int32,
+                "remote": pl.Int32,
+                "amount": pl.Float64,
+                "payee_id": pl.Int32,
+                "distance": pl.Float32,
+                "time_seconds": pl.Int32,
+                "date_time": pl.Datetime,
+                "hour": pl.Int32,
+                "fraud": pl.Int32,
+                "run_id": pl.Utf8,
+            },
+        )
+        cards = pl.read_csv(cached_payers)
+        terminals = pl.read_csv(cached_payees)
+        return trx, cards, terminals
+
     def simulate(
         self,
         n_payers: int = 10_000,
         n_days: int = 365,
         start_date: str = "2023-01-01",
+        use_cache: bool = True,
     ):
         """Run the payment transaction simulator.
 
@@ -1059,30 +1088,13 @@ class Cardsim:
         cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
-        try:
-            logging.debug(f"Loading transactions from {cached_transactions}")
-            trx = pl.read_csv(
-                cached_transactions,
-                schema={
-                    "day_index": pl.Int32,
-                    "date": pl.Date,
-                    "payer_id": pl.Int32,
-                    "credit_card": pl.Int32,
-                    "remote": pl.Int32,
-                    "amount": pl.Float64,
-                    "payee_id": pl.Int32,
-                    "distance": pl.Float32,
-                    "time_seconds": pl.Int32,
-                    "date_time": pl.Datetime,
-                    "hour": pl.Int32,
-                    "fraud": pl.Int32,
-                    "run_id": pl.Utf8,
-                },
-            )
-            cards = pl.read_csv(cached_payers)
-            terminals = pl.read_csv(cached_payees)
-            self.logger.info(f"Loaded transactions from {cached_transactions}")
-        except FileNotFoundError:
+        if use_cache:
+            try:
+                logging.debug(f"Loading transactions from {cached_transactions}")
+                trx, cards, terminals = self.load(n_payers, n_days, start_date)
+            except FileNotFoundError:
+                return self.simulate(n_payers, n_days, start_date, use_cache=False)
+        else:
             trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date)
             os.makedirs(cache_dir, exist_ok=True)
             trx.to_csv(cached_transactions, index=False)
