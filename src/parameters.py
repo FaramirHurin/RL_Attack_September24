@@ -519,7 +519,7 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, use_cache: bool = True):
+    def create_banksys(self, use_cache: bool = True, silent: bool = False):
         from banksys import Banksys
 
         transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache)
