@@ -123,7 +123,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             terminal_id = self.system.get_closest_terminal(card.x, card.y).id
             trx = Transaction(action.amount, t, terminal_id, card.id, action.is_online, is_fraud=True)
             try:
-                self.system.process_transaction(trx)
+                self.system.process_transaction(trx, real_label=False)
                 transaction_denied = False
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]

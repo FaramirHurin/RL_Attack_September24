@@ -58,7 +58,7 @@ class ClassificationParameters:
     def __init__(
         self,
         use_anomaly: bool = True,
-        n_trees: int = 100,
+        n_trees: int = 50,
         balance_factor: float = 0.1,
         contamination: float = 0.005,
         training_duration: timedelta | float = timedelta(days=30),
@@ -218,8 +218,8 @@ class PPOParameters:
             gamma=0.999,
             lr_actor=0.0013655647166021928,
             lr_critic=0.007255685546096761,
-            n_epochs=20,
-            eps_clip=0.1,
+            n_epochs=100,
+            eps_clip=0.2,
             critic_c1=Schedule.linear(
                 start_value=0.9375751577962954,
                 end_value=0.38048446480609044,
@@ -230,10 +230,10 @@ class PPOParameters:
                 end_value=0.007744880113458132,  #
                 n_steps=2537,
             ),
-            train_interval=30,
+            train_interval=25,
             minibatch_size=20,
             gae_lambda=0.99,
-            grad_norm_clipping=8.934885848478487,
+            grad_norm_clipping=None, #8.934885848478487
         )
 
     @staticmethod
@@ -400,7 +400,7 @@ class Parameters:
         clf_params: ClassificationParameters = ClassificationParameters(),
         n_episodes: int = 4000,
         know_client: bool = False,
-        terminal_fract: float = 0.2,
+        terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
         card_pool_size: int = 50,
         avg_card_block_delay_days: int = 7,

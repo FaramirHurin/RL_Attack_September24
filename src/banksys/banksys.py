@@ -27,9 +27,9 @@ class Banksys:
         terminals_df: pl.DataFrame,
         aggregation_windows: Sequence[timedelta],
         clf_params: "ClassificationParameters",
-        attackable_terminal_factor: float = 1.0,
-        fp_rate=0.01,
-        fn_rate=0.01,
+        attackable_terminal_factor: float = 0.1,
+        fp_rate=0.0,
+        fn_rate=0.0,
     ):
         self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
@@ -136,6 +136,17 @@ class Banksys:
             else:
                 label = self.clf.predict(pl.DataFrame(features))
                 trx.predicted_label = label.item()
+
+        if not real_label:
+            try:
+                self.seen_cards[trx.card_id] = \
+                    self.seen_cards[trx.card_id] = self.seen_cards[trx.card_id] + 1 \
+                    if trx.card_id in self.seen_cards.keys() else 1
+            except:
+                self.seen_cards = {trx.card_id: 1}
+            if self.seen_cards[trx.card_id]  >= 9:
+                debug =0
+
         self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
         return features

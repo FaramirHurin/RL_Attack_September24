@@ -1,3 +1,4 @@
+import copy
 import os
 import shutil
 from banksys import Banksys, Transaction, Card, Terminal
@@ -202,3 +203,54 @@ def test_save_load():
         assert next_trx == next_trx2, "The next transaction should be the same after loading the Banksys instance"
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+
+
+
+
+def test_aggregated_features():
+    cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
+    terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
+
+    transactions = [
+        # Training data
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(390, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        # Actual agregation
+        Transaction(170, datetime(2023, 2, 14), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
+        Transaction(160, datetime(2023, 2, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        # Transaction far in the future to allow for an attack
+        Transaction(190, datetime(2024, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+    ]
+    trx_df = pl.DataFrame(transactions)
+    system = Banksys(
+        trx_df,
+        cards,
+        terminals,
+        aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
+        attackable_terminal_factor=1.0,
+        fp_rate=0,
+        fn_rate=0,
+    )
+    trx_0 =  Transaction(190, datetime(2023, 8, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
+    features = system.make_transaction_features(trx_0)
+    aggr_1_day_0 = features.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
+    assert aggr_1_day_0 == 0, "There should be no transactions in the last week before processing the first transaction"
+    system.process_transaction(trx_0, update_balance=False)
+
+
+    for index in range(4):
+        day = index + 1
+        trx_1 = Transaction(200, datetime(2023, 8,  1 + day), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
+        features_1 = system.make_transaction_features(trx_1)
+        aggr_1_day = features_1.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
+        system.process_transaction(trx_1, update_balance=False)
+        assert aggr_1_day == aggr_1_day_0 + 1, "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
+        aggr_1_day_0 = copy.copy(aggr_1_day)

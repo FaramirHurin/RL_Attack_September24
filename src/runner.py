@@ -144,8 +144,8 @@ if __name__ == "__main__":
     )
 
     params = Parameters(
-        agent=PPOParameters.best_rppo(),
-        # agent=VAEParameters.best_vae(),
+        # agent=PPOParameters.best_ppo(),
+        agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters(),
         clf_params=ClassificationParameters(),
         logdir="logs/test",
