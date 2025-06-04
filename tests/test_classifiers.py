@@ -44,14 +44,14 @@ def test_rules_details():
     assert np.all(labels[6:])  # Last 4 values exceed the daily rule
 
     details = clf.get_details()
-    cause_hourly = details[f"card_n_trx_last_{timedelta(hours=1)}"]
+    cause_hourly = details[f"Rule: card_n_trx_last_{timedelta(hours=1)} < 5"]
     assert not np.all(cause_hourly[:6])  # First 6 values should not be outliers
     assert np.all(cause_hourly[6:])  # Last 4 values should be outliers
 
-    cause_daily = details[f"card_n_trx_last_{timedelta(days=1)}"]
+    cause_daily = details[f"Rule: card_n_trx_last_{timedelta(days=1)} < 100"]
     assert not np.all(cause_daily)  # No rule is violated
 
-    cause_weekly = details[f"card_n_trx_last_{timedelta(weeks=1)}"]
+    cause_weekly = details[f"Rule: card_n_trx_last_{timedelta(weeks=1)} < 100"]
     assert not np.all(cause_weekly)  # No rule is violated
 
 

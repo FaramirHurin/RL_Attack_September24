@@ -15,7 +15,7 @@ class RuleBasedClassifier:
         for colname, max_value in self._column_values.items():
             y = df[colname] > max_value
             y = y.to_numpy().astype(np.bool)
-            self._last_result[colname] = y
+            self._last_result[f"Rule: {colname} < {max_value}"] = y
             labels = labels | y
         return labels
 

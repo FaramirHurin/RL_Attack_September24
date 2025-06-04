@@ -39,7 +39,7 @@ class CardSimParameters:
     def paper_params():
         return CardSimParameters(
             n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
-            n_payers=10_000,
+            n_payers=20_000,
             start_date="2023-01-01",
         )
 
@@ -64,8 +64,8 @@ class ClassificationParameters:
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
         rules: dict[timedelta, float] = {
             timedelta(hours=1): 6,
-            timedelta(weeks=1): 30,
             timedelta(days=1): 16,
+            timedelta(weeks=1): 30,
         },
     ):
         self.use_anomaly = use_anomaly
@@ -88,46 +88,50 @@ class ClassificationParameters:
     @staticmethod
     def paper_params():
         """
-        - n_trees 174
-        - contamination 0.022485617075180264
-        - balance_factor 0.05143948127466207
-        - quantiles_low 0.026405177100394077
-        - quantiles_high 0.9450416556649487
-        - use_anomaly False
-        - max_trx_hour 7
-        - max_trx_day 12
-        - max_trx_week 80
+        - max_trx_hour: 8
+        - max_trx_day: 19
+        - max_trx_week: 32
+        - n_trees: 139
+        - balance_factor: 0.06473635736763925
+        - quantiles_amount_high: 0.9976319783361984
+        - quantiles_risk_high: 0.9999572867664103
         """
         return ClassificationParameters(
             use_anomaly=False,
-            n_trees=174,
-            balance_factor=0.05143948127466207,
-            contamination=0.022485617075180264,
+            n_trees=139,
+            balance_factor=0.06473635736763925,
+            contamination="auto",
             training_duration=timedelta(days=150),
-            quantiles={"amount": (0.00, 1)},
+            quantiles={
+                "amount": (0.0, 0.9976319783361984),
+                "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
+            },
             rules={
-                timedelta(hours=1): 2,
-                timedelta(weeks=1): 400,
-                timedelta(days=1): 105,
+                timedelta(hours=1): 8,
+                timedelta(days=1): 19,
+                timedelta(weeks=1): 32,
             },
         )
 
     @staticmethod
     def suggest(trial: Trial, training_duration: timedelta):
+        max_per_hour = trial.suggest_int("max_trx_hour", 2, 10)
+        max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 20)
+        max_per_week = trial.suggest_int("max_trx_week", max_per_day, 50)
         return ClassificationParameters(
             training_duration=training_duration,
             n_trees=trial.suggest_int("n_trees", 20, 200),
             contamination="auto",
-            balance_factor=trial.suggest_float("balance_factor", 0.02, 0.25),
+            balance_factor=trial.suggest_float("balance_factor", 0.05, 0.2),
             quantiles={
-                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.9, 1.0)),
-                f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.9, 1.0)),
+                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.995, 1.0)),
+                f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
             },
             use_anomaly=False,  # trial.suggest_categorical("use_anomaly", [True, False]),
             rules={
-                timedelta(hours=1): trial.suggest_int("max_trx_hour", 2, 10),
-                timedelta(days=1): trial.suggest_int("max_trx_day", 2, 20),
-                timedelta(weeks=1): trial.suggest_int("max_trx_week", 15, 50),
+                timedelta(hours=1): max_per_hour,
+                timedelta(days=1): max_per_day,
+                timedelta(weeks=1): max_per_week,
             },
         )
 
@@ -382,7 +386,7 @@ class VAEParameters:
             latent_dim=trial.suggest_int("latent_dim", 2, 92),
             hidden_dim=trial.suggest_int("hidden_dim", 16, 192),
             lr=trial.suggest_float("lr", 1e-5, 1e-3),
-            trees=trial.suggest_int("trees", 20, 100),
+            trees=1,  # Not used in VAE because IsolationForest has been removed
             batch_size=trial.suggest_int("batch_size", 8, 64),
             num_epochs=trial.suggest_int("num_epochs", 1000, 10_000),
             quantile=trial.suggest_float("quantile", 0.9, 1.0),
@@ -517,7 +521,7 @@ class Parameters:
             f"start-{self.cardsim.start_date}",
         )
 
-    def create_banksys(self, use_cache: bool = True, silent: bool = False):
+    def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True):
         from banksys import Banksys
 
         transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache)
@@ -528,8 +532,10 @@ class Parameters:
             aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
-            fp_rate=0,
-            fn_rate=0,
+            fp_rate=0.01,
+            fn_rate=0.01,
+            silent=silent,
+            fit=fit,
         )
 
     def datasets_exists(self, directory: Optional[str] = None) -> bool:

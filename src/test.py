@@ -1,6 +1,7 @@
 from datetime import timedelta
 from parameters import Parameters, CardSimParameters, ClassificationParameters
 import logging
+from banksys import Banksys
 import numpy as np
 import polars as pl
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
@@ -10,8 +11,10 @@ if __name__ == "__main__":
         cardsim=CardSimParameters(n_days=150, n_payers=10_000),
         clf_params=ClassificationParameters(),
     )
+    # banksys = Banksys.load("trucmuche")
     banksys = params.create_banksys(use_cache=False, silent=False)
-    df_list = banksys.simulate_until(banksys.attack_start + timedelta(days=30))
+    # banksys.save("trucmuche")
+    df_list = banksys.simulate_until(banksys.attack_start + timedelta(days=5))
     features = pl.concat(df_list)
     df = banksys._transactions_df.filter(pl.col("timestamp").is_between(banksys.attack_start, banksys.current_time))
 

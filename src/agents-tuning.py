@@ -14,6 +14,8 @@ from plots import Experiment, Run
 from runner import Runner
 
 N_PARALLEL = 8
+if not torch.cuda.is_available():
+    N_PARALLEL = 1  # If no GPU is available, run only one process at a time.
 TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
@@ -41,8 +43,8 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
         clf_params=CLF_PARAMS,
         cardsim=CARDSIM_PARAMS,
         seed_value=0,
-        include_weekday=trial.suggest_categorical("include_weekday", [True, False]),
-        save=False,
+        include_weekday=True,
+        save=True,
     )
     exp = Experiment.create(params)
     start = datetime.now()
@@ -80,15 +82,14 @@ if __name__ == "__main__":
     )
 
     p = Parameters(
-        PPOParameters(),
         clf_params=CLF_PARAMS,
         cardsim=CARDSIM_PARAMS,
         save=False,
     )
-    # env = p.create_env()
     if not p.banksys_is_in_cache():
         logging.info("Creating banksys...")
-        p.create_banksys()
+        b = p.create_banksys()
+        b.save()
 
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",

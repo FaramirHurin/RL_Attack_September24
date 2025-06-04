@@ -4,7 +4,7 @@ import pickle
 from functools import cached_property
 import random
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 import numpy as np
 import polars as pl
@@ -31,6 +31,7 @@ class Banksys:
         fp_rate=0.01,
         fn_rate=0.01,
         silent: bool = False,
+        fit: bool = True,
     ):
         self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
@@ -57,7 +58,8 @@ class Banksys:
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
-        self.fit()
+        if fit:
+            self.fit()
 
     def fit(self):
         """
@@ -85,7 +87,7 @@ class Banksys:
         stop = min(until, self.attack_end)
         n = self._transactions_df.filter(pl.col("timestamp").is_between(start, stop)).height
         pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=self.silent)
-        features = list()
+        features = list[dict[str, Any]]()
         while self.next_trx.timestamp < stop:
             features.append(self.make_transaction_features(self.next_trx))
             self.cards[self.next_trx.card_id].add(self.next_trx, update_balance=False)

@@ -62,7 +62,15 @@ class ClassificationSystem:
         return result
 
     def get_details(self):
-        detected_by = pl.DataFrame({"BRF": self.l1, "Statistical": self.l2, "Rules": self.l3, **self.rule_classifier.get_details()})
+        detected_by = pl.DataFrame(
+            {
+                "BRF": self.l1,
+                "Statistical": self.l2,
+                "Rules": self.l3,
+                **self.rule_classifier.get_details(),
+                **self.statistical_classifier.get_details(),
+            }
+        )
         if self.use_anomaly:
             detected_by = detected_by.with_columns(pl.Series("Anomaly", self.l4))
         return detected_by
