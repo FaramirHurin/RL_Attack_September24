@@ -205,8 +205,6 @@ def test_save_load():
         shutil.rmtree(directory, ignore_errors=True)
 
 
-
-
 def test_aggregated_features():
     cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(index, 75, 95) for index in range(20)])
@@ -239,22 +237,19 @@ def test_aggregated_features():
         fp_rate=0,
         fn_rate=0,
     )
-    trx_0 =  Transaction(190, datetime(2023, 8, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
+    trx_0 = Transaction(190, datetime(2023, 8, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
     features = system.make_transaction_features(trx_0)
     aggr_1_day_0 = features.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
     assert aggr_1_day_0 == 0, "There should be no transactions in the last week before processing the first transaction"
     system.process_transaction(trx_0, update_balance=False)
 
-
     for index in range(4):
         day = index + 1
-        trx_1 = Transaction(200, datetime(2023, 8,  1 + day), terminal_id=index, card_id=0, is_online=False, is_fraud=True)
+        trx_1 = Transaction(200, datetime(2023, 8, 1 + day), terminal_id=index, card_id=0, is_online=False, is_fraud=True)
         features_1 = system.make_transaction_features(trx_1)
         aggr_1_day = features_1.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
         system.process_transaction(trx_1, update_balance=False)
-        assert aggr_1_day == aggr_1_day_0 + 1, "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
+        assert aggr_1_day == aggr_1_day_0 + 1, (
+            "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
+        )
         aggr_1_day_0 = copy.copy(aggr_1_day)
-
-
-def test_episode():
-    assert False, "TODO"

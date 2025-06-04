@@ -4,7 +4,7 @@ import pickle
 from functools import cached_property
 import random
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 import polars as pl
@@ -111,7 +111,7 @@ class Banksys:
         features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.card_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch, update_balance=False, real_label=False))
+                features.append(self.process_transactions(batch, update_balance=False))
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -120,48 +120,32 @@ class Banksys:
             batch.append(self.next_trx)
             self.next_trx = Transaction(**next(self.trx_iterator))
         if len(batch) > 0:
-            features.append(self.process_transactions(batch, update_balance=False, real_label=True))
+            features.append(self.process_transactions(batch, update_balance=False))
         self.current_time = until
         return features
 
-    def process_transaction(self, trx: Transaction, update_balance: bool = True, real_label: bool = False):
+    def process_transaction(self, trx: Transaction, update_balance: bool = True):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
         """
         self.simulate_until(trx.timestamp)
-        if not real_label:
-            try:
-                self.seen_cards[trx.card_id] = self.seen_cards[trx.card_id] = (
-                    self.seen_cards[trx.card_id] + 1 if trx.card_id in self.seen_cards.keys() else 1
-                )
-            except:
-                self.seen_cards = {trx.card_id: 1}
-            if self.seen_cards[trx.card_id] >= 9:
-                debug = 0
-
         features = self.make_transaction_features(trx)
         if trx.predicted_label is None:
-            if real_label:
-                trx.predicted_label = trx.is_fraud
-            else:
-                label = self.clf.predict(pl.DataFrame(features))
-                trx.predicted_label = label.item()
+            label = self.clf.predict(pl.DataFrame(features))
+            trx.predicted_label = label.item()
 
         self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
         return features
 
-    def process_transactions(self, transactions: list[Transaction], update_balance: bool, real_label=False):
+    def process_transactions(self, transactions: list[Transaction], update_balance: bool):
         """
         Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
         If `real_label` is True, it will use the real label from the transaction.
         """
         df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
-        if real_label:
-            labels = np.array([trx.is_fraud for trx in transactions])
-        else:
-            labels = self.clf.predict(df)
+        labels = self.clf.predict(df)
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)
@@ -194,17 +178,6 @@ class Banksys:
             .otherwise(pl.col("is_fraud"))
             .alias("predicted_label")
         )
-        from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-
-        truth = trx["is_fraud"]
-        pred = trx["predicted_label"]
-
-        cm = confusion_matrix(truth, pred)
-        logging.info(f"Confusion Matrix:\n{cm}")
-        logging.info(f"Accuracy: {accuracy_score(truth, pred):.4f}")
-        logging.info(f"Recall: {recall_score(truth, pred):.4f}")
-        logging.info(f"Precision: {precision_score(truth, pred):.4f}")
-        logging.info(f"F1 Score: {f1_score(truth, pred):.4f}")
         return trx["predicted_label"]
 
     def get_closest_terminal(self, x: float, y: float) -> Terminal:

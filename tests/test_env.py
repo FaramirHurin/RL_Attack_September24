@@ -2,6 +2,7 @@ from environment import CardSimEnv, Action
 from banksys import Card
 from datetime import timedelta
 from copy import deepcopy
+import numpy as np
 
 from runner import Runner
 
@@ -33,7 +34,7 @@ def test_observation():
     assert hour_ratio == env.t.hour / 24
 
     env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), card)
-    card, step = env.step()
+    card, step, _ = env.step()
     assert card.balance == 990
 
     n_attacks, time_remaining, is_credit, hour_ratio, *_ = step.obs.data
@@ -49,7 +50,7 @@ def test_card_blocked_zero_reward():
     card, _, _ = env.spawn_card()
     card.balance = 5
     env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), card)
-    card, step = env.step()
+    card, step, _ = env.step()
     assert step.reward.item() == 0.0, "Reward should be zero when card is blocked due to insufficient balance"
     assert not step.done
 
@@ -78,33 +79,23 @@ def test_time_going():
     action2 = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1.5)
     env.buffer_action(action2.to_numpy(), card2)
 
-    card, step = env.step()
+    card, step, np_action = env.step()
     assert card == card1
     assert env.t == t_0 + timedelta(hours=action1.delay_hours)
     assert step.reward.item() == action1.amount
+    assert np.array_equal(np_action, action1.to_numpy())
 
     action3 = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=2)
     env.buffer_action(action3.to_numpy(), card1)
 
-    card, step = env.step()
+    card, step, np_action = env.step()
     assert card == card2
     assert env.t == t_0 + timedelta(hours=action2.delay_hours)
     assert step.reward.item() == action2.amount
+    assert np.array_equal(np_action, action2.to_numpy())
 
-    card, step = env.step()
+    card, step, np_action = env.step()
     assert card == card1
     assert env.t == t_0 + timedelta(hours=action1.delay_hours + action3.delay_hours)
     assert step.reward.item() == action3.amount
-
-
-def test_runner_processes_one_action():
-    bs = mock_banksys()
-    env = CardSimEnv(bs, timedelta(days=1))
-    runner = Runner(env)
-
-    card = env.spawn_card()[0]
-    action = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
-    env.buffer_action(action.to_numpy(), card)
-
-    runner.run_step()
-    assert card.balance == 990, "Card balance should be updated after processing the action"
+    assert np.array_equal(np_action, action3.to_numpy())

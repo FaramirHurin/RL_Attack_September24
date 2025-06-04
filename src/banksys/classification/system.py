@@ -24,7 +24,7 @@ class ClassificationSystem:
 
     def __init__(self, params: "ClassificationParameters"):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
-        self.anomaly_detection_classifier = IsolationForest(n_estimators=params.n_trees, n_jobs=1, contamination=params.contamination)
+        self.anomaly_detection_classifier = IsolationForest(n_estimators=params.n_trees, n_jobs=1, contamination="auto")
         self.statistical_classifier = StatisticalClassifier(params.quantiles)
         self.rule_classifier = RuleBasedClassifier(params.rules)
         self.use_anomaly = params.use_anomaly
@@ -33,6 +33,7 @@ class ClassificationSystem:
         self.l2 = np.array([], dtype=np.bool)  # Placeholder for the second prediction, to be replaced in predict method
         self.l3 = np.array([], dtype=np.bool)  # Placeholder for the third prediction, to be replaced in predict method
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
+        assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -55,7 +56,8 @@ class ClassificationSystem:
         result = self.l1 | self.l2 | self.l3
         if self.use_anomaly:
             logging.debug("Predicting with anomaly detection")
-            self.l4 = self.anomaly_detection_classifier.predict(df) == -1
+            label = self.anomaly_detection_classifier.predict(df)
+            self.l4 = label == -1
             result = result | self.l4
         return result
 

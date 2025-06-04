@@ -49,17 +49,17 @@ class ClassificationParameters:
     use_anomaly: bool
     n_trees: int
     balance_factor: float
-    contamination: float
+    contamination: float | Literal["auto"]
     training_duration: timedelta
     quantiles: dict[str, tuple[float, float]]
     _rules: dict[float, float]
 
     def __init__(
         self,
-        use_anomaly: bool = True,
+        use_anomaly: bool = False,
         n_trees: int = 50,
         balance_factor: float = 0.1,
-        contamination: float = 0.005,
+        contamination: float | Literal["auto"] = "auto",
         training_duration: timedelta | float = timedelta(days=30),
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
         rules: dict[timedelta, float] = {
@@ -113,19 +113,17 @@ class ClassificationParameters:
         )
 
     @staticmethod
-    def suggest(trial: Trial):
+    def suggest(trial: Trial, training_duration: timedelta):
         return ClassificationParameters(
-            training_duration=timedelta(days=90),
+            training_duration=training_duration,
             n_trees=trial.suggest_int("n_trees", 20, 200),
-            contamination=trial.suggest_float("contamination", 0, 0.05),
-            balance_factor=trial.suggest_float("balance_factor", 0, 0.25),
+            contamination="auto",
+            balance_factor=trial.suggest_float("balance_factor", 0.02, 0.25),
             quantiles={
-                "amount": (
-                    trial.suggest_float("quantiles_amount_low", 0.0, 0.1),
-                    trial.suggest_float("quantiles_amount_high", 0.9, 1.0),
-                ),
+                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.9, 1.0)),
+                f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.9, 1.0)),
             },
-            use_anomaly=True,
+            use_anomaly=False,  # trial.suggest_categorical("use_anomaly", [True, False]),
             rules={
                 timedelta(hours=1): trial.suggest_int("max_trx_hour", 2, 10),
                 timedelta(days=1): trial.suggest_int("max_trx_day", 2, 20),
@@ -530,6 +528,8 @@ class Parameters:
             aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
+            fp_rate=0,
+            fn_rate=0,
         )
 
     def datasets_exists(self, directory: Optional[str] = None) -> bool:

@@ -24,6 +24,6 @@ class StatisticalClassifier:
     def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
         mask = np.full(df.height, False, dtype=np.bool)
         for col, (low, high) in self.quantiles_values.items():
-            is_out_of_bounds = ~df[col].is_between(low, high).to_numpy().astype(np.bool)
+            is_out_of_bounds = ~df[col].is_between(low, high, "both").to_numpy().astype(np.bool)
             mask |= is_out_of_bounds
         return mask

@@ -5,48 +5,44 @@ import optuna
 import os
 import polars as pl
 import dotenv
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix
 from parameters import ClassificationParameters, Parameters, CardSimParameters
 
 
 def experiment(trial: optuna.Trial):
     try:
         params = Parameters(
-            cardsim=CardSimParameters(n_days=365, n_payers=10_000),
-            clf_params=ClassificationParameters(
-                training_duration=timedelta(days=90),
-                n_trees=trial.suggest_int("n_trees", 20, 200),
-                contamination=trial.suggest_float("contamination", 0, 0.05),
-                balance_factor=trial.suggest_float("balance_factor", 0.02, 0.25),
-                quantiles={
-                    "amount": (
-                        trial.suggest_float("quantiles_amount_low", 0.0, 0.1),
-                        trial.suggest_float("quantiles_amount_high", 0.9, 1.0),
-                    ),
-                },
-                use_anomaly=True,  # trial.suggest_categorical("use_anomaly", [True, False]),
-                rules={
-                    timedelta(hours=1): trial.suggest_int("max_trx_hour", 2, 10),
-                    timedelta(days=1): trial.suggest_int("max_trx_day", 2, 20),
-                    timedelta(weeks=1): trial.suggest_int("max_trx_week", 15, 50),
-                },
-            ),
+            cardsim=CardSimParameters(n_days=150, n_payers=10_000),
+            clf_params=ClassificationParameters.suggest(trial, timedelta(days=30)),
         )
-        banksys = params.create_banksys(use_cache=True, silent=True)
+        trial_dir = f"trial_{trial.number}"
+        banksys = params.create_banksys(use_cache=False, silent=False)
         logging.info("Producing test set via simulation")
         df_list = banksys.simulate_until(banksys.attack_start + timedelta(days=30))
+        logging.info("Done")
         features = pl.concat(df_list)
-        predicted = banksys.clf.predict(features)
+        os.makedirs(trial_dir, exist_ok=True)
         df = banksys._transactions_df.filter(pl.col("timestamp").is_between(banksys.attack_start, banksys.current_time))
+        features.write_csv(os.path.join(trial_dir, "features.csv"))
+        df.write_csv(os.path.join(trial_dir, "transactions.csv"))
+
+        predicted = banksys.clf.predict(features)
+        details = banksys.clf.get_details()
+        print(details)
+        print(details.describe())
+        pl.DataFrame({"is_fraud": predicted}).write_csv(os.path.join(trial_dir, "predicted.csv"))
         assert features["amount"].equals(df["amount"])
         truth = df["is_fraud"].to_numpy().astype(np.bool)
 
         metrics = {}
+        cm = confusion_matrix(truth, predicted)
+        logging.info(f"{cm}")
         f1 = f1_score(truth, predicted)
         accuracy = accuracy_score(truth, predicted)
         precision = precision_score(truth, predicted)
         recall = recall_score(truth, predicted)
         metrics = {
+            "confusion_matrix": cm.tolist(),
             "f1": float(f1),
             "accuracy": float(accuracy),
             "precision": float(precision),
@@ -56,14 +52,14 @@ def experiment(trial: optuna.Trial):
         return float(f1)
     except Exception as e:
         logging.error(f"Trial number: {trial.number} failed with error: {e}")
-        return 0
+        return 0.0
 
 
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        handlers=[logging.FileHandler("logs-debug.txt", mode="a"), logging.StreamHandler()],
+        handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
@@ -74,4 +70,4 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment, n_trials=100, n_jobs=5)
+    study.optimize(experiment, n_trials=200, n_jobs=1)
