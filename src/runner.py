@@ -4,7 +4,7 @@ from typing import Optional
 from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
 import numpy as np
-
+import copy
 from plots import Experiment, Run
 from marlenv import Episode, Transition, Observation, State
 import torch
@@ -67,7 +67,14 @@ class Runner:
         while episode_num < self.params.n_episodes:
             step_num += 1
             try:
-                card, step = self.env.step()
+                card, step, action = self.env.step()
+
+                # Update self.observations, states, actions, and hidden_states
+                self.observations[card] = step.obs
+                self.states[card] = step.state
+                self.actions[card] = action
+
+
                 total += step.reward.item()
                 pbar.set_postfix(trx=step_num, refresh=False)
                 pbar.set_description(
@@ -137,11 +144,12 @@ def run(params: Parameters):
 
 def main():
     params = Parameters(
-        agent=PPOParameters.best_ppo(),
-        # agent=VAEParaeters.best_vae(),
+        #agent=PPOParameters.best_rppo(),
+        agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters(),
         clf_params=ClassificationParameters(),
-        logdir="logs/test",
+        n_episodes=3000,
+        logdir="logs/test/vae/seed-2",
         save=True,
     )
     Experiment.create(params)

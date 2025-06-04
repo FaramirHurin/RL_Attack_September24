@@ -254,3 +254,7 @@ def test_aggregated_features():
         system.process_transaction(trx_1, update_balance=False)
         assert aggr_1_day == aggr_1_day_0 + 1, "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
         aggr_1_day_0 = copy.copy(aggr_1_day)
+
+
+def test_episode():
+    assert False, "TODO"

@@ -63,9 +63,9 @@ class ClassificationParameters:
         training_duration: timedelta | float = timedelta(days=30),
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
         rules: dict[timedelta, float] = {
-            timedelta(hours=1): 1,
-            timedelta(weeks=1): 40,
-            timedelta(days=1): 15,
+            timedelta(hours=1): 6,
+            timedelta(weeks=1): 30,
+            timedelta(days=1): 16,
         },
     ):
         self.use_anomaly = use_anomaly
@@ -259,7 +259,7 @@ class PPOParameters:
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
         return PPOParameters(
-            is_recurrent=False,
+            is_recurrent=True,
             train_on="transition",
             gamma=1,
             lr_actor=0.000517126625357408,

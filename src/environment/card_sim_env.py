@@ -134,7 +134,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             done = trx.fraud_is_detected
             reward = 0.0 if transaction_denied else trx.amount
         state = self.compute_state(card)
-        return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info)
+        return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info), np_action
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

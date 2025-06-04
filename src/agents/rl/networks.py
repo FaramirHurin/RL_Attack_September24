@@ -82,7 +82,10 @@ class ActorCritic(torch.nn.Module, ABC):
         # Reshape
         means = means.reshape(*dims, self.n_actions)
         cov = cov.reshape(*dims, self.n_actions, self.n_actions)
-        dist = distributions.MultivariateNormal(means, cov)
+        try:
+            dist = distributions.MultivariateNormal(means, cov)
+        except:
+            dist = distributions.MultivariateNormal(means, cov)
         return dist
 
 

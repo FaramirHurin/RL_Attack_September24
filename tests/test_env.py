@@ -3,6 +3,7 @@ from banksys import Card
 from datetime import timedelta
 from copy import deepcopy
 
+from runner import Runner
 
 from .mocks import mock_banksys
 
@@ -96,5 +97,14 @@ def test_time_going():
     assert step.reward.item() == action3.amount
 
 
-def test_compute_state():
-    assert False, "TODO"
+def test_runner_processes_one_action():
+    bs = mock_banksys()
+    env = CardSimEnv(bs, timedelta(days=1))
+    runner = Runner(env)
+
+    card = env.spawn_card()[0]
+    action = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
+    env.buffer_action(action.to_numpy(), card)
+
+    runner.run_step()
+    assert card.balance == 990, "Card balance should be updated after processing the action"
