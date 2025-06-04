@@ -15,22 +15,17 @@ def experiment(trial: optuna.Trial):
             cardsim=CardSimParameters(n_days=150, n_payers=10_000),
             clf_params=ClassificationParameters.suggest(trial, timedelta(days=30)),
         )
-        trial_dir = f"trial_{trial.number}"
         banksys = params.create_banksys(use_cache=False, silent=False)
         logging.info("Producing test set via simulation")
         df_list = banksys.simulate_until(banksys.attack_start + timedelta(days=30))
         logging.info("Done")
         features = pl.concat(df_list)
-        os.makedirs(trial_dir, exist_ok=True)
         df = banksys._transactions_df.filter(pl.col("timestamp").is_between(banksys.attack_start, banksys.current_time))
-        features.write_csv(os.path.join(trial_dir, "features.csv"))
-        df.write_csv(os.path.join(trial_dir, "transactions.csv"))
 
         predicted = banksys.clf.predict(features)
         details = banksys.clf.get_details()
         print(details)
         print(details.describe())
-        pl.DataFrame({"is_fraud": predicted}).write_csv(os.path.join(trial_dir, "predicted.csv"))
         assert features["amount"].equals(df["amount"])
         truth = df["is_fraud"].to_numpy().astype(np.bool)
 
@@ -70,4 +65,4 @@ if __name__ == "__main__":
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment, n_trials=200, n_jobs=1)
+    study.optimize(experiment, n_trials=200, n_jobs=5)
