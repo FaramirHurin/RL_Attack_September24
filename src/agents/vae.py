@@ -98,10 +98,11 @@ class Attack_Generation:
             self.detector = IsolationForest(n_estimators=trees)
 
     def train(self, batch_size=32, num_epochs=1000):
-        if self.supervised:
+        """if self.supervised:
             self.detector.fit(self.training_data.cpu().numpy(), self.y)
         else:
             self.detector.fit(self.training_data.cpu().numpy())  # type: ignore
+        """
         self._train_vae(self.training_data.to(torch.float), batch_size, num_epochs)
 
     def _train_vae(self, data, batch_size, num_epochs=1000):
@@ -130,11 +131,16 @@ class Attack_Generation:
         with torch.no_grad():
             z = torch.randn(num_samples, self.latent_dim, device=self.device)
             samples = self.model.decoder(z).cpu().numpy()
+        """
+        Eventually to add anomaly detection
+        
         if self.supervised:
             undetected = self.detector.predict(samples) == 0
         else:
             undetected = self.detector.predict(samples) == 1
         valid_samples = samples[undetected]
+        """
+        valid_samples = samples
         return valid_samples
 
 
