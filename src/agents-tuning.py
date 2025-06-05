@@ -81,18 +81,17 @@ if __name__ == "__main__":
         b = p.create_banksys()
         b.save(p.banksys_dir)
 
-    try:
-        study = optuna.create_study(
-            storage="sqlite:///agents-tuning.db",
-            study_name="ppo",
-            direction=optuna.study.StudyDirection.MAXIMIZE,
-            load_if_exists=True,
-        )
-        study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=100, n_jobs=6)
-    except Exception as e:
-        logging.error(f"Error during PPO study optimization: {e}", exc_info=True)
+    # try:
+    #     study = optuna.create_study(
+    #         storage="sqlite:///agents-tuning.db",
+    #         study_name="ppo",
+    #         direction=optuna.study.StudyDirection.MAXIMIZE,
+    #         load_if_exists=True,
+    #     )
+    #     study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=100, n_jobs=6)
+    # except Exception as e:
+    #     logging.error(f"Error during PPO study optimization: {e}", exc_info=True)
 
-    exit()
     try:
         study = optuna.create_study(
             storage="sqlite:///agents-tuning.db",
@@ -100,7 +99,7 @@ if __name__ == "__main__":
             direction=optuna.study.StudyDirection.MAXIMIZE,
             load_if_exists=True,
         )
-        study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=100, n_jobs=3)
+        study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=40, n_jobs=6)
     except Exception as e:
         logging.error(f"Error during RPPO study optimization: {e}", exc_info=True)
 

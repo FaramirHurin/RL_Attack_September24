@@ -231,28 +231,47 @@ class PPOParameters:
 
     @staticmethod
     def best_rppo():
+        """
+        - train_interval: 6
+        - minibatch_size: 5
+        - enable_clipping: True
+        - grad_norm_clipping: 2.388555590580865
+        - critic_c1_start: 0.4105552831006898
+        - critic_c1_end: 0.3271347177719041
+        - critic_c1_steps: 2728
+        - entropy_c2_start: 0.19110949972090585
+        - entropy_c2_end: 0.030016369088242106
+        - entropy_c2_steps: 1699
+        - n_epochs: 52
+        - lr_actor: 0.007751751648130268
+        - lr_critic: 0.003790033882253389
+        - normalize_rewards: False
+        - normalize_advantages: False
+        """
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
-            gamma=0.999,
-            lr_actor=0.0013655647166021928,
-            lr_critic=0.007255685546096761,
-            n_epochs=50,
-            eps_clip=0.2,
+            gamma=0.99,
+            lr_actor=0.007751751648130268,
+            lr_critic=0.003790033882253389,
+            n_epochs=52,
+            eps_clip=0.5,
             critic_c1=Schedule.linear(
-                start_value=0.9375751577962954,
-                end_value=0.38048446480609044,
-                n_steps=3127,
+                start_value=0.4105552831006898,
+                end_value=0.3271347177719041,
+                n_steps=2728,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.1957619650038549,
-                end_value=0.007744880113458132,  #
-                n_steps=2537,
+                start_value=0.19110949972090585,
+                end_value=0.030016369088242106,
+                n_steps=1699,
             ),
-            train_interval=25,
-            minibatch_size=20,
+            train_interval=6,
+            minibatch_size=5,
             gae_lambda=0.99,
-            grad_norm_clipping=None,  # 8.934885848478487
+            grad_norm_clipping=2.388555590580865,
+            normalize_rewards=False,
+            normalize_advantages=False,
         )
 
     @staticmethod
@@ -276,7 +295,6 @@ class PPOParameters:
                 end_value=0.08458724795592026,
                 n_steps=2012,
             ),
-
             n_epochs=15,
             lr_actor=0.000956264649262804,
             lr_critic=0.006671638920039944,
