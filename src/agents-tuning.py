@@ -13,10 +13,8 @@ from parameters import CardSimParameters, ClassificationParameters, Parameters, 
 from plots import Experiment, Run
 from runner import Runner
 
-N_PARALLEL = 8
-if not torch.cuda.is_available():
-    N_PARALLEL = 1  # If no GPU is available, run only one process at a time.
-TIMEOUT = timedelta(minutes=25)
+N_PARALLEL = 4
+# TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
 
@@ -34,7 +32,7 @@ def run(p: Parameters, trial_num: int):
         episodes = runner.run()
         return Run.create(p, episodes)
     except Exception as e:
-        logging.error(f"Trial {trial_num}: Error occurred while running experiment with seed {p.seed_value}: {e}")
+        logging.error(f"Trial {trial_num}: Error occurred while running experiment with seed {p.seed_value}: {e}", exc_info=True)
 
 
 def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters | VAEParameters]) -> float:
@@ -47,27 +45,19 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
         save=True,
     )
     exp = Experiment.create(params)
-    start = datetime.now()
-    handles = list[AsyncResult[Run | None]]()
 
     pool = mp.Pool(N_PARALLEL)
-    for p in exp.repeat(N_PARALLEL):
-        handles.append(pool.apply_async(run, (p, trial.number)))
+    run_args = [(p, trial.number) for p in exp.repeat(N_PARALLEL)]
+    runs = pool.starmap(run, run_args)
+    total = 0
+    for r in runs:
+        if r is not None:
+            total += r.total_amount
+            logging.info(f"Trial {trial.number} run completed with result {r.total_amount:.2f}")
+        else:
+            logging.error(f"Trial {trial.number} run failed.")
 
-    amounts = []
-    for handle in handles:
-        remaining = TIMEOUT - (datetime.now() - start)
-        try:
-            result = handle.get(timeout=remaining.total_seconds())
-            if result is not None:
-                amounts.append(result.total_amount)
-                logging.info(f"Trial {trial.number} run completed with result {amounts[-1]:.2f}")
-        except mp.TimeoutError:
-            logging.error(f"Trial {trial.number} timed out.")
-
-    if len(amounts) == 0:
-        raise ValueError(f"Trial {trial.number} failed to complete any run.")
-    objective = sum(amounts) / len(amounts)
+    objective = total / len(runs)
     logging.critical(f"Trial {trial.number} objective: {objective}")
     return objective
 
@@ -89,30 +79,40 @@ if __name__ == "__main__":
     if not p.banksys_is_in_cache():
         logging.info("Creating banksys...")
         b = p.create_banksys()
-        b.save()
+        b.save(p.banksys_dir)
 
-    study = optuna.create_study(
-        storage="sqlite:///agents-tuning.db",
-        study_name="ppo",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
-    )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=100, n_jobs=3)
+    try:
+        study = optuna.create_study(
+            storage="sqlite:///agents-tuning.db",
+            study_name="ppo",
+            direction=optuna.study.StudyDirection.MAXIMIZE,
+            load_if_exists=True,
+        )
+        study.optimize(lambda t: experiment(t, PPOParameters.suggest_ppo), n_trials=100, n_jobs=6)
+    except Exception as e:
+        logging.error(f"Error during PPO study optimization: {e}", exc_info=True)
 
-    study = optuna.create_study(
-        storage="sqlite:///agents-tuning.db",
-        study_name="rppo",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
-    )
-    study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=100, n_jobs=3)
+    exit()
+    try:
+        study = optuna.create_study(
+            storage="sqlite:///agents-tuning.db",
+            study_name="rppo",
+            direction=optuna.study.StudyDirection.MAXIMIZE,
+            load_if_exists=True,
+        )
+        study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=100, n_jobs=3)
+    except Exception as e:
+        logging.error(f"Error during RPPO study optimization: {e}", exc_info=True)
 
-    study = optuna.create_study(
-        storage="sqlite:///agents-tuning.db",
-        study_name="vae",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
-    )
-    study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=3)
+    try:
+        study = optuna.create_study(
+            storage="sqlite:///agents-tuning.db",
+            study_name="vae",
+            direction=optuna.study.StudyDirection.MAXIMIZE,
+            load_if_exists=True,
+        )
+        study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=3)
+    except Exception as e:
+        logging.error(f"Error during VAE study optimization: {e}", exc_info=True)
 
     logging.info("All trials completed.")

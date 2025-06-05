@@ -30,8 +30,6 @@ class Action:
             delay_hours = (5 / 60) * random.random()
         self.delay_hours = delay_hours
 
-        # self.delay_days = np.round(delay_hours / 24)
-
     @property
     def timedelta(self):
         return timedelta(hours=self.delay_hours)  # days=self.delay_days,
@@ -47,11 +45,8 @@ class Action:
             terminal_x=float(terminal_x),
             terminal_y=float(terminal_y),
             is_online=bool(is_online),
-            # delay_days=int(delay_days),
             delay_hours=float(delay_hours),
         )
-        #print(terminal_x, terminal_y)
-
         return to_return
 
     def to_numpy(self):

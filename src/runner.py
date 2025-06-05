@@ -19,9 +19,8 @@ class Runner:
         device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.params = params
         self.episodes = dict[Card, Episode]()
-        self.observations = dict[Card, Observation]()
-        self.actions = dict[Card, np.ndarray]()
-        self.states = dict[Card, State]()
+        self.prev_obs = dict[Card, Observation]()
+        self.prev_states = dict[Card, State]()
         self.hidden_states = dict[Card, Optional[torch.Tensor]]()
         if env is None:
             env = params.create_env()
@@ -39,17 +38,15 @@ class Runner:
         self.env.buffer_action(action, new_card)
 
         self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t, "card_id": new_card.id})
-        self.actions[new_card] = action
-        self.observations[new_card] = obs
-        self.states[new_card] = state
+        self.prev_obs[new_card] = obs
+        self.prev_states[new_card] = state
         self.hidden_states[new_card] = hx
         self.n_spawned += 1
 
     def cleanup_card(self, card: Card):
         del self.episodes[card]
-        del self.observations[card]
-        del self.actions[card]
-        del self.states[card]
+        del self.prev_obs[card]
+        del self.prev_states[card]
         del self.hidden_states[card]
 
     def run(self):
@@ -68,30 +65,27 @@ class Runner:
             step_num += 1
             try:
                 card, step, action = self.env.step()
-
-                # Update self.observations, states, actions, and hidden_states
-                self.observations[card] = step.obs
-                self.states[card] = step.state
-                self.actions[card] = action
-
-
-                total += step.reward.item()
-                pbar.set_postfix(trx=step_num, refresh=False)
-                pbar.set_description(
-                    f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
-                )
             except AttackPeriodExpired as e:
                 logging.warning(f"Attack period expired: {e}")
                 return episodes
 
-            transition = Transition.from_step(self.observations[card], self.states[card], self.actions[card], step)
+            transition = Transition.from_step(self.prev_obs[card], self.prev_states[card], action, step)
+
+            # Update self.observations, states and actions,
+            self.prev_obs[card] = step.obs
+            self.prev_states[card] = step.state
+
+            total += step.reward.item()
+            pbar.set_postfix(trx=step_num, refresh=False)
+            pbar.set_description(
+                f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
+            )
+
             try:
                 self.agent.update_transition(transition, step_num, episode_num)
             except ValueError as e:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
                 return episodes
-            if step_num > 2_500:
-                print()
 
             current_episode = self.episodes[card]
             current_episode.add(transition)
@@ -144,7 +138,7 @@ def run(params: Parameters):
 
 def main():
     params = Parameters(
-        #agent=PPOParameters.best_rppo(),
+        # agent=PPOParameters.best_rppo(),
         agent=VAEParameters.best_vae(),
         cardsim=CardSimParameters(),
         clf_params=ClassificationParameters(),
