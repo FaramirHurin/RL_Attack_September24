@@ -137,17 +137,27 @@ def run(params: Parameters):
 
 
 def main():
-    params = Parameters(
-        # agent=PPOParameters.best_rppo(),
-        agent=VAEParameters.best_vae(),
-        cardsim=CardSimParameters(),
-        clf_params=ClassificationParameters(),
-        n_episodes=3000,
-        logdir="logs/test/vae/seed-2",
-        save=True,
-    )
-    Experiment.create(params)
-    run(params)
+    for seed in range(1, 5):
+        for algorithm in ["ppo", "vae", "rppo"]: #"rppo",
+            if algorithm == "vae":
+                agent = VAEParameters.best_vae()
+            elif algorithm == "rppo":
+                agent = PPOParameters.best_rppo()
+            elif algorithm == "ppo":
+                agent = PPOParameters.best_ppo()
+
+            params = Parameters(
+                 # agent=PPOParameters.best_rppo(),
+                agent=agent,
+                cardsim=CardSimParameters(),
+                clf_params=ClassificationParameters(),
+                n_episodes=2000,
+                seed_value=seed,
+                logdir=f"logs/exp-final/{algorithm}/seed-{seed}",
+                save=True,
+            )
+            Experiment.create(params)
+            run(params)
 
 
 if __name__ == "__main__":
