@@ -37,9 +37,7 @@ class ClassificationSystem:
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
-        self.ml_classifier.n_jobs = -1  # type: ignore[assignment]
         self.ml_classifier.fit(transactions, is_fraud)
-        self.ml_classifier.n_jobs = 1  # type: ignore[assignment]
         logging.info("Fitting anomaly classifier")
         self.anomaly_detection_classifier.fit(transactions)
         logging.info("Fitting statistical classifier")

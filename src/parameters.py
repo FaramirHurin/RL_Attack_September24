@@ -37,6 +37,11 @@ class CardSimParameters:
 
     @staticmethod
     def paper_params():
+        """
+        - n_days: 365 * 2 + 150 + 30
+        - n_payers: 20_000
+        - start_date: "2023-01-01"
+        """
         return CardSimParameters(
             n_days=365 * 2 + 150 + 30,  # 2 years budget + 150 days training + 30 days warmup
             n_payers=20_000,
@@ -95,6 +100,12 @@ class ClassificationParameters:
         - balance_factor: 0.06473635736763925
         - quantiles_amount_high: 0.9976319783361984
         - quantiles_risk_high: 0.9999572867664103
+        - training_duration: 150 days
+        - contamination: "auto"
+        - rules:
+            - hourly: 8
+            - daily: 19
+            - weekly: 32
         """
         return ClassificationParameters(
             use_anomaly=False,
@@ -127,7 +138,7 @@ class ClassificationParameters:
                 "amount": (0, trial.suggest_float("quantiles_amount_high", 0.995, 1.0)),
                 f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
             },
-            use_anomaly=False,  # trial.suggest_categorical("use_anomaly", [True, False]),
+            use_anomaly=False,
             rules={
                 timedelta(hours=1): max_per_hour,
                 timedelta(days=1): max_per_day,
