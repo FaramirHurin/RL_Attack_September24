@@ -138,8 +138,8 @@ def run(params: Parameters):
 
 
 def main():
-    for seed in range(10, 20):
-        for algorithm in ["ppo", "vae"]:  # "rppo",
+    for seed in range(10):
+        for algorithm in ["rppo"]:  # "rppo",
             if algorithm == "vae":
                 agent = VAEParameters.best_vae()
             elif algorithm == "rppo":
@@ -148,10 +148,9 @@ def main():
                 agent = PPOParameters.best_ppo()
 
             params = Parameters(
-                # agent=PPOParameters.best_rppo(),
                 agent=agent,
-                cardsim=CardSimParameters(),
-                clf_params=ClassificationParameters(),
+                cardsim=CardSimParameters.paper_params(),
+                clf_params=ClassificationParameters.paper_params(),
                 n_episodes=4000,
                 seed_value=seed,
                 logdir=f"logs/exp-final/{algorithm}/seed-{seed}",
