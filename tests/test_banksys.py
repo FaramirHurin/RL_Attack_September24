@@ -253,3 +253,12 @@ def test_aggregated_features():
             "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
         )
         aggr_1_day_0 = copy.copy(aggr_1_day)
+
+
+def test_balance_when_predicted_fraudulent():
+    """
+    We should decide what the behaviour should be when a transaction is predicted to be fraudulent
+    but there is not enough balance on the card. Should we still record it to the card's transaction history?
+    And to the terminal's transaction history?
+    """
+    assert False

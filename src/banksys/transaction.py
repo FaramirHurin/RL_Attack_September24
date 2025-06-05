@@ -37,6 +37,7 @@ class Transaction:
 
     @property
     def fraud_is_detected(self):
+        """Return whether the predicted label indicates a fraud (i.e. `True`)."""
         if self.predicted_label is None:
             return False
         return self.predicted_label

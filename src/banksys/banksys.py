@@ -137,8 +137,8 @@ class Banksys:
             label = self.clf.predict(pl.DataFrame(features))
             trx.predicted_label = label.item()
 
-        self.terminals[trx.terminal_id].add(trx)
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
+        self.terminals[trx.terminal_id].add(trx)
         return features
 
     def process_transactions(self, transactions: list[Transaction], update_balance: bool):
