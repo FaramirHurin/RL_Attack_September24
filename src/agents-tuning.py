@@ -13,7 +13,7 @@ from parameters import CardSimParameters, ClassificationParameters, Parameters, 
 from plots import Experiment, Run
 from runner import Runner
 
-N_PARALLEL = 4
+N_PARALLEL = 2
 # TIMEOUT = timedelta(minutes=25)
 CLF_PARAMS = ClassificationParameters.paper_params()
 CARDSIM_PARAMS = CardSimParameters.paper_params()
@@ -43,6 +43,7 @@ def experiment(trial: optuna.Trial, fn: Callable[[optuna.Trial], PPOParameters |
         seed_value=0,
         include_weekday=True,
         save=True,
+        n_episodes=1000,
     )
     exp = Experiment.create(params)
 
@@ -92,16 +93,16 @@ if __name__ == "__main__":
     # except Exception as e:
     #     logging.error(f"Error during PPO study optimization: {e}", exc_info=True)
 
-    try:
-        study = optuna.create_study(
-            storage="sqlite:///agents-tuning.db",
-            study_name="rppo",
-            direction=optuna.study.StudyDirection.MAXIMIZE,
-            load_if_exists=True,
-        )
-        study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=40, n_jobs=6)
-    except Exception as e:
-        logging.error(f"Error during RPPO study optimization: {e}", exc_info=True)
+    # try:
+    #     study = optuna.create_study(
+    #         storage="sqlite:///agents-tuning.db",
+    #         study_name="rppo",
+    #         direction=optuna.study.StudyDirection.MAXIMIZE,
+    #         load_if_exists=True,
+    #     )
+    #     study.optimize(lambda t: experiment(t, PPOParameters.suggest_rppo), n_trials=40, n_jobs=6)
+    # except Exception as e:
+    #     logging.error(f"Error during RPPO study optimization: {e}", exc_info=True)
 
     try:
         study = optuna.create_study(
@@ -110,7 +111,7 @@ if __name__ == "__main__":
             direction=optuna.study.StudyDirection.MAXIMIZE,
             load_if_exists=True,
         )
-        study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=3)
+        study.optimize(lambda t: experiment(t, VAEParameters.suggest), n_trials=100, n_jobs=2)
     except Exception as e:
         logging.error(f"Error during VAE study optimization: {e}", exc_info=True)
 
