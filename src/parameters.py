@@ -237,7 +237,7 @@ class PPOParameters:
             gamma=0.999,
             lr_actor=0.0013655647166021928,
             lr_critic=0.007255685546096761,
-            n_epochs=100,
+            n_epochs=50,
             eps_clip=0.2,
             critic_c1=Schedule.linear(
                 start_value=0.9375751577962954,
@@ -261,27 +261,27 @@ class PPOParameters:
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
         return PPOParameters(
-            is_recurrent=True,
+            is_recurrent=False,
             train_on="transition",
-            gamma=1,
-            lr_actor=0.000517126625357408,
-            lr_critic=0.003648237767940683,
-            n_epochs=64,
-            eps_clip=0.1,
+            train_interval=63,
+            minibatch_size=47,
+            grad_norm_clipping=None,
             critic_c1=Schedule.linear(
-                start_value=0.06450187834828542,
-                end_value=0.45697380802021975,
-                n_steps=3291,
+                start_value=0.9210682011725766,
+                end_value=0.277828843096964265,
+                n_steps=2980,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.58774192037356557,
-                end_value=0.017361163706258554,
-                n_steps=3000,
+                start_value=0.15586561621061853,
+                end_value=0.08458724795592026,
+                n_steps=2012,
             ),
-            train_interval=50,
-            minibatch_size=32,
-            gae_lambda=0.8,
-            grad_norm_clipping=None,
+
+            n_epochs=15,
+            lr_actor=0.000956264649262804,
+            lr_critic=0.006671638920039944,
+            normalize_rewards=True,
+            normalize_advantages=True,
         )
 
     @staticmethod
@@ -366,15 +366,15 @@ class VAEParameters:
         # Best 1 latent_dim: 2, hidden_dim: 157, lr: 0.0007161633748676655, trees: 54, batch_size: 29, num_epochs: 6672, quantile: 0.9844833640628634, generated_size: 970
         # Best 2 (after rework from Daniele on the 28th or May) [latent_dim: 74, hidden_dim: 175, lr: 0.0005289140008626337, trees: 63, batch_size: 22, num_epochs: 8904, quantile: 0.9661441225831466, generated_size: 466, beta: 0.39527769849107575, n_infiltrated_terminals: 17]
         return VAEParameters(
-            latent_dim=74,
-            hidden_dim=175,
+            latent_dim=16,
+            hidden_dim=30,
             lr=0.0005289140008626337,
             trees=63,
             batch_size=22,
             num_epochs=8904,
-            quantile=0.9661441225831466,
+            quantile=0.9861441225831466,
             supervised=False,
-            generated_size=466,
+            generated_size=1000,
             n_infiltrated_terminals=17,
             beta=0.39527769849107575,
         )

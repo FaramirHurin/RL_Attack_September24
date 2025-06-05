@@ -88,6 +88,7 @@ class Runner:
                 return episodes
 
             current_episode = self.episodes[card]
+            #current_episode.is_finished = step.done or step.truncated
             current_episode.add(transition)
             if current_episode.is_finished:
                 self.cleanup_card(card)
@@ -137,8 +138,8 @@ def run(params: Parameters):
 
 
 def main():
-    for seed in range(1, 5):
-        for algorithm in ["ppo", "vae", "rppo"]: #"rppo",
+    for seed in range(10, 20):
+        for algorithm in ["ppo", "vae"]: #"rppo",
             if algorithm == "vae":
                 agent = VAEParameters.best_vae()
             elif algorithm == "rppo":
@@ -151,7 +152,7 @@ def main():
                 agent=agent,
                 cardsim=CardSimParameters(),
                 clf_params=ClassificationParameters(),
-                n_episodes=2000,
+                n_episodes=4000,
                 seed_value=seed,
                 logdir=f"logs/exp-final/{algorithm}/seed-{seed}",
                 save=True,
