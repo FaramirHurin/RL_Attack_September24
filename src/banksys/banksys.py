@@ -40,7 +40,7 @@ class Banksys:
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
         self.silent = silent
-        self.clf = ClassificationSystem(clf_params)
+        self.clf = ClassificationSystem(clf_params, self.attack_start)
 
         self._transactions_df = (
             transactions_df.sort("timestamp")  # Sort by timestamp
@@ -133,8 +133,9 @@ class Banksys:
         """
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
+        true_label = trx.is_fraud
         if trx.predicted_label is None:
-            label = self.clf.predict(pl.DataFrame(features))
+            label = self.clf.predict(pl.DataFrame(features), true_label, trx.timestamp)
             trx.predicted_label = label.item()
 
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
@@ -146,8 +147,9 @@ class Banksys:
         Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
         If `real_label` is True, it will use the real label from the transaction.
         """
+        true_labels = [trx.is_fraud for trx in transactions]
         df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
-        labels = self.clf.predict(df)
+        labels = self.clf.predict(df, true_labels, self.current_time)
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)

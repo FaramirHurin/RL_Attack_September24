@@ -18,7 +18,9 @@ if __name__ == "__main__":
     features = pl.concat(df_list)
     df = banksys._transactions_df.filter(pl.col("timestamp").is_between(banksys.attack_start, banksys.current_time))
 
-    predicted = banksys.clf.predict(features)
+    true_labels = df["is_fraud"].to_numpy()
+
+    predicted = banksys.clf.predict(features, true_labels, banksys.current_time)
     details = banksys.clf.get_details()
     print(details)
     print(details.describe())

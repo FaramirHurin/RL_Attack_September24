@@ -21,8 +21,11 @@ class ClassificationSystem:
     anomaly_detection_classifier: IsolationForest
     use_anomaly: bool
     training_duration: timedelta
+    dataset: pl.DataFrame
+    retrain_every: timedelta
 
-    def __init__(self, params: "ClassificationParameters"):
+
+    def __init__(self, params: "ClassificationParameters", attack_start):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
         self.anomaly_detection_classifier = IsolationForest(n_estimators=params.n_trees, n_jobs=1, contamination="auto")
         self.statistical_classifier = StatisticalClassifier(params.quantiles)
@@ -34,6 +37,9 @@ class ClassificationSystem:
         self.l3 = np.array([], dtype=np.bool)  # Placeholder for the third prediction, to be replaced in predict method
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
         assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
+        self.current_time = attack_start
+        # Timedelta of two weeks, used to determine the training period
+        self.retrain_every = timedelta(days=14)  # type: ignore[assignment]
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -44,7 +50,11 @@ class ClassificationSystem:
         self.statistical_classifier.fit(transactions)
         logging.info("Done !")
 
-    def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
+        self.initial_transactions = transactions
+        self.add_transactions(transactions, is_fraud)
+        self.current_time = transactions["timestamp"].max()
+
+    def predict(self, df: pl.DataFrame, true_labels, t) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
         self.l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
@@ -57,6 +67,10 @@ class ClassificationSystem:
             label = self.anomaly_detection_classifier.predict(df)
             self.l4 = label == -1
             result = result | self.l4
+
+        self.add_transactions(df, true_labels)
+        self.evaluate_retraining(df, t)
+
         return result
 
     def get_details(self):
@@ -72,3 +86,22 @@ class ClassificationSystem:
         if self.use_anomaly:
             detected_by = detected_by.with_columns(pl.Series("Anomaly", self.l4))
         return detected_by
+
+    def add_transactions(self, transactions: pl.DataFrame, true_labels):
+        """
+        Add new transactions to the dataset.
+        """
+        assert len(true_labels) == len(transactions)
+        transactions["is_fraud"] = true_labels
+        if self.dataset is None:
+            self.dataset = transactions
+        else:
+            self.dataset = pl.concat([self.dataset, transactions], rechunk=True)
+
+    def evaluate_retraining(self, transactions: pl.DataFrame):
+        """
+        Evaluate if the model should be retrained based on the number of new transactions.
+        """
+        if self.current_time + self.retrain_every < transactions["timestamp"].max():
+            logging.info("Retraining model")
+            self.fit(self.dataset, self.dataset["is_fraud"].to_numpy())

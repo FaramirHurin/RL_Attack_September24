@@ -54,11 +54,13 @@ def test_card_blocked_zero_reward():
     assert step.reward.item() == 0.0, "Reward should be zero when card is blocked due to insufficient balance"
     assert not step.done
 
+
     n_attacks, time_remaining, is_credit, hour_ratio, *_ = step.obs.data
     assert n_attacks == 1
     assert time_remaining == 23 / 24
     assert bool(is_credit) == card.is_credit
     assert hour_ratio == env.t.hour / 24
+
 
 
 def test_time_going():

@@ -234,6 +234,17 @@ class Experiment:
             amounts[i] += [float("NaN")] * (maxlen - len(amounts[i]))
         return np.array(amounts)
 
+    def get_actions(self):
+        """
+        Returns a list of all actions taken in all runs.
+        """
+        actions = []
+        for run in self.runs.values():
+            for episode in run.episodes:
+                print(episode)
+                actions.extend(episode.actions)
+        return actions
+
     @cached_property
     def mean_std_amounts_over_time(self) -> tuple[np.ndarray, np.ndarray]:
         """
