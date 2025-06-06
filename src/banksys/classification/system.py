@@ -38,8 +38,9 @@ class ClassificationSystem:
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
         assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
         self.current_time = attack_start
+        self.dataset = None
         # Timedelta of two weeks, used to determine the training period
-        self.retrain_every = timedelta(days=14)  # type: ignore[assignment]
+        self.retrain_every = timedelta(days=1)  # type: ignore[assignment]
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -52,7 +53,6 @@ class ClassificationSystem:
 
         self.initial_transactions = transactions
         self.add_transactions(transactions, is_fraud)
-        self.current_time = transactions["timestamp"].max()
 
     def predict(self, df: pl.DataFrame, true_labels, t) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
@@ -91,17 +91,43 @@ class ClassificationSystem:
         """
         Add new transactions to the dataset.
         """
-        assert len(true_labels) == len(transactions)
-        transactions["is_fraud"] = true_labels
+        # Ensure true_labels is a list/array of bools and matches length
+        if not isinstance(true_labels, (list, tuple, pl.Series)):
+            true_labels = [true_labels]
+
+        if isinstance(true_labels, pl.Series):
+            true_labels = true_labels.to_list()
+
+        # Cast to bool
+        try:
+            true_labels = [bool(label) for label in true_labels]
+        except:
+            DEBUG = True
+
+        assert len(true_labels) == len(transactions), "Length mismatch between labels and transactions"
+
+        # Add the boolean column
+        transactions = transactions.with_columns(
+            pl.Series("is_fraud", true_labels).cast(pl.Boolean)
+        )
+
         if self.dataset is None:
             self.dataset = transactions
         else:
-            self.dataset = pl.concat([self.dataset, transactions], rechunk=True)
+            try:
+                self.dataset = pl.concat([self.dataset, transactions], rechunk=True)
+            except:
+                # Modify self.datasrt to accept booolean as is_fraud
+                self.dataset = self.dataset.with_columns(
+                    pl.Series("is_fraud", self.dataset["is_fraud"].to_numpy().astype(bool))
+                )
 
-    def evaluate_retraining(self, transactions: pl.DataFrame):
+
+    def evaluate_retraining(self, transactions: pl.DataFrame, t):
         """
         Evaluate if the model should be retrained based on the number of new transactions.
         """
-        if self.current_time + self.retrain_every < transactions["timestamp"].max():
+        if self.current_time + self.retrain_every < t:
             logging.info("Retraining model")
             self.fit(self.dataset, self.dataset["is_fraud"].to_numpy())
+            self.current_time = t
