@@ -5,7 +5,7 @@ from functools import cached_property
 import random
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Sequence
-
+import pandas as pd
 import numpy as np
 import polars as pl
 from tqdm import tqdm
@@ -27,13 +27,22 @@ class Banksys:
         terminals_df: pl.DataFrame,
         aggregation_windows: Sequence[timedelta],
         clf_params: "ClassificationParameters",
-        attackable_terminal_factor: float = 0.1,
-        fp_rate=0.01,
-        fn_rate=0.01,
+        attackable_terminal_factor: float = 0.5,
+        fp_rate=0.00,
+        fn_rate=0.00,
         silent: bool = False,
         fit: bool = True,
     ):
         self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
+
+        # If transactions_df is a pandas DataFrame, convert it to polars
+        if isinstance(transactions_df, pd.DataFrame):
+            transactions_df['timestamp'] = pd.to_datetime(transactions_df['timestamp']).dt.to_pydatetime()
+            transactions_df = pl.from_pandas(transactions_df)
+
+            cards_df = pl.from_pandas(cards_df)
+            terminals_df = pl.from_pandas(terminals_df)
+
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
         self.training_start = self.current_time + self.max_aggregation_duration
         self.attack_start = self.training_start + clf_params.training_duration
@@ -149,7 +158,9 @@ class Banksys:
         """
         true_labels = [trx.is_fraud for trx in transactions]
         df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
-        labels = self.clf.predict(df, true_labels, self.current_time)
+        #labels = self.clf.predict(df, true_labels, self.current_time)
+        # Use transactions labels
+        labels = pl.Series([trx.is_fraud for trx in transactions])
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)
@@ -159,14 +170,24 @@ class Banksys:
     def make_transaction_features(self, trx: Transaction):
         weekday = [0.0] * 7
         weekday[trx.timestamp.weekday()] = 1.0
-        features = {
-            "hour": trx.timestamp.hour,
-            "is_online": trx.is_online,
-            "amount": trx.amount,
-            **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
-            **self.cards[trx.card_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
-            **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
-        }
+        try:
+            features = {
+                "hour": trx.timestamp.hour,
+                "is_online": trx.is_online,
+                "amount": trx.amount,
+                **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
+                **self.cards[trx.card_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
+                **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
+            }
+        except:
+            features = {
+                "hour": trx.timestamp.hour,
+                "is_online": trx.is_online,
+                "amount": trx.amount,
+                **{day: val for day, val in zip("Mon Tue Wed Thu Fri Sat Sun".split(), weekday)},
+                **self.cards[trx.card_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
+                **self.terminals[trx.terminal_id].transactions.count_and_risk(self.aggregation_windows, trx.timestamp),
+            }
         return features
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):

@@ -12,6 +12,7 @@ from tqdm import tqdm
 from banksys import Card
 from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
+from datetime import timedelta
 
 
 class Runner:
@@ -28,6 +29,7 @@ class Runner:
         self.agent = params.create_agent(self.env, device)
         self.quiet = quiet
         self.n_spawned = 0
+
 
     def spawn_card_and_buffer_action(self):
         """
@@ -51,6 +53,8 @@ class Runner:
 
     def run(self):
         self.env.reset()
+        self.env.system.clf.use_anomaly = self.params.clf_params.use_anomaly
+        self.env.system.clf.retrain_every = timedelta(days=10000)  # type: ignore[assignment]
         for _ in range(self.params.card_pool_size):
             self.spawn_card_and_buffer_action()
 
@@ -93,6 +97,10 @@ class Runner:
             if current_episode.is_finished:
                 self.cleanup_card(card)
                 scores.append(current_episode.score[0])
+                if len(scores) == 300:
+                    X =  self.env.system.clf.dataset['Transactions']
+                    y = self.env.system.clf.dataset['Labels']
+                    #self.env.system.clf.fit(X, y)
                 episodes.append(current_episode)
                 avg_score = np.mean(scores[-100:])
                 avg_length = np.mean([len(ep) for ep in episodes[-100:]])
@@ -137,9 +145,10 @@ def run(params: Parameters):
     Run.create(params, episodes)
 
 
-def main():
-    for seed in range(30, 40):
-        for algorithm in ["rppo", "ppo", "vae"]:  #
+def main(ulb_data: bool = False):
+
+    for seed in range(0, 20):
+        for algorithm in [ "vae", "ppo", "rppo",]:  #
             if algorithm == "vae":
                 agent = VAEParameters.best_vae()
             elif algorithm == "rppo":
@@ -147,16 +156,22 @@ def main():
             elif algorithm == "ppo":
                 agent = PPOParameters.best_ppo()
 
-            params = Parameters(
-                # agent=PPOParameters.best_rppo(),
-                agent=agent,
-                cardsim=CardSimParameters(),
-                clf_params=ClassificationParameters.paper_params(),
-                n_episodes=3000,
-                seed_value=seed,
-                logdir=f"logs/exp-final/{algorithm}/seed-{seed}",
-                save=True,
-            )
+            for anomaly in [True]: #, True False
+                if ulb_data:
+                    logdir=f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+                else:
+                    logdir=f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+                params = Parameters(
+                    # agent=PPOParameters.best_rppo(),
+                    agent=agent,
+                    cardsim=CardSimParameters(),
+                    clf_params=ClassificationParameters.paper_params(anomaly),
+                    n_episodes=3000,
+                    seed_value=seed,
+                    logdir=logdir,
+                    save=True,
+                    ulb_data=ulb_data,
+                )
             Experiment.create(params)
             run(params)
 
@@ -171,7 +186,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main()
+        main(ulb_data=True)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

@@ -116,6 +116,7 @@ class PPO(Agent):
             returns, advantages, log_probs = self._compute_training_data(batch)
 
         for _ in range(self.n_epochs):
+
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
             match batch:

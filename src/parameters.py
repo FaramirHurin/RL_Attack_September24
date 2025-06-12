@@ -23,16 +23,21 @@ class CardSimParameters:
     start_date: str = "2023-01-01"
     n_payers: int = 10_000
 
-    def get_simulation_data(self, use_cache: bool = True):
+    def get_simulation_data(self, use_cache: bool = True, ulb_data=False):
         from cardsim import Cardsim
 
-        simulator = Cardsim()
-        transactions, cards, terminals = simulator.simulate(
-            n_days=self.n_days,
-            n_payers=self.n_payers,
-            start_date=self.start_date,
-            use_cache=use_cache,
-        )
+        if ulb_data:
+            transactions = pd.read_csv("MLG_Simulator/transactions.csv")
+            cards = pd.read_csv("MLG_Simulator/customer_profiles.csv")
+            terminals = pd.read_csv("MLG_Simulator/terminal_profiles.csv")
+        else:
+            simulator = Cardsim()
+            transactions, cards, terminals = simulator.simulate(
+                n_days=self.n_days,
+                n_payers=self.n_payers,
+                start_date=self.start_date,
+                use_cache=use_cache,
+            )
         return transactions, cards, terminals
 
     @staticmethod
@@ -91,7 +96,7 @@ class ClassificationParameters:
         return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
     @staticmethod
-    def paper_params():
+    def paper_params(anomaly):
         """
         - max_trx_hour: 8
         - max_trx_day: 19
@@ -108,7 +113,7 @@ class ClassificationParameters:
             - weekly: 32
         """
         return ClassificationParameters(
-            use_anomaly=False,
+            use_anomaly=anomaly,
             n_trees=139,
             balance_factor=0.06473635736763925,
             contamination="auto",
@@ -217,8 +222,8 @@ class PPOParameters:
         """
         Create PPOParameters from a JSON-like dictionary.
         """
-        data["critic_c1"] = schedule_from_json(data["critic_c1"])
-        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
+        data["critic_c1"] = schedule_from_json(data["critic_c1"]) 
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"]) #
         return PPOParameters(**data)
 
     def get_agent(self, env: CardSimEnv, device: torch.device):
@@ -242,23 +247,6 @@ class PPOParameters:
 
     @staticmethod
     def best_rppo():
-        """
-        - train_interval: 6
-        - minibatch_size: 5
-        - enable_clipping: True
-        - grad_norm_clipping: 2.388555590580865
-        - critic_c1_start: 0.4105552831006898
-        - critic_c1_end: 0.3271347177719041
-        - critic_c1_steps: 2728
-        - entropy_c2_start: 0.19110949972090585
-        - entropy_c2_end: 0.030016369088242106
-        - entropy_c2_steps: 1699
-        - n_epochs: 52
-        - lr_actor: 0.007751751648130268
-        - lr_critic: 0.003790033882253389
-        - normalize_rewards: False
-        - normalize_advantages: False
-        """
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
@@ -284,6 +272,29 @@ class PPOParameters:
             normalize_rewards=False,
             normalize_advantages=False,
         )
+
+        """
+        - train_interval: 6
+        - minibatch_size: 5
+        - enable_clipping: True
+        - grad_norm_clipping: 2.388555590580865
+        - critic_c1_start: 0.4105552831006898
+        - critic_c1_end: 0.3271347177719041
+        - critic_c1_steps: 2728
+        - entropy_c2_start: 0.19110949972090585
+        - entropy_c2_end: 0.030016369088242106
+        - entropy_c2_steps: 1699
+        - n_epochs: 52
+        - lr_actor: 0.007751751648130268
+        - lr_critic: 0.003790033882253389
+        - normalize_rewards: False
+        - normalize_advantages: False
+        """
+    """            =Schedule.linear(
+            start_value=0.19110949972090585,
+            end_value=0.030016369088242106,
+            n_steps=1699,
+        ),"""
 
     @staticmethod
     def best_ppo():
@@ -463,6 +474,7 @@ class Parameters:
         logdir: Optional[str] = None,
         save: bool = True,
         include_weekday: bool = True,
+        ulb_data: bool = False,
         aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
@@ -482,6 +494,7 @@ class Parameters:
         self.card_pool_size = card_pool_size
         self.include_weekday = include_weekday
         self.aggregation_windows = []
+        self.ulb_data = ulb_data
         for window in aggregation_windows:
             if isinstance(window, (float, int)):
                 window = timedelta(seconds=window)
@@ -526,7 +539,6 @@ class Parameters:
 
     def create_env(self):
         from banksys import Banksys
-
         try:
             banksys = Banksys.load(self.banksys_dir)
         except (FileNotFoundError, ValueError):
@@ -550,18 +562,33 @@ class Parameters:
 
     @property
     def banksys_dir(self):
-        return os.path.join(
-            "cache",
-            "banksys",
-            f"{self.cardsim.n_payers}-payers",
-            f"{self.cardsim.n_days}-days",
-            f"start-{self.cardsim.start_date}",
-        )
+        if self.ulb_data:
+            return os.path.join(
+                "ULB",
+                "cache",
+                "banksys",
+                f"{self.cardsim.n_payers}-payers",
+                f"{self.cardsim.n_days}-days",
+                f"start-{self.cardsim.start_date}",
+            )
+        else:
+            return os.path.join(
+                "cache",
+                "banksys",
+                f"{self.cardsim.n_payers}-payers",
+                f"{self.cardsim.n_days}-days",
+                f"start-{self.cardsim.start_date}",
+            )
 
     def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True):
         from banksys import Banksys
 
-        transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache)
+        if self.ulb_data:
+            transactions = pd.read_csv("MLG_Simulator/transactions.csv")
+            cards = pd.read_csv("MLG_Simulator/customer_profiles.csv")
+            terminals = pd.read_csv("MLG_Simulator/terminal_profiles.csv")
+        else:
+            transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
         return Banksys(
             transactions,
             cards,
