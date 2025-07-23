@@ -4,7 +4,6 @@ from typing import Optional
 from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
 import numpy as np
-import copy
 from plots import Experiment, Run
 from marlenv import Episode, Transition, Observation, State
 import torch
@@ -29,7 +28,6 @@ class Runner:
         self.agent = params.create_agent(self.env, device)
         self.quiet = quiet
         self.n_spawned = 0
-
 
     def spawn_card_and_buffer_action(self):
         """
@@ -98,9 +96,9 @@ class Runner:
                 self.cleanup_card(card)
                 scores.append(current_episode.score[0])
                 if len(scores) == 300:
-                    X =  self.env.system.clf.dataset['Transactions']
-                    y = self.env.system.clf.dataset['Labels']
-                    #self.env.system.clf.fit(X, y)
+                    X = self.env.system.clf.dataset["Transactions"]
+                    y = self.env.system.clf.dataset["Labels"]
+                    # self.env.system.clf.fit(X, y)
                 episodes.append(current_episode)
                 avg_score = np.mean(scores[-100:])
                 avg_length = np.mean([len(ep) for ep in episodes[-100:]])
@@ -123,19 +121,27 @@ class Runner:
         return episodes
 
 
-def main_parallel():
+def main_parallel(algorithm: str):
     import multiprocessing as mp
 
+    if algorithm == "vae":
+        agent = VAEParameters.best_vae()
+    elif algorithm == "rppo":
+        agent = PPOParameters.best_rppo()
+    elif algorithm == "ppo":
+        agent = PPOParameters.best_ppo()
+    else:
+        raise ValueError(f"Unknown algorithm: {algorithm}")
+
     params = Parameters(
-        agent=VAEParameters.best_vae(),  #   PPOParameters.best_rppo3(),
+        agent=agent,
         cardsim=CardSimParameters.paper_params(),
-        clf_params=ClassificationParameters.paper_params(),
-        seed_value=30,
-        logdir="logs/VAElocal-paper/seed-30",
+        clf_params=ClassificationParameters.paper_params(True),
+        seed_value=0,
     )
     exp = Experiment.create(params)
-    with mp.Pool(16) as pool:
-        pool.map(run, exp.repeat(16))
+    with mp.Pool(10) as pool:
+        pool.map(run, exp.repeat(30))
     logging.info("All runs completed.")
 
 
@@ -146,21 +152,22 @@ def run(params: Parameters):
 
 
 def main(ulb_data: bool = False):
-
     for seed in range(0, 20):
-        for algorithm in [ "ppo", "vae","rppo",]:  #
+        for algorithm in ("ppo", "vae", "rppo"):
             if algorithm == "vae":
                 agent = VAEParameters.best_vae()
             elif algorithm == "rppo":
                 agent = PPOParameters.best_rppo()
             elif algorithm == "ppo":
                 agent = PPOParameters.best_ppo()
+            else:
+                raise ValueError(f"Unknown algorithm: {algorithm}")
 
-            for anomaly in [True]: #, True False
+            for anomaly in [True]:  # , True False
                 if ulb_data:
-                    logdir=f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+                    logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
                 else:
-                    logdir=f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+                    logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
                 params = Parameters(
                     # agent=PPOParameters.best_rppo(),
                     agent=agent,
@@ -168,7 +175,7 @@ def main(ulb_data: bool = False):
                     clf_params=ClassificationParameters.paper_params(anomaly),
                     n_episodes=3000,
                     card_pool_size=100,
-                    avg_card_block_delay_days=5,
+                    avg_card_block_delay_days=7,
                     seed_value=seed,
                     logdir=logdir,
                     save=True,
@@ -188,7 +195,10 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(ulb_data=True)
+        main_parallel("ppo")
+        main_parallel("rppo")
+        main_parallel("vae")
+        # main(ulb_data=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

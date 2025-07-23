@@ -1,6 +1,7 @@
 import random
 from dataclasses import asdict, dataclass
 import pandas as pd
+import polars as pl
 from datetime import timedelta, datetime
 import os
 from optuna import Trial
@@ -15,7 +16,9 @@ from marlenv.utils import Schedule
 
 from agents import Agent
 from environment import CardSimEnv
-CARD_POOL_SIZE=100
+
+CARD_POOL_SIZE = 100
+
 
 @dataclass(eq=True)
 class CardSimParameters:
@@ -66,7 +69,7 @@ class ClassificationParameters:
 
     def __init__(
         self,
-        use_anomaly: bool = False,
+        use_anomaly: bool = True,
         n_trees: int = 50,
         balance_factor: float = 0.1,
         contamination: float | Literal["auto"] = "auto",
@@ -96,7 +99,7 @@ class ClassificationParameters:
         return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
     @staticmethod
-    def paper_params(anomaly):
+    def paper_params(anomaly: bool):
         """
         - max_trx_hour: 8
         - max_trx_day: 19
@@ -123,8 +126,8 @@ class ClassificationParameters:
                 "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
             },
             rules={
-                timedelta(hours=1): 5, # 8,
-                timedelta(days=1): 12, # 19,
+                timedelta(hours=1): 5,  # 8,
+                timedelta(days=1): 12,  # 19,
                 timedelta(weeks=1): 32,
             },
         )
@@ -222,8 +225,8 @@ class PPOParameters:
         """
         Create PPOParameters from a JSON-like dictionary.
         """
-        data["critic_c1"] = schedule_from_json(data["critic_c1"]) 
-        data["entropy_c2"] = schedule_from_json(data["entropy_c2"]) #
+        data["critic_c1"] = schedule_from_json(data["critic_c1"])
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])  #
         return PPOParameters(**data)
 
     def get_agent(self, env: CardSimEnv, device: torch.device):
@@ -290,6 +293,7 @@ class PPOParameters:
         - normalize_rewards: False
         - normalize_advantages: False
         """
+
     """            =Schedule.linear(
             start_value=0.19110949972090585,
             end_value=0.030016369088242106,
@@ -304,8 +308,8 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            train_interval=50, #63
-            minibatch_size=40, # 47
+            train_interval=50,  # 63
+            minibatch_size=40,  # 47
             grad_norm_clipping=None,
             critic_c1=Schedule.linear(
                 start_value=0.9210682011725766,
@@ -313,8 +317,8 @@ class PPOParameters:
                 n_steps=2980,
             ),
             entropy_c2=Schedule.linear(
-                start_value= 0.25,  #0.15586561621061853,
-                end_value= 0.05,   # 0.08458724795592026,
+                start_value=0.25,  # 0.15586561621061853,
+                end_value=0.05,  # 0.08458724795592026,
                 n_steps=2012,
             ),
             n_epochs=15,
@@ -420,9 +424,9 @@ class VAEParameters:
             trees=20,
             batch_size=10,
             num_epochs=2791,
-            quantile= 0.98, # 0.9946175749502564,
+            quantile=0.98,  # 0.9946175749502564,
             supervised=False,
-            generated_size= 150,  #541
+            generated_size=150,  # 541
             n_infiltrated_terminals=82,
             beta=0.25391071673841914,
         )
@@ -469,7 +473,7 @@ class Parameters:
         know_client: bool = False,
         terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
-        card_pool_size: int = CARD_POOL_SIZE, #TODO It was 50
+        card_pool_size: int = CARD_POOL_SIZE,  # TODO It was 50
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,
@@ -530,6 +534,8 @@ class Parameters:
         if device is None:
             device = self.get_device_by_seed()
         match self.agent:
+            case None:
+                raise ValueError("Agent is not set. Please provide an agent.")
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.know_client, self.agent.quantile)
             case PPOParameters():
@@ -539,6 +545,7 @@ class Parameters:
 
     def create_env(self):
         from banksys import Banksys
+
         try:
             banksys = Banksys.load(self.banksys_dir)
         except (FileNotFoundError, ValueError):
@@ -584,9 +591,9 @@ class Parameters:
         from banksys import Banksys
 
         if self.ulb_data:
-            transactions = pd.read_csv("MLG_Simulator/transactions.csv")
-            cards = pd.read_csv("MLG_Simulator/customer_profiles.csv")
-            terminals = pd.read_csv("MLG_Simulator/terminal_profiles.csv")
+            transactions = pl.read_csv("MLG_Simulator/transactions.csv")
+            cards = pl.read_csv("MLG_Simulator/customer_profiles.csv")
+            terminals = pl.read_csv("MLG_Simulator/terminal_profiles.csv")
         else:
             transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
         return Banksys(
