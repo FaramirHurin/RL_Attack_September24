@@ -148,7 +148,7 @@ def run(params: Parameters):
 def main(ulb_data: bool = False):
 
     for seed in range(0, 20):
-        for algorithm in [ "vae", "ppo", "rppo",]:  #
+        for algorithm in [ "ppo", "vae","rppo",]:  #
             if algorithm == "vae":
                 agent = VAEParameters.best_vae()
             elif algorithm == "rppo":
@@ -167,6 +167,8 @@ def main(ulb_data: bool = False):
                     cardsim=CardSimParameters(),
                     clf_params=ClassificationParameters.paper_params(anomaly),
                     n_episodes=3000,
+                    card_pool_size=100,
+                    avg_card_block_delay_days=5,
                     seed_value=seed,
                     logdir=logdir,
                     save=True,

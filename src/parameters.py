@@ -15,7 +15,7 @@ from marlenv.utils import Schedule
 
 from agents import Agent
 from environment import CardSimEnv
-
+CARD_POOL_SIZE=100
 
 @dataclass(eq=True)
 class CardSimParameters:
@@ -123,8 +123,8 @@ class ClassificationParameters:
                 "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
             },
             rules={
-                timedelta(hours=1): 8,
-                timedelta(days=1): 19,
+                timedelta(hours=1): 5, # 8,
+                timedelta(days=1): 12, # 19,
                 timedelta(weeks=1): 32,
             },
         )
@@ -304,8 +304,8 @@ class PPOParameters:
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            train_interval=63,
-            minibatch_size=47,
+            train_interval=50, #63
+            minibatch_size=40, # 47
             grad_norm_clipping=None,
             critic_c1=Schedule.linear(
                 start_value=0.9210682011725766,
@@ -313,8 +313,8 @@ class PPOParameters:
                 n_steps=2980,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.15586561621061853,
-                end_value=0.08458724795592026,
+                start_value= 0.25,  #0.15586561621061853,
+                end_value= 0.05,   # 0.08458724795592026,
                 n_steps=2012,
             ),
             n_epochs=15,
@@ -420,9 +420,9 @@ class VAEParameters:
             trees=20,
             batch_size=10,
             num_epochs=2791,
-            quantile=0.9946175749502564,
+            quantile= 0.98, # 0.9946175749502564,
             supervised=False,
-            generated_size=541,
+            generated_size= 150,  #541
             n_infiltrated_terminals=82,
             beta=0.25391071673841914,
         )
@@ -469,7 +469,7 @@ class Parameters:
         know_client: bool = False,
         terminal_fract: float = 0.1,
         seed_value: Optional[int] = None,
-        card_pool_size: int = 50,
+        card_pool_size: int = CARD_POOL_SIZE, #TODO It was 50
         avg_card_block_delay_days: int = 7,
         logdir: Optional[str] = None,
         save: bool = True,

@@ -51,8 +51,8 @@ def generate_terminal_profiles_table(n_terminals, random_state=0):
 
     # Generate terminal properties from random distributions
     for terminal_id in range(n_terminals):
-        x_terminal_id = np.random.uniform(0, 100)
-        y_terminal_id = np.random.uniform(0, 100)
+        x_terminal_id = np.random.uniform(0, 200)
+        y_terminal_id = np.random.uniform(0, 200)
 
         terminal_id_properties.append([terminal_id,
                                        x_terminal_id, y_terminal_id])

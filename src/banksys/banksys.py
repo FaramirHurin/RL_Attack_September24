@@ -67,6 +67,7 @@ class Banksys:
         self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
         self.aggregation_windows = aggregation_windows
         self.attackable_terminals = random.sample(self.terminals, round(len(self.terminals) * attackable_terminal_factor))
+        print(f'Highest y value of attackable terminals: {max([x.y for x in self.attackable_terminals])}')
         if fit:
             self.fit()
 
