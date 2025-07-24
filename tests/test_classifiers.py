@@ -82,23 +82,24 @@ def test_statistical_bounds_accepted():
     s = np.sum(labels)
     assert s == 0, f"Expected no outliers, but found {s} outliers."
 
+
 def test_Isolation_Forest():
     params = ClassificationParameters(
-            use_anomaly=True,
-            n_trees=139,
-            balance_factor=0.06473635736763925,
-            contamination="auto",
-            training_duration=timedelta(days=150),
-            quantiles={
-                "amount": (0.0, 0.9976319783361984),
-                "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
-            },
-            rules={
-                timedelta(hours=1): 8,
-                timedelta(days=1): 19,
-                timedelta(weeks=1): 32,
-            },
-        )
+        use_anomaly=True,
+        n_trees=139,
+        balance_factor=0.06473635736763925,
+        contamination="auto",
+        training_duration=timedelta(days=150),
+        quantiles={
+            "amount": (0.0, 0.9976319783361984),
+            "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
+        },
+        rules={
+            timedelta(hours=1): 8,
+            timedelta(days=1): 19,
+            timedelta(weeks=1): 32,
+        },
+    )
     sys = Banksys.load("../src/cache/banksys/10000-payers/365-days/start-2023-01-01")
     X = sys.clf.dataset["Transactions"]
     y = sys.clf.dataset["Labels"]
@@ -141,7 +142,7 @@ def test_Isolation_Forest_time():
     iso = IsolationForest()
     iso.fit(X)
 
-    start_date = sys.clf.current_time
+    start_date = sys.attack_start
 
     X_test_list = sys.simulate_until(
         start_date + timedelta(days=10),

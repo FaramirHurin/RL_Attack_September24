@@ -81,6 +81,10 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def observation_size(self):
         return self.observation_shape[0]
 
+    @property
+    def isodate(self):
+        return self.t.date().isoformat()
+
     def compute_state(self, card: Card):
         time_ratio = self.card_registry.get_remaining_time_ratio(card, self.t)
         features = [card.attempted_attacks, time_ratio, card.is_credit, self.t.hour / 24]

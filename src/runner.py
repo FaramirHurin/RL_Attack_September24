@@ -16,7 +16,8 @@ from datetime import timedelta
 
 class Runner:
     def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False, device: Optional[torch.device] = None):
-        device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is None:
+            device = params.get_device_by_seed()
         self.params = params
         self.episodes = dict[Card, Episode]()
         self.prev_obs = dict[Card, Observation]()
@@ -80,7 +81,7 @@ class Runner:
             total += step.reward.item()
             pbar.set_postfix(trx=step_num, refresh=False)
             pbar.set_description(
-                f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
+                f"{self.env.isodate} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
             )
 
             try:
@@ -95,10 +96,6 @@ class Runner:
             if current_episode.is_finished:
                 self.cleanup_card(card)
                 scores.append(current_episode.score[0])
-                if len(scores) == 300:
-                    X = self.env.system.clf.dataset["Transactions"]
-                    y = self.env.system.clf.dataset["Labels"]
-                    # self.env.system.clf.fit(X, y)
                 episodes.append(current_episode)
                 avg_score = np.mean(scores[-100:])
                 avg_length = np.mean([len(ep) for ep in episodes[-100:]])
@@ -110,7 +107,7 @@ class Runner:
                 try:
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 except ValueError as e:
-                    logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+                    logging.warning(f"ValueError while updating the agent at step={step_num}, episode={episode_num}: {e}")
                     return episodes
 
                 if self.n_spawned < self.params.n_episodes:
@@ -146,7 +143,7 @@ def main_parallel(algorithm: str):
 
 
 def run(params: Parameters):
-    runner = Runner(params)
+    runner = Runner(params, quiet=True)
     episodes = runner.run()
     Run.create(params, episodes)
 

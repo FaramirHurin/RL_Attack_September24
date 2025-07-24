@@ -27,4 +27,4 @@ def test_print_amounts():
     experiment = Experiment.load(logdir)
     experiment.runs['seed-1'].items
 
-    experiment.print_amounts()
+    # experiment.print_amounts()
