@@ -8,6 +8,7 @@ from typing import Literal, Optional, Sequence
 
 import numpy as np
 import orjson
+import hashlib
 import pandas as pd
 import torch
 
@@ -141,11 +142,8 @@ class Parameters:
 
     @property
     def banksys_dir(self):
-        return os.path.join("cache", str(hash(self)))
-
-    def __hash__(self):
-        json = orjson.dumps(self, default=serialize_unknown)
-        return hash(json)
+        hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
+        return os.path.join("cache", hhash)
 
     def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True):
         from banksys import Banksys

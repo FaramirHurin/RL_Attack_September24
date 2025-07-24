@@ -140,6 +140,8 @@ def main_parallel(algorithm: str):
 
 
 def run(params: Parameters):
+    logging.info(f"Running seed {params.seed_value} with agent {params.agent_name} in {params.logdir}")
+    params.save()
     runner = Runner(params, quiet=True)
     episodes = runner.run()
     Run.create(params, episodes)

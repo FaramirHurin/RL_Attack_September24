@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import polars as pl
+import hashlib
 
 
 @dataclass(eq=True)
@@ -37,3 +38,7 @@ class CardSimParameters:
             n_payers=20_000,
             start_date="2023-01-01",
         )
+
+    def __hash__(self) -> int:
+        h = hashlib.sha256(str((self.n_days, self.start_date, self.n_payers)).encode("utf-8")).hexdigest()
+        return int(h, 16)

@@ -1,5 +1,6 @@
 from parameters import Parameters, CardSimParameters, ClassificationParameters, PPOParameters, VAEParameters
 from runner import Runner
+import hashlib
 
 
 if __name__ == "__main__":
@@ -10,6 +11,10 @@ if __name__ == "__main__":
         clf_params=ClassificationParameters.paper_params(True),
         seed_value=0,
     )
-    print(hash(params))
+    print(params.banksys_dir)
     params.card_pool_size += 1
-    print(hash(params))
+    print(params.banksys_dir)
+    params.cardsim.n_days += 5
+    print(params.banksys_dir)
+    params.clf_params.use_anomaly = False
+    print(params.banksys_dir)

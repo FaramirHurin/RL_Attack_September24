@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from optuna import Trial
 from typing import Literal
+import hashlib
 
 
 @dataclass(eq=True)
@@ -100,3 +101,9 @@ class ClassificationParameters:
                 timedelta(weeks=1): max_per_week,
             },
         )
+
+    def __hash__(self):
+        to_hash = [self.use_anomaly, self.n_trees, self.balance_factor, self.contamination, self.training_duration]
+        to_hash.extend(sorted(self.quantiles.items()))
+        to_hash.extend(sorted(self._rules.items()))
+        return int(hashlib.sha256(str(tuple(to_hash)).encode("utf-8")).hexdigest(), 16)

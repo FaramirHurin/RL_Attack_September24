@@ -192,7 +192,7 @@ class Experiment:
             initial_seed = self.params.seed_value + self.n_runs
         for seed in range(initial_seed, initial_seed + n):
             logdir = os.path.join(self.logdir, f"seed-{seed}")
-            os.makedirs(logdir, exist_ok=True)
+            # os.makedirs(logdir, exist_ok=True)
             yield replace(self.params, seed_value=seed, save=False, logdir=logdir)
 
     @property
