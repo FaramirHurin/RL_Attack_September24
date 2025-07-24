@@ -3,10 +3,13 @@ from runner import Runner
 
 
 if __name__ == "__main__":
+    agent = VAEParameters.best_vae()
     params = Parameters(
-        cardsim=CardSimParameters(n_days=150, n_payers=10_000),
-        clf_params=ClassificationParameters(use_anomaly=True),
-        agent=VAEParameters.best_vae(),
+        agent=agent,
+        cardsim=CardSimParameters.paper_params(),
+        clf_params=ClassificationParameters.paper_params(True),
+        seed_value=0,
     )
-    runner = Runner(params)
-    runner.run()
+    print(hash(params))
+    params.card_pool_size += 1
+    print(hash(params))

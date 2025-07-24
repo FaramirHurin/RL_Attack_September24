@@ -11,7 +11,6 @@ from tqdm import tqdm
 from banksys import Card
 from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
-from datetime import timedelta
 
 
 class Runner:
@@ -52,8 +51,6 @@ class Runner:
 
     def run(self):
         self.env.reset()
-        self.env.system.clf.use_anomaly = self.params.clf_params.use_anomaly
-        self.env.system.clf.retrain_every = timedelta(days=10000)  # type: ignore[assignment]
         for _ in range(self.params.card_pool_size):
             self.spawn_card_and_buffer_action()
 
@@ -80,9 +77,7 @@ class Runner:
 
             total += step.reward.item()
             pbar.set_postfix(trx=step_num, refresh=False)
-            pbar.set_description(
-                f"{self.env.isodate} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
-            )
+            pbar.set_description(f"{self.env.isodate} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}")
 
             try:
                 self.agent.update_transition(transition, step_num, episode_num)
@@ -136,6 +131,8 @@ def main_parallel(algorithm: str):
         clf_params=ClassificationParameters.paper_params(True),
         seed_value=0,
     )
+    # Make sure the simulation data is created and the banksys is trained before running everything in parallel
+    params.create_env()
     exp = Experiment.create(params)
     with mp.Pool(10) as pool:
         pool.map(run, exp.repeat(30))
