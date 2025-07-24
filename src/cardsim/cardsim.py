@@ -16,7 +16,6 @@ import pandas as pd
 import polars as pl
 from scipy.stats import lognorm, triang
 from sklearn.preprocessing import MinMaxScaler
-from tqdm import tqdm
 
 from banksys import Card, Terminal, Transaction
 
@@ -621,8 +620,8 @@ class Cardsim:
         - Long data frame will be merged with transactions data frame
         """
         distance_matrix = np.sqrt(
-            (payers["payer_x"].values[:, None] - payees["payee_x"].values) ** 2
-            + (payers["payer_y"].values[:, None] - payees["payee_y"].values) ** 2
+            (payers["payer_x"].values[:, None] - payees["payee_x"].values) ** 2  # type: ignore
+            + (payers["payer_y"].values[:, None] - payees["payee_y"].values) ** 2  # type: ignore
         ).astype(np.float32)
 
         df = pd.DataFrame(distance_matrix)

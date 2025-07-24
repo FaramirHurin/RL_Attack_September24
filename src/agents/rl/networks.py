@@ -128,7 +128,7 @@ class LinearActorCritic(ActorCritic):
         value = self.critic.forward(state)
         return torch.squeeze(value, -1), None
 
-    def to(self, device: torch.device):
+    def to(self, device: torch.device, *args, **kwargs):
         self.device = device
         self.actor.to(device)
         self.critic.to(device)
@@ -173,17 +173,17 @@ class RecurrentActorCritic(ActorCritic):
         self.hidden_states_actor = None
         self.hidden_states_critic = None
 
-    def policy(self, state: torch.Tensor, hx: Optional[torch.Tensor] = None):
-        outputs, hx = self.actor.forward(state, hx)
+    def policy(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
+        outputs, hx = self.actor.forward(states, hx)
         # dist, hx = self._action_distribution(state, hx)
         dist = self.make_distribution(outputs)
         return dist, hx
 
-    def value(self, state: torch.Tensor, hx: Optional[torch.Tensor] = None):
-        value, hx = self.critic.forward(state, hx)
+    def value(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
+        value, hx = self.critic.forward(states, hx)
         return value.squeeze(-1), hx
 
-    def to(self, device: torch.device):
+    def to(self, device: torch.device, *args, **kwargs):
         self.device = device
         self.actor.to(device)
         self.critic.to(device)

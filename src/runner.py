@@ -181,8 +181,8 @@ def main(ulb_data: bool = False):
                     save=True,
                     ulb_data=ulb_data,
                 )
-            Experiment.create(params)
-            run(params)
+                Experiment.create(params)
+                run(params)
 
 
 if __name__ == "__main__":

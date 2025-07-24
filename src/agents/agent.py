@@ -7,7 +7,7 @@ import torch
 
 class Agent(ABC):
     @abstractmethod
-    def choose_action(self, state: np.ndarray, hx: Optional[torch.Tensor] = None) -> tuple[np.ndarray, Optional[torch.Tensor]]:
+    def choose_action(self, observation: np.ndarray, hx: Optional[torch.Tensor] = None) -> tuple[np.ndarray, Optional[torch.Tensor]]:
         """
         Choose an action based on the current state.
         """

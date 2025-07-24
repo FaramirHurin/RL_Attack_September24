@@ -30,9 +30,9 @@ class CardSimParameters:
         from cardsim import Cardsim
 
         if ulb_data:
-            transactions = pd.read_csv("MLG_Simulator/transactions.csv")
-            cards = pd.read_csv("MLG_Simulator/customer_profiles.csv")
-            terminals = pd.read_csv("MLG_Simulator/terminal_profiles.csv")
+            transactions = pl.read_csv("MLG_Simulator/transactions.csv")
+            cards = pl.read_csv("MLG_Simulator/customer_profiles.csv")
+            terminals = pl.read_csv("MLG_Simulator/terminal_profiles.csv")
         else:
             simulator = Cardsim()
             transactions, cards, terminals = simulator.simulate(
@@ -590,12 +590,7 @@ class Parameters:
     def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True):
         from banksys import Banksys
 
-        if self.ulb_data:
-            transactions = pl.read_csv("MLG_Simulator/transactions.csv")
-            cards = pl.read_csv("MLG_Simulator/customer_profiles.csv")
-            terminals = pl.read_csv("MLG_Simulator/terminal_profiles.csv")
-        else:
-            transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
+        transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
         return Banksys(
             transactions,
             cards,

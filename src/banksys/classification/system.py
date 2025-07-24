@@ -25,10 +25,9 @@ class ClassificationSystem:
     dataset: dict
     retrain_every: timedelta
 
-
-    def __init__(self, params: "ClassificationParameters", attack_start):
+    def __init__(self, params: "ClassificationParameters"):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=-1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
-        self.anomaly_detection_classifier = IsolationForest( n_jobs=-1, contamination=0.005) #, contamination="auto"
+        self.anomaly_detection_classifier = IsolationForest(n_jobs=-1, contamination=0.005)  # , contamination="auto"
         self.statistical_classifier = StatisticalClassifier(params.quantiles)
         self.rule_classifier = RuleBasedClassifier(params.rules)
         self.use_anomaly = params.use_anomaly
@@ -37,11 +36,8 @@ class ClassificationSystem:
         self.l2 = np.array([], dtype=np.bool)  # Placeholder for the second prediction, to be replaced in predict method
         self.l3 = np.array([], dtype=np.bool)  # Placeholder for the third prediction, to be replaced in predict method
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
-        #assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
-        self.current_time = attack_start
+        # assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
         self.dataset = {}
-        # Timedelta of two weeks, used to determine the training period
-        self.retrain_every = timedelta(days=14)  # type: ignore[assignment]
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -95,35 +91,18 @@ class ClassificationSystem:
             detected_by = detected_by.with_columns(pl.Series("Anomaly", self.l4))
         return detected_by
 
-    def add_transactions(
-            self,
-            transactions: pl.DataFrame,
-            true_labels: npt.NDArray[np.bool_] | list[bool] | pl.Series
-    ):
+    def add_transactions(self, transactions: pl.DataFrame, true_labels: npt.NDArray[np.bool_] | list[bool] | pl.Series):
         # Ensure true_labels is a Polars Series
         if not isinstance(true_labels, pl.Series):
             true_labels = pl.Series([true_labels]) if isinstance(true_labels, bool) else pl.Series(true_labels)
 
-
         if self.dataset == {}:
-            self.dataset['Transactions'] = transactions
-            self.dataset['Labels'] = true_labels
+            self.dataset["Transactions"] = transactions
+            self.dataset["Labels"] = true_labels
         else:
             # Align schemas before vstack
-            existing_schema = self.dataset['Transactions'].schema
+            existing_schema = self.dataset["Transactions"].schema
             transactions = transactions.cast(existing_schema)
 
-            self.dataset['Transactions'] = self.dataset['Transactions'].vstack(transactions)
-            self.dataset['Labels'] = np.concatenate((self.dataset['Labels'], true_labels))
-
-
-
-    def evaluate_retraining(self, transactions: pl.DataFrame, t):
-        """
-        Evaluate if the model should be retrained based on the number of new transactions.
-        """
-        if self.current_time + self.retrain_every < t:
-            logging.info("Retraining model")
-            self.fit(self.dataset['Transactions'], self.dataset['Labels'])
-            self.current_time = t
-            self.retrain_every += timedelta(days=10000)
+            self.dataset["Transactions"] = self.dataset["Transactions"].vstack(transactions)
+            self.dataset["Labels"] = np.concatenate((self.dataset["Labels"], true_labels))

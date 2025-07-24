@@ -15,7 +15,7 @@ from runner import Runner
 
 N_PARALLEL = 2
 # TIMEOUT = timedelta(minutes=25)
-CLF_PARAMS = ClassificationParameters.paper_params()
+CLF_PARAMS = ClassificationParameters.paper_params(True)
 CARDSIM_PARAMS = CardSimParameters.paper_params()
 
 

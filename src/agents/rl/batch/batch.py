@@ -299,7 +299,7 @@ class Batch(ABC):
 
     @abstractmethod  # type: ignore
     @cached_property
-    def dones(self) -> torch.BoolTensor:
+    def dones(self) -> torch.Tensor:
         """Done masks. `True` is the corresponding transition lead to a terminal state, `False` otherwise."""
 
     @property

@@ -240,7 +240,9 @@ class Experiment:
         """
         actions = []
         for run in self.runs.values():
-            for episode in run.episodes:
+            episodes = run.episodes
+            assert episodes is not None
+            for episode in episodes:
                 print(episode)
                 actions.extend(episode.actions)
         return actions
