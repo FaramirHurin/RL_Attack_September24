@@ -114,7 +114,7 @@ class Runner:
 
 
 def main_parallel(algorithm: str):
-    import multiprocessing as mp
+    # import multiprocessing as mp
 
     if algorithm == "vae":
         agent = VAEParameters.best_vae()
@@ -134,15 +134,17 @@ def main_parallel(algorithm: str):
     # Make sure the simulation data is created and the banksys is trained before running everything in parallel
     params.create_env()
     exp = Experiment.create(params)
-    with mp.Pool(10) as pool:
-        pool.map(run, exp.repeat(30))
+    for params in exp.repeat(30):
+        run(params)
+    # with mp.Pool(1) as pool:
+    #     pool.map(run, exp.repeat(30))
     logging.info("All runs completed.")
 
 
 def run(params: Parameters):
     logging.info(f"Running seed {params.seed_value} with agent {params.agent_name} in {params.logdir}")
     params.save()
-    runner = Runner(params, quiet=True)
+    runner = Runner(params, quiet=False)
     episodes = runner.run()
     Run.create(params, episodes)
 

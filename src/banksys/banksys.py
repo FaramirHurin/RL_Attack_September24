@@ -32,7 +32,7 @@ class Banksys:
         silent: bool = False,
         fit: bool = True,
     ):
-        self.max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
+        max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
 
         # If transactions_df is a pandas DataFrame, convert it to polars
         # if isinstance(transactions_df, pd.DataFrame):
@@ -43,7 +43,7 @@ class Banksys:
         #    terminals_df = pl.from_pandas(terminals_df)
 
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
-        self.training_start = self.current_time + self.max_aggregation_duration
+        self.training_start = self.current_time + max_aggregation_duration
         self.attack_start = self.training_start + clf_params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
