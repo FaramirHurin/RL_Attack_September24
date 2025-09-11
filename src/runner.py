@@ -118,10 +118,13 @@ def main_parallel(algorithm: str):
 
     if algorithm == "vae":
         agent = VAEParameters.best_vae()
+        device = torch.device("cuda:0")
     elif algorithm == "rppo":
         agent = PPOParameters.best_rppo()
+        device = torch.device("cuda:1")
     elif algorithm == "ppo":
         agent = PPOParameters.best_ppo()
+        device = torch.device("cuda:2")
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
 
@@ -135,16 +138,16 @@ def main_parallel(algorithm: str):
     params.create_env()
     exp = Experiment.create(params)
     for params in exp.repeat(30):
-        run(params)
+        run(params, device)
     # with mp.Pool(1) as pool:
     #     pool.map(run, exp.repeat(30))
     logging.info("All runs completed.")
 
 
-def run(params: Parameters):
+def run(params: Parameters, device: Optional[torch.device] = None):
     logging.info(f"Running seed {params.seed_value} with agent {params.agent_name} in {params.logdir}")
     params.save()
-    runner = Runner(params, quiet=False)
+    runner = Runner(params, quiet=True, device=device)
     episodes = runner.run()
     Run.create(params, episodes)
 
@@ -193,8 +196,8 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main_parallel("ppo")
-        main_parallel("rppo")
+        # main_parallel("ppo")
+        # main_parallel("rppo")
         main_parallel("vae")
         # main(ulb_data=False)
     except Exception as e:

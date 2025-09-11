@@ -122,7 +122,7 @@ class Parameters:
         try:
             banksys = Banksys.load(self.banksys_dir)
         except (FileNotFoundError, ValueError):
-            print("Banksys not found, creating a new one")
+            logging.info("Banksys not found, creating a new one")
             banksys = self.create_banksys()
             banksys.save(self.banksys_dir)
         env = CardSimEnv(
