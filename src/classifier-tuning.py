@@ -11,13 +11,13 @@ from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_sc
 from parameters import ClassificationParameters, Parameters, CardSimParameters
 
 
-CARDSIM_PARAMS = CardSimParameters(n_days=150, n_payers=10_000)
+CARDSIM_PARAMS = CardSimParameters(n_days=150, n_payers=20_000)
 TEST_DURATION = timedelta(days=30)
 
 
 def setup():
     params = Parameters(cardsim=CARDSIM_PARAMS)
-    banksys = params.create_banksys(use_cache=False, silent=False, fit=False)
+    banksys = params.create_banksys(use_cache=True, silent=False, fit=False)
     # Perform the fit by hand
     banksys.fast_forward(banksys.training_start)
     features = banksys.fast_forward(banksys.attack_start)
@@ -31,9 +31,9 @@ def setup():
     return train_x, train_y, test_y.to_numpy().astype(np.bool)
 
 
-def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, test_y: np.ndarray):
+def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, test_y: np.ndarray, use_anomaly: bool):
     try:
-        params = ClassificationParameters.suggest(trial, timedelta(days=30))
+        params = ClassificationParameters.suggest(trial, timedelta(days=30), use_anomaly)
         banksys = Banksys.load("after-warmup")
         banksys.clf = ClassificationSystem(params)
         banksys.clf.fit(train_x, train_y)
@@ -70,13 +70,14 @@ def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, 
 
 def main():
     train_x, train_y, test_y = setup()
+    use_anomaly = False
     study = optuna.create_study(
         storage="sqlite:///classifier-tuning.db",
-        study_name="clf-tuning-fp0.01-fn0.01",
+        study_name=f"clf-tuning-anomaly-{use_anomaly}",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(lambda trial: experiment(trial, train_x, train_y, test_y), n_trials=200, n_jobs=5)
+    study.optimize(lambda trial: experiment(trial, train_x, train_y, test_y, use_anomaly=use_anomaly), n_trials=200, n_jobs=1)
 
 
 if __name__ == "__main__":

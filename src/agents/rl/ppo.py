@@ -45,7 +45,6 @@ class PPO(Agent):
         normalize_rewards: bool = True,
         normaize_advantages: bool = True,
         device: torch.device = torch.device("cpu"),
-        **kwargs,
     ):
         super().__init__()
         self._device = device

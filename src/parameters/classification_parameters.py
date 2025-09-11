@@ -81,7 +81,7 @@ class ClassificationParameters:
         )
 
     @staticmethod
-    def suggest(trial: Trial, training_duration: timedelta):
+    def suggest(trial: Trial, training_duration: timedelta, use_anomaly: bool):
         max_per_hour = trial.suggest_int("max_trx_hour", 2, 10)
         max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 20)
         max_per_week = trial.suggest_int("max_trx_week", max_per_day, 50)
@@ -94,7 +94,7 @@ class ClassificationParameters:
                 "amount": (0, trial.suggest_float("quantiles_amount_high", 0.995, 1.0)),
                 f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
             },
-            use_anomaly=False,
+            use_anomaly=use_anomaly,
             rules={
                 timedelta(hours=1): max_per_hour,
                 timedelta(days=1): max_per_day,
