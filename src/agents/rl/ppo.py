@@ -1,3 +1,4 @@
+import logging
 from typing import Literal, Optional
 import numpy as np
 import torch
@@ -43,10 +44,13 @@ class PPO(Agent):
         grad_norm_clipping: Optional[float] = None,
         minibatch_size: int = 32,
         normalize_rewards: bool = True,
-        normaize_advantages: bool = True,
+        normalize_advantages: bool = True,
         device: torch.device = torch.device("cpu"),
+        **kwargs,
     ):
         super().__init__()
+        if len(kwargs) > 0:
+            logging.warning(f"Unexpected ignored PPO arguments ignored: {kwargs}")
         self._device = device
         self.batch_size = train_interval
         self.actor_critic = actor_critic.to(device)
@@ -58,7 +62,7 @@ class PPO(Agent):
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
         self.normalize_rewards = normalize_rewards
-        self.normalize_advantages = normaize_advantages
+        self.normalize_advantages = normalize_advantages
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
         self.optimizer = torch.optim.Adam(param_groups)
         if isinstance(critic_c1, (float, int)):

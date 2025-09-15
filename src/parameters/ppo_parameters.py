@@ -100,7 +100,10 @@ class PPOParameters:
             network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
         else:
             network = LinearActorCritic(env.observation_size, env.n_actions, device)
-        return PPO(network, memory, **self.as_dict(), device=device)
+        self_dict = self.as_dict()
+        self_dict.pop("is_recurrent")
+        self_dict.pop("train_on")
+        return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
     def best_rppo():
@@ -129,30 +132,6 @@ class PPOParameters:
             normalize_rewards=False,
             normalize_advantages=False,
         )
-
-        """
-        - train_interval: 6
-        - minibatch_size: 5
-        - enable_clipping: True
-        - grad_norm_clipping: 2.388555590580865
-        - critic_c1_start: 0.4105552831006898
-        - critic_c1_end: 0.3271347177719041
-        - critic_c1_steps: 2728
-        - entropy_c2_start: 0.19110949972090585
-        - entropy_c2_end: 0.030016369088242106
-        - entropy_c2_steps: 1699
-        - n_epochs: 52
-        - lr_actor: 0.007751751648130268
-        - lr_critic: 0.003790033882253389
-        - normalize_rewards: False
-        - normalize_advantages: False
-        """
-
-    """            =Schedule.linear(
-            start_value=0.19110949972090585,
-            end_value=0.030016369088242106,
-            n_steps=1699,
-        ),"""
 
     @staticmethod
     def best_ppo():
@@ -207,8 +186,8 @@ class PPOParameters:
             n_epochs=trial.suggest_int("n_epochs", 10, 100),
             minibatch_size=minibatch_size,
             train_interval=train_interval,
-            lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01),
-            lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01),
+            lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01, log=True),
+            lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01, log=True),
             grad_norm_clipping=grad_norm_clipping,
             normalize_rewards=trial.suggest_categorical("normalize_rewards", [True, False]),
             normalize_advantages=trial.suggest_categorical("normalize_advantages", [True, False]),

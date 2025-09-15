@@ -48,35 +48,37 @@ class ClassificationParameters:
 
     @staticmethod
     def paper_params(anomaly: bool):
-        """
-        - max_trx_hour: 8
-        - max_trx_day: 19
-        - max_trx_week: 32
-        - n_trees: 139
-        - balance_factor: 0.06473635736763925
-        - quantiles_amount_high: 0.9976319783361984
-        - quantiles_risk_high: 0.9999572867664103
-        - training_duration: 150 days
-        - contamination: "auto"
-        - rules:
-            - hourly: 8
-            - daily: 19
-            - weekly: 32
-        """
+        if anomaly:
+            return ClassificationParameters(
+                use_anomaly=True,
+                n_trees=98,
+                balance_factor=0.06268092204600313,
+                contamination=0.005,
+                training_duration=timedelta(days=150),
+                quantiles={
+                    "amount": (0.0, 0.9999170024954384),
+                    "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999132292246781),
+                },
+                rules={
+                    timedelta(hours=1): 5,
+                    timedelta(days=1): 19,
+                    timedelta(weeks=1): 27,
+                },
+            )
         return ClassificationParameters(
-            use_anomaly=anomaly,
-            n_trees=139,
-            balance_factor=0.06473635736763925,
-            contamination="auto",
+            use_anomaly=False,
+            n_trees=127,
+            balance_factor=0.05594667336369366,
+            contamination=0.005,
             training_duration=timedelta(days=150),
             quantiles={
-                "amount": (0.0, 0.9976319783361984),
-                "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
+                "amount": (0.0, 0.9999924062983265),
+                "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999996860191219),
             },
             rules={
-                timedelta(hours=1): 5,  # 8,
-                timedelta(days=1): 12,  # 19,
-                timedelta(weeks=1): 32,
+                timedelta(hours=1): 7,
+                timedelta(days=1): 8,
+                timedelta(weeks=1): 37,
             },
         )
 
