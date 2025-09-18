@@ -154,7 +154,7 @@ def run(params: Parameters, device: Optional[torch.device] = None, quiet: bool =
 
 def main(n_repetitions: int, anomaly: bool, ulb_data: bool = False, quiet: bool = True):
     for seed in range(0, n_repetitions):
-        for algorithm in ("ppo", "vae", "rppo"):
+        for algorithm in ("vae", "ppo", "rppo"):
             if algorithm == "vae":
                 agent = VAEParameters.best_vae(anomaly)
             elif algorithm == "rppo":
