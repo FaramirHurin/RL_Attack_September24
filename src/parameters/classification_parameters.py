@@ -69,7 +69,7 @@ class ClassificationParameters:
             use_anomaly=False,
             n_trees=127,
             balance_factor=0.05594667336369366,
-            contamination='auto',
+            contamination=0.005,
             training_duration=timedelta(days=150),
             quantiles={
                 "amount": (0.0, 0.9999924062983265),
