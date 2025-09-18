@@ -144,46 +144,43 @@ def main_parallel(algorithm: str):
     logging.info("All runs completed.")
 
 
-def run(params: Parameters, device: Optional[torch.device] = None):
+def run(params: Parameters, device: Optional[torch.device] = None, quiet: bool = True):
     logging.info(f"Running seed {params.seed_value} with agent {params.agent_name} in {params.logdir}")
     params.save()
-    runner = Runner(params, quiet=True, device=device)
+    runner = Runner(params, quiet=quiet, device=device)
     episodes = runner.run()
     Run.create(params, episodes)
 
 
-def main(ulb_data: bool = False):
-    for seed in range(0, 20):
+def main(n_repetitions: int, anomaly: bool, ulb_data: bool = False, quiet: bool = True):
+    for seed in range(0, n_repetitions):
         for algorithm in ("ppo", "vae", "rppo"):
             if algorithm == "vae":
-                agent = VAEParameters.best_vae()
+                agent = VAEParameters.best_vae(anomaly)
             elif algorithm == "rppo":
                 agent = PPOParameters.best_rppo()
             elif algorithm == "ppo":
-                agent = PPOParameters.best_ppo()
+                agent = PPOParameters.best_ppo(anomaly)
             else:
                 raise ValueError(f"Unknown algorithm: {algorithm}")
 
-            for anomaly in [True]:  # , True False
-                if ulb_data:
-                    logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-                else:
-                    logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-                params = Parameters(
-                    # agent=PPOParameters.best_rppo(),
-                    agent=agent,
-                    cardsim=CardSimParameters(),
-                    clf_params=ClassificationParameters.paper_params(anomaly),
-                    n_episodes=3000,
-                    card_pool_size=100,
-                    avg_card_block_delay_days=7,
-                    seed_value=seed,
-                    logdir=logdir,
-                    save=True,
-                    ulb_data=ulb_data,
-                )
-                Experiment.create(params)
-                run(params)
+            if ulb_data:
+                logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+            else:
+                logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+            params = Parameters(
+                # agent=PPOParameters.best_rppo(),
+                agent=agent,
+                cardsim=CardSimParameters.paper_params(),
+                clf_params=ClassificationParameters.paper_params(anomaly),
+                n_episodes=4000,
+                seed_value=seed,
+                logdir=logdir,
+                save=True,
+                ulb_data=ulb_data,
+            )
+            Experiment.create(params)
+            run(params, quiet=quiet)
 
 
 if __name__ == "__main__":
@@ -198,8 +195,8 @@ if __name__ == "__main__":
     try:
         # main_parallel("ppo")
         # main_parallel("rppo")
-        main_parallel("vae")
-        # main(ulb_data=False)
+        # main_parallel("vae")
+        main(n_repetitions=1, anomaly=True, ulb_data=False, quiet=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

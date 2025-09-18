@@ -52,7 +52,7 @@ class ClassificationSystem:
 
         self.add_transactions(transactions, is_fraud)
 
-    def predict(self, df: pl.DataFrame, true_labels, t) -> npt.NDArray[np.bool]:
+    def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
         l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")

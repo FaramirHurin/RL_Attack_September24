@@ -142,9 +142,8 @@ class Banksys:
         """
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        true_label = trx.is_fraud
         if trx.predicted_label is None:
-            label = self.clf.predict(pl.DataFrame(features), true_label, trx.timestamp)
+            label = self.clf.predict(pl.DataFrame(features))
             trx.predicted_label = label.item()
 
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
