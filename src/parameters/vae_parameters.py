@@ -45,30 +45,33 @@ class VAEParameters:
         )
 
     @staticmethod
-    def best_vae():
-        """
-        - latent_dim: 86
-        - hidden_dim: 106
-        - lr: 0.0004961629040757451
-        - batch_size: 10
-        - num_epochs: 2791
-        - quantile: 0.9946175749502564
-        - generated_size: 541
-        - beta: 0.25391071673841914
-        - n_infiltrated_terminals: 82
-        """
+    def best_vae(anomaly: bool):
+        if anomaly:
+            return VAEParameters(
+                latent_dim=70,
+                hidden_dim=58,
+                lr=0.00010348989480030503,
+                trees=1,  # Not used in VAE because IsolationForest has been removed
+                batch_size=10,
+                num_epochs=4102,
+                quantile=0.9968454105129477,
+                supervised=False,
+                generated_size=19,
+                n_infiltrated_terminals=24,
+                beta=0.7395612377633194,
+            )
         return VAEParameters(
             latent_dim=86,
-            hidden_dim=106,
-            lr=0.0004961629040757451,
-            trees=20,
-            batch_size=10,
-            num_epochs=2791,
-            quantile=0.98,  # 0.9946175749502564,
+            hidden_dim=26,
+            lr=3.333660794659185e-05,
+            trees=1,  # Not used in VAE because IsolationForest has been removed
+            batch_size=12,
+            num_epochs=8038,
+            quantile=0.9936280503332743,
             supervised=False,
-            generated_size=150,  # 541
-            n_infiltrated_terminals=82,
-            beta=0.25391071673841914,
+            generated_size=170,
+            n_infiltrated_terminals=12,
+            beta=0.9969498006633586,
         )
 
     @staticmethod

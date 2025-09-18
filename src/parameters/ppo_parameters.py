@@ -134,29 +134,52 @@ class PPOParameters:
         )
 
     @staticmethod
-    def best_ppo():
+    def best_ppo(anomaly: bool):
         """
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
+        if anomaly:
+            return PPOParameters(
+                is_recurrent=False,
+                train_on="transition",
+                train_interval=6,
+                minibatch_size=4,
+                grad_norm_clipping=2.9821909373292796,
+                critic_c1=Schedule.linear(
+                    start_value=0.6914911855828353,
+                    end_value=0.2877063934847368,
+                    n_steps=3572,
+                ),
+                entropy_c2=Schedule.linear(
+                    start_value=0.08521542110698155,
+                    end_value=0.08272396424417085,
+                    n_steps=2311,
+                ),
+                n_epochs=73,
+                lr_actor=0.0005459901195471092,
+                lr_critic=0.0004241921268503483,
+                normalize_rewards=True,
+                normalize_advantages=False,
+            )
         return PPOParameters(
             is_recurrent=False,
             train_on="transition",
-            train_interval=50,  # 63
-            minibatch_size=40,  # 47
+            train_interval=60,
+            minibatch_size=53,
             grad_norm_clipping=None,
             critic_c1=Schedule.linear(
-                start_value=0.9210682011725766,
-                end_value=0.277828843096964265,
-                n_steps=2980,
+                start_value=0.2474884474147402,
+                end_value=0.45684372656802896,
+                n_steps=1537,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.25,  # 0.15586561621061853,
-                end_value=0.05,  # 0.08458724795592026,
-                n_steps=2012,
+                start_value=0.1720759514831205,
+                end_value=0.020839775092720596,
+                n_steps=3622,
             ),
             n_epochs=15,
-            lr_actor=0.000956264649262804,
-            lr_critic=0.006671638920039944,
+            lr_actor=0.009869271609124462,
+            lr_critic=0.00020047940328712973,
             normalize_rewards=True,
             normalize_advantages=True,
         )
