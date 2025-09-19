@@ -6,11 +6,11 @@ import dotenv
 import optuna
 import torch
 
-from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters
+from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
 from plots import Experiment, Run
 from runner import Runner
 
-N_JOBS = 4
+N_JOBS = 5
 POOL_SIZE = 4
 N_RUNS = 4
 USE_ANOMALY = True
@@ -36,7 +36,7 @@ def run(p: Parameters, trial_num: int):
 
 def experiment(trial: optuna.Trial) -> float:
     params = Parameters(
-        agent=PPOParameters.suggest_ppo(trial),
+        agent=PPOParameters.suggest_rppo(trial),
         clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
         cardsim=CardSimParameters.paper_params(),
         save=False,
@@ -63,6 +63,7 @@ def experiment(trial: optuna.Trial) -> float:
 
 
 def main():
+    global USE_ANOMALY
     p = Parameters(
         clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
         cardsim=CardSimParameters.paper_params(),
@@ -72,13 +73,15 @@ def main():
         logging.info("Creating banksys...")
         b = p.create_banksys()
         b.save(p.banksys_dir)
+
+    USE_ANOMALY = False
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",
-        study_name=f"ppo-use-anomaly={USE_ANOMALY}",
+        study_name=f"rppo-use-anomaly={USE_ANOMALY}",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(experiment, n_trials=200, n_jobs=N_JOBS)
+    study.optimize(experiment, n_trials=80, n_jobs=N_JOBS)
 
 
 if __name__ == "__main__":

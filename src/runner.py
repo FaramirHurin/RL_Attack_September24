@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Literal, Optional
 from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
 import numpy as np
@@ -11,6 +11,7 @@ from tqdm import tqdm
 from banksys import Card
 from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
 import dotenv
+from multiprocessing.pool import Pool, AsyncResult
 
 
 class Runner:
@@ -113,74 +114,88 @@ class Runner:
         return episodes
 
 
-def main_parallel(algorithm: str):
-    # import multiprocessing as mp
+def run(p: Parameters):
+    logging.info(f"Starting run with seed {p.seed_value}...")
+    try:
+        runner = Runner(p, quiet=True)
+        logging.info(f"Running with seed {p.seed_value}...")
+        episodes = runner.run()
+        return Run.create(p, episodes)
+    except Exception as e:
+        logging.error(f"Run with seed {p.seed_value}: Error occurred while running experiment: {e}", exc_info=True)
 
-    if algorithm == "vae":
-        agent = VAEParameters.best_vae()
-        device = torch.device("cuda:0")
-    elif algorithm == "rppo":
-        agent = PPOParameters.best_rppo()
-        device = torch.device("cuda:1")
-    elif algorithm == "ppo":
-        agent = PPOParameters.best_ppo()
-        device = torch.device("cuda:2")
-    else:
-        raise ValueError(f"Unknown algorithm: {algorithm}")
 
+def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n_jobs: int = 8, n_repetitions: int = 32) -> float:
+    match algorithm:
+        case "ppo":
+            agent = PPOParameters.best_ppo(use_anomaly)
+        case "rppo":
+            agent = PPOParameters.best_rppo(use_anomaly)
+        case "vae":
+            agent = VAEParameters.best_vae(use_anomaly)
+        case _:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
-        agent=agent,
+        agent,
+        clf_params=ClassificationParameters.paper_params(use_anomaly),
         cardsim=CardSimParameters.paper_params(),
-        clf_params=ClassificationParameters.paper_params(True),
+        save=False,
+        n_episodes=6000,
         seed_value=0,
     )
-    # Make sure the simulation data is created and the banksys is trained before running everything in parallel
-    params.create_env()
     exp = Experiment.create(params)
-    for params in exp.repeat(30):
-        run(params, device)
-    # with mp.Pool(1) as pool:
-    #     pool.map(run, exp.repeat(30))
-    logging.info("All runs completed.")
-
-
-def run(params: Parameters, device: Optional[torch.device] = None, quiet: bool = True):
-    logging.info(f"Running seed {params.seed_value} with agent {params.agent_name} in {params.logdir}")
-    params.save()
-    runner = Runner(params, quiet=quiet, device=device)
-    episodes = runner.run()
-    Run.create(params, episodes)
-
-
-def main(n_repetitions: int, anomaly: bool, ulb_data: bool = False, quiet: bool = True):
-    for seed in range(0, n_repetitions):
-        for algorithm in ("vae", "ppo", "rppo"):
-            if algorithm == "vae":
-                agent = VAEParameters.best_vae(anomaly)
-            elif algorithm == "rppo":
-                agent = PPOParameters.best_rppo()
-            elif algorithm == "ppo":
-                agent = PPOParameters.best_ppo(anomaly)
+    total = 0.0
+    with Pool(n_jobs) as pool:
+        handles = list[AsyncResult[Run | None]]()
+        for p in exp.repeat(n_repetitions):
+            logging.info(f"Submitting run with seed {p.seed_value}...")
+            handles.append(pool.apply_async(run, (p,)))
+        for h in handles:
+            r = h.get()
+            if r is None:
+                logging.error(f"Run with seed {p.seed_value} failed.")
             else:
-                raise ValueError(f"Unknown algorithm: {algorithm}")
+                total += r.total_amount
+                logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
+    objective = total / 32
+    logging.info(f"Avg objective: {objective}")
+    return objective
 
-            if ulb_data:
-                logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-            else:
-                logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-            params = Parameters(
-                # agent=PPOParameters.best_rppo(),
-                agent=agent,
-                cardsim=CardSimParameters.paper_params(),
-                clf_params=ClassificationParameters.paper_params(anomaly),
-                n_episodes=4000,
-                seed_value=seed,
-                logdir=logdir,
-                save=True,
-                ulb_data=ulb_data,
-            )
-            Experiment.create(params)
-            run(params, quiet=quiet)
+
+def main(
+    algorithm: Literal["vae", "ppo", "rppo"],
+    n_repetitions: int,
+    anomaly: bool,
+    ulb_data: bool = False,
+    initial_seed: int = 0,
+):
+    for seed in range(initial_seed, n_repetitions):
+        if algorithm == "vae":
+            agent = VAEParameters.best_vae(anomaly)
+        elif algorithm == "rppo":
+            agent = PPOParameters.best_rppo(anomaly)
+        elif algorithm == "ppo":
+            agent = PPOParameters.best_ppo(anomaly)
+        else:
+            raise ValueError(f"Unknown algorithm: {algorithm}")
+
+        if ulb_data:
+            logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+        else:
+            logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
+        params = Parameters(
+            # agent=PPOParameters.best_rppo(),
+            agent=agent,
+            cardsim=CardSimParameters.paper_params(),
+            clf_params=ClassificationParameters.paper_params(anomaly),
+            n_episodes=6000,
+            seed_value=seed,
+            logdir=logdir,
+            save=True,
+            ulb_data=ulb_data,
+        )
+        Experiment.create(params)
+        run(params)
 
 
 if __name__ == "__main__":
@@ -193,10 +208,10 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        # main_parallel("ppo")
-        # main_parallel("rppo")
-        # main_parallel("vae")
-        main(n_repetitions=1, anomaly=True, ulb_data=False, quiet=False)
+        for algo in ("ppo", "rppo", "vae"):
+            for use_anomaly in (True, False):
+                logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
+                main_parallel(algo, use_anomaly, n_jobs=16, n_repetitions=32)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

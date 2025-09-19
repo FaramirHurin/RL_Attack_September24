@@ -40,9 +40,7 @@ def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, 
 
         dfs = banksys.simulate_until(banksys.attack_start + timedelta(days=30))
         test_x = pl.concat(dfs)
-
-        predicted = banksys.clf.predict(test_x, test_y, banksys.current_time)
-
+        predicted = banksys.clf.predict(test_x)
         details = banksys.clf.get_details().describe()
         with pl.Config(tbl_cols=-1):
             logging.info(details)

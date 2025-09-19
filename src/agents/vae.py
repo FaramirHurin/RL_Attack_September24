@@ -261,8 +261,8 @@ class VaeAgent(Agent):
         # If the predicted hour is less than the current hour, we assume the transaction is for the next day
         small_df["timestamp"] = small_df["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))
         is_past = small_df["timestamp"] < current_time
-        small_df.loc[is_past, "timestamp"] += pd.Timedelta(days=1)
-        small_df["delay_hours"] = (small_df["timestamp"] - current_time).dt.total_seconds() / 3600.0
+        small_df.loc[is_past, "timestamp"] += pd.Timedelta(days=1)  # type: ignore
+        small_df["delay_hours"] = (small_df["timestamp"] - current_time).dt.total_seconds() / 3600.0  # type: ignore
 
         # Select the closest transaction in time
         trx = small_df.loc[small_df["delay_hours"].idxmin()]

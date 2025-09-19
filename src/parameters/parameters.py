@@ -207,7 +207,11 @@ class Parameters:
 
     def default_logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")
-        return os.path.join("logs", self.agent_name, timestamp)
+        if self.clf_params.use_anomaly:
+            anomaly = "anomaly"
+        else:
+            anomaly = "no-anomaly"
+        return os.path.join("logs", anomaly, self.agent_name, timestamp)
 
     @staticmethod
     def load(filename: str):

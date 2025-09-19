@@ -106,31 +106,55 @@ class PPOParameters:
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
-    def best_rppo():
+    def best_rppo(use_anomaly: bool):
+        if use_anomaly:
+            # [train_interval: 22, minibatch_size: 19, enable_clipping: False, critic_c1_start: 0.9701562934412689, critic_c1_end: 0.4306998581855381, critic_c1_steps: 3236, entropy_c2_start: 0.1874643823290062, entropy_c2_end: 0.06233195672785177, entropy_c2_steps: 1490, n_epochs: 99, lr_actor: 0.007574187431079166, lr_critic: 0.00022409294538605477, normalize_rewards: True, normalize_advantages: False]
+            return PPOParameters(
+                is_recurrent=True,
+                train_on="episode",
+                gamma=0.99,
+                train_interval=22,
+                minibatch_size=19,
+                grad_norm_clipping=None,
+                critic_c1=Schedule.linear(
+                    start_value=0.9701562934412689,
+                    end_value=0.4306998581855381,
+                    n_steps=3236,
+                ),
+                entropy_c2=Schedule.linear(
+                    start_value=0.1874643823290062,
+                    end_value=0.06233195672785177,
+                    n_steps=1490,
+                ),
+                n_epochs=99,
+                lr_actor=0.007574187431079166,
+                lr_critic=0.00022409294538605477,
+                normalize_rewards=True,
+                normalize_advantages=False,
+            )
+        # [train_interval: 6, minibatch_size: 4, enable_clipping: False, critic_c1_start: 0.6197368580425953, critic_c1_end: 0.28357737275967154, critic_c1_steps: 3568, entropy_c2_start: 0.12680308057421288, entropy_c2_end: 0.05239959343497925, entropy_c2_steps: 1811, n_epochs: 69, lr_actor: 0.005174911984331964, lr_critic: 0.0011333727632600946, normalize_rewards: False, normalize_advantages: True]
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
             gamma=0.99,
-            lr_actor=0.007751751648130268,
-            lr_critic=0.003790033882253389,
-            n_epochs=52,
-            eps_clip=0.5,
+            train_interval=6,
+            minibatch_size=4,
+            grad_norm_clipping=None,
             critic_c1=Schedule.linear(
-                start_value=0.4105552831006898,
-                end_value=0.3271347177719041,
-                n_steps=2728,
+                start_value=0.6197368580425953,
+                end_value=0.28357737275967154,
+                n_steps=3568,
             ),
             entropy_c2=Schedule.linear(
-                start_value=0.19110949972090585,
-                end_value=0.030016369088242106,
-                n_steps=1699,
+                start_value=0.12680308057421288,
+                end_value=0.05239959343497925,
+                n_steps=1811,
             ),
-            train_interval=6,
-            minibatch_size=5,
-            gae_lambda=0.99,
-            grad_norm_clipping=2.388555590580865,
+            n_epochs=69,
+            lr_actor=0.005174911984331964,
+            lr_critic=0.0011333727632600946,
             normalize_rewards=False,
-            normalize_advantages=False,
+            normalize_advantages=True,
         )
 
     @staticmethod
