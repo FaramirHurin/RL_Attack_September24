@@ -231,7 +231,7 @@ class Experiment:
             amounts.append(run.amount_over_time)
         # Pad the amounts to the same length
         for i in range(len(amounts)):
-            amounts[i] += [float("NaN")] * (maxlen - len(amounts[i]))
+            amounts[i] += [0] * (maxlen - len(amounts[i])) #[float("NaN")] * (maxlen - len(amounts[i]))
         return np.array(amounts)
 
     def get_actions(self):
