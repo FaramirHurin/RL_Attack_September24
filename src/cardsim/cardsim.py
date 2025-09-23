@@ -1065,7 +1065,7 @@ class Cardsim:
         n_days: int = 365,
         start_date: str = "2023-01-01",
         use_cache: bool = True,
-    ):
+    ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
         """Run the payment transaction simulator.
 
         Parameters

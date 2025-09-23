@@ -145,7 +145,7 @@ class Parameters:
         hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
         return os.path.join("cache", hhash)
 
-    def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True):
+    def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True, fp_rate: float = 0.0, fn_rate: float = 0.0):
         from banksys import Banksys
 
         transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
@@ -156,8 +156,8 @@ class Parameters:
             aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
-            fp_rate=0.01,
-            fn_rate=0.01,
+            fp_rate=fp_rate,
+            fn_rate=fn_rate,
             silent=silent,
             fit=fit,
         )
