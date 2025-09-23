@@ -141,7 +141,7 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
         cardsim=CardSimParameters.paper_params(),
         save=False,
         n_episodes=6000,
-        seed_value=0,
+        seed_value=1,
     )
     exp = Experiment.create(params)
     total = 0.0
