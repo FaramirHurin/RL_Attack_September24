@@ -83,6 +83,7 @@ class ClassificationSystem:
                 "BRF": self.l1,
                 "Statistical": self.l2,
                 "Rules": self.l3,
+                "Anomaly": self.l4,
                 **self.rule_classifier.get_details(),
                 **self.statistical_classifier.get_details(),
             }

@@ -120,6 +120,26 @@ class Run:
     def __iter__(self):
         return iter(self.items)
 
+    def load_episodes(self):
+        filename = os.path.join(self.rundir, "episodes.json")
+        with open(filename, "rb") as f:
+            json_data: list[dict] = orjson.loads(f.read())
+        for json_episode in json_data:
+            for key, value in json_episode.items():
+                if isinstance(value, list):
+                    json_episode[key] = [np.array(v) for v in value]
+        episodes = list[Episode]()
+        for e in json_data:
+            for key in (
+                "obs",
+                "mask",
+                "dones",
+            ):
+                if key in e:
+                    del e[key]
+            episodes.append(Episode(**e))
+        return episodes
+
     def transactions(self, episode_num: int):
         """
         Returns the transactions for a specific episode.
@@ -127,15 +147,7 @@ class Run:
         if episode_num < 0 or episode_num >= len(self.items):
             raise IndexError("Episode number out of range")
         if self.episodes is None:
-            # Load episodes from disk if not already loaded
-            filename = os.path.join(self.rundir, "episodes.json")
-            with open(filename, "rb") as f:
-                json_data: list[dict] = orjson.loads(f.read())
-            for json_episode in json_data:
-                for key, value in json_episode.items():
-                    if isinstance(value, list):
-                        json_episode[key] = [np.array(v) for v in value]
-            self.episodes = [Episode(**e) for e in json_data]
+            self.episodes = self.load_episodes()
 
         episode = self.episodes[episode_num]
         res = list[Transaction]()
@@ -224,15 +236,14 @@ class Experiment:
 
     @cached_property
     def amounts_over_time(self):
-        amounts = []
-        maxlen = 0
-        for run in self.runs.values():
-            maxlen = max(maxlen, len(run.amount_over_time))
-            amounts.append(run.amount_over_time)
-        # Pad the amounts to the same length
-        for i in range(len(amounts)):
-            amounts[i] += [0] * (maxlen - len(amounts[i])) #[float("NaN")] * (maxlen - len(amounts[i]))
-        return np.array(amounts)
+        return [run.amount_over_time for run in self.runs.values()]
+        #  for run in self.runs.values():
+        #     amounts.append(run.amount_over_time)
+        #  return amounts
+        # # Pad the amounts to the same length
+        #  for i in range(len(amounts)):
+        #     amounts[i] += [0] * (maxlen - len(amounts[i]))  # [float("NaN")] * (maxlen - len(amounts[i]))
+        #  return np.array(amounts)
 
     def get_actions(self):
         """
@@ -248,12 +259,22 @@ class Experiment:
         return actions
 
     @cached_property
-    def mean_std_amounts_over_time(self) -> tuple[np.ndarray, np.ndarray]:
+    def mean_std_amounts_over_time(self):
         """
         Returns the mean and standard deviation of amounts over time for all runs.
         """
         amounts = self.amounts_over_time
-        return np.nanmean(amounts, axis=0), np.nanstd(amounts, axis=0)
+        maxlen = max(len(a) for a in amounts)
+        means = []
+        stds = []
+        for t in range(maxlen):
+            values = []
+            for a in amounts:
+                if t < len(a):
+                    values.append(a[t])
+            means.append(np.mean(values))
+            stds.append(np.std(values))
+        return np.array(means), np.array(stds)
 
     @cached_property
     def total_amounts(self):
