@@ -2,7 +2,6 @@
 # Cardsim: A Bayesian simulator for payment card fraud detection research
 # Author: Jeff Allen
 # -----------------------------------------------------------------------------#
-import multiprocessing as mp
 import logging
 import os
 import sys
@@ -1040,21 +1039,14 @@ class Cardsim:
         trx = pl.read_csv(
             cached_transactions,
             schema={
-                "day_index": pl.Int32,
-                "date": pl.Date,
-                "payer_id": pl.Int32,
-                "credit_card": pl.Int32,
-                "remote": pl.Int32,
-                "amount": pl.Float64,
-                "payee_id": pl.Int32,
-                "distance": pl.Float32,
-                "time_seconds": pl.Int32,
-                "date_time": pl.Datetime,
-                "hour": pl.Int32,
-                "fraud": pl.Int32,
-                "run_id": pl.Utf8,
+                "card_id": pl.Int32,
+                "is_online": pl.Boolean,
+                "amount": pl.Float32,
+                "terminal_id": pl.Int32,
+                "timestamp": pl.Datetime,
+                "is_fraud": pl.Boolean,
             },
-        )
+        )  # .cast({"is_online": pl.Boolean, "is_fraud": pl.Boolean})
         cards = pl.read_csv(cached_payers)
         terminals = pl.read_csv(cached_payees)
         return trx, cards, terminals
@@ -1090,18 +1082,14 @@ class Cardsim:
         if use_cache:
             try:
                 logging.debug(f"Loading transactions from {cached_transactions}")
-                trx, cards, terminals = self.load(n_payers, n_days, start_date)
+                return self.load(n_payers, n_days, start_date)
             except FileNotFoundError:
                 return self.simulate(n_payers, n_days, start_date, use_cache=False)
-        else:
-            trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date)
-            os.makedirs(cache_dir, exist_ok=True)
-            trx.to_csv(cached_transactions, index=False)
-            cards.to_csv(cached_payers, index=False)
-            terminals.to_csv(cached_payees, index=False)
-            trx = pl.from_pandas(trx)
-            cards = pl.from_pandas(cards)
-            terminals = pl.from_pandas(terminals)
+        trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date)
+        os.makedirs(cache_dir, exist_ok=True)
+        trx = pl.from_pandas(trx)
+        cards = pl.from_pandas(cards)
+        terminals = pl.from_pandas(terminals)
 
         trx = trx.rename(
             {
@@ -1112,6 +1100,7 @@ class Cardsim:
                 "fraud": "is_fraud",
             }
         )
+        trx = trx.with_columns(pl.col("is_online").cast(pl.Boolean), pl.col("is_fraud").cast(pl.Boolean))
         to_drop = set(trx.columns) - set(Transaction.field_names())
         trx = trx.drop(*to_drop)
 
@@ -1122,21 +1111,12 @@ class Cardsim:
         terminals = terminals.rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
         to_drop = set(terminals.columns) - set(Terminal.field_names())
         terminals = terminals.drop(*to_drop)
+
+        logging.info("Writing simulation results to cache")
+        trx.write_csv(cached_transactions)
+        cards.write_csv(cached_payers)
+        terminals.write_csv(cached_payees)
         return trx, cards, terminals
-
-        # Polars is (much) faster for this (≃20x)
-        transactions = list[Transaction]()
-        start = time.time()
-        n_jobs = mp.cpu_count()
-        chunk_size = int(len(trx) / n_jobs) + 1
-        logging.info("Creating transaction objects from DataFrame")
-        with mp.Pool(n_jobs) as pool:
-            transactions = pool.map(Transaction.from_df, trx.iter_slices(chunk_size))
-        transactions = [tx for sublist in transactions for tx in sublist]
-        self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")
-        return Card.from_df(cards), Terminal.from_df(terminals), transactions
-
-    # Convenience -------------------------------------------------------------
 
     def export_transaction_data(self, df: pd.DataFrame, folder: str, csv: bool = True, file_name: Optional[str] = None):
         """Export transaction data to a .csv or a .pkl.

@@ -17,10 +17,10 @@ TEST_DURATION = timedelta(days=30)
 
 def setup(use_anomaly: bool):
     params = Parameters(cardsim=CARDSIM_PARAMS)
-    banksys = params.create_banksys(use_cache=True, silent=False, fit=False)
+    banksys = params.create_banksys(use_cache=True, fit=False)
     # Perform the fit by hand
-    banksys.fast_forward(banksys.training_start)
-    features = banksys.fast_forward(banksys.attack_start)
+    banksys.simulate_until(banksys.training_start, make_prediction=False, show_pbar=True)
+    features = banksys.simulate_until(banksys.attack_start, make_prediction=False, show_pbar=True)
     train_x = pl.DataFrame(features)
     train_y = banksys.training_set["is_fraud"].to_numpy().astype(np.bool)
     banksys.save(f"after-warmup-{use_anomaly}")

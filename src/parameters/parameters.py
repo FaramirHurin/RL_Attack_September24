@@ -4,7 +4,7 @@ import random
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional
 
 import numpy as np
 import orjson
@@ -34,7 +34,6 @@ class Parameters:
     include_weekday: bool
     avg_card_block_delay_days: int
     logdir: str
-    aggregation_windows: Sequence[timedelta]
     agent_name: Literal["ppo", "rppo", "vae", ""]
 
     def __init__(
@@ -52,12 +51,11 @@ class Parameters:
         save: bool = True,
         include_weekday: bool = True,
         ulb_data: bool = False,
-        aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         **kwargs,
     ):
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
         if len(kwargs) > 0:
-            logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
+            logging.warning(f"Ignored unknown parameters: {kwargs}.")
         self.agent = agent
         self.cardsim = cardsim
         self.n_episodes = n_episodes
@@ -72,10 +70,7 @@ class Parameters:
         self.include_weekday = include_weekday
         self.aggregation_windows = []
         self.ulb_data = ulb_data
-        for window in aggregation_windows:
-            if isinstance(window, (float, int)):
-                window = timedelta(seconds=window)
-            self.aggregation_windows.append(window)
+        self.clf_params.rules.keys()
         match self.agent:
             case PPOParameters():
                 if self.agent.is_recurrent:
@@ -145,7 +140,7 @@ class Parameters:
         hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
         return os.path.join("cache", hhash)
 
-    def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True, fp_rate: float = 0.0, fn_rate: float = 0.0):
+    def create_banksys(self, use_cache: bool = True, fit: bool = True, fp_rate: float = 0.0, fn_rate: float = 0.0):
         from banksys import Banksys
 
         transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
@@ -153,12 +148,10 @@ class Parameters:
             transactions,
             cards,
             terminals,
-            aggregation_windows=self.aggregation_windows,
             attackable_terminal_factor=self.terminal_fract,
             clf_params=self.clf_params,
             fp_rate=fp_rate,
             fn_rate=fn_rate,
-            silent=silent,
             fit=fit,
         )
 

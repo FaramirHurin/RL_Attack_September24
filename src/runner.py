@@ -141,7 +141,7 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
         cardsim=CardSimParameters.paper_params(),
         save=False,
         n_episodes=6000,
-        seed_value=1,
+        seed_value=32,
     )
     exp = Experiment.create(params)
     total = 0.0
@@ -157,7 +157,7 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
             else:
                 total += r.total_amount
                 logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
-    objective = total / 32
+    objective = total / n_repetitions
     logging.info(f"Avg objective: {objective}")
     return objective
 
@@ -211,7 +211,7 @@ if __name__ == "__main__":
         for algo in ("ppo", "rppo", "vae"):
             for use_anomaly in (True, False):
                 logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main_parallel(algo, use_anomaly, n_jobs=16, n_repetitions=32)
+                main_parallel(algo, use_anomaly, n_jobs=16, n_repetitions=16)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

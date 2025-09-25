@@ -13,7 +13,8 @@ class ClassificationParameters:
     contamination: float | Literal["auto"]
     training_duration: timedelta
     quantiles: dict[str, tuple[float, float]]
-    _rules: dict[float, float]
+    rules: dict[timedelta, float]
+    risk_aggregation_window: timedelta = timedelta(days=1)
 
     def __init__(
         self,
@@ -23,7 +24,7 @@ class ClassificationParameters:
         contamination: float | Literal["auto"] = "auto",
         training_duration: timedelta | float = timedelta(days=30),
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
-        rules: dict[timedelta, float] = {
+        rules: dict[float | timedelta, float] = {
             timedelta(hours=1): 6,
             timedelta(days=1): 16,
             timedelta(weeks=1): 30,
@@ -37,14 +38,11 @@ class ClassificationParameters:
             training_duration = timedelta(seconds=training_duration)
         self.training_duration = training_duration
         self.quantiles = quantiles
-        self._rules = {td.total_seconds(): value for td, value in rules.items()}
-
-    @property
-    def rules(self) -> dict[timedelta, float]:
-        """
-        Returns the rules as a dictionary with timedelta keys.
-        """
-        return {timedelta(seconds=key): value for key, value in self._rules.items()}
+        self.rules = {}
+        for key, value in rules.items():
+            if isinstance(key, (float, int)):
+                key = timedelta(seconds=key)
+            self.rules[key] = value
 
     @staticmethod
     def paper_params(anomaly: bool):
@@ -53,7 +51,7 @@ class ClassificationParameters:
                 use_anomaly=True,
                 n_trees=98,
                 balance_factor=0.06268092204600313,
-                contamination='auto',
+                contamination="auto",
                 training_duration=timedelta(days=150),
                 quantiles={
                     "amount": (0.0, 0.9999170024954384),
@@ -107,5 +105,9 @@ class ClassificationParameters:
     def __hash__(self):
         to_hash = [self.use_anomaly, self.n_trees, self.balance_factor, self.contamination, self.training_duration]
         to_hash.extend(sorted(self.quantiles.items()))
-        to_hash.extend(sorted(self._rules.items()))
+        to_hash.extend(sorted(self.rules.items()))
         return int(hashlib.sha256(str(tuple(to_hash)).encode("utf-8")).hexdigest(), 16)
+
+    @property
+    def max_aggregation_duration(self) -> timedelta:
+        return max(self.rules.keys()) if len(self.rules) > 0 else timedelta(0)
