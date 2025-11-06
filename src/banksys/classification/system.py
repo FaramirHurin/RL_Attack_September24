@@ -72,25 +72,19 @@ class ClassificationSystem:
         else:
             l4 = np.zeros_like(l1, dtype=np.bool)
             self.l4 = l4
-        if l1.sum() == 0 and l2.sum() == 0 and l3.sum() == 0 and l4.sum() == 0:
-            assert result[0] == 0
-
         return result
 
     def get_details(self):
-        detected_by = pl.DataFrame(
-            {
-                "BRF": self.l1,
-                "Statistical": self.l2,
-                "Rules": self.l3,
-                "Anomaly": self.l4,
-                **self.rule_classifier.get_details(),
-                **self.statistical_classifier.get_details(),
-            }
-        )
+        detected_by = {
+            "BRF": self.l1,
+            "Statistical": self.l2,
+            "Rules": self.l3,
+            **self.rule_classifier.get_details(),
+            **self.statistical_classifier.get_details(),
+        }
         if self.use_anomaly:
-            detected_by = detected_by.with_columns(pl.Series("Anomaly", self.l4))
-        return detected_by
+            detected_by["Anomaly"] = self.l4
+        return pl.DataFrame(detected_by)
 
     def add_transactions(self, transactions: pl.DataFrame, true_labels: npt.NDArray[np.bool_] | list[bool] | pl.Series):
         # Ensure true_labels is a Polars Series

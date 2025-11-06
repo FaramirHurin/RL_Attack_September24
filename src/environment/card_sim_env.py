@@ -129,6 +129,8 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             try:
                 self.system.process_transaction(trx)
                 transaction_denied = False
+                # TODO: the logic of this is such that if a fraud is detected but there are insufficient funds,
+                # the cause of detection is "insufficient_funds" and does not include the fraud detection reason.
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]
                     transaction_denied = True
