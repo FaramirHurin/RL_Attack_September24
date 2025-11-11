@@ -19,6 +19,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 from banksys import Card, Terminal, Transaction
 
+from Config.constants import WITH_MODIFICATION
 
 class Cardsim:
     """
@@ -727,7 +728,7 @@ class Cardsim:
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
         return pmnt_attribute, likelihood_ratio
 
-    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame, with_moodification: bool = False):
+    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame, with_modification: bool = WITH_MODIFICATION):
         """
         Generate transaction values and likelihood ratios.
 
@@ -749,7 +750,7 @@ class Cardsim:
         amount_vars = ["payer_id", "debit_ln_mu", "debit_ln_sd", "debit_ln_mu_fraud", "credit_ln_mu", "credit_ln_sd", "credit_ln_mu_fraud"]
         df = pd.merge(df, payers[amount_vars], how="left", on="payer_id")
 
-        if with_moodification:
+        if with_modification:
             # Merge the payee details
             # payee_vars = ["payee_id", "payee_x", "payee_y"]
             # df = pd.merge(df, payees[payee_vars], how="left", on="payee_id")

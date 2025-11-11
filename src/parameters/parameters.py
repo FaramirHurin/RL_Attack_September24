@@ -20,6 +20,11 @@ from .vae_parameters import VAEParameters
 from .cardsim_parameters import CardSimParameters
 from .classification_parameters import ClassificationParameters
 
+from Config.constants import WITH_MODIFICATION, CACHE_DIRECTORY
+
+
+
+
 
 @dataclass(eq=True)
 class Parameters:

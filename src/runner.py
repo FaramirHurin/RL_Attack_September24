@@ -100,6 +100,18 @@ class Runner:
                     f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
                 )
                 episode_num += 1
+
+                if episode_num % 100 == 0: # Log every 100 episodes- Shall it be time rather than episodes?
+                    logging.info(
+                        f"Episode {episode_num}: total={total:.2f}, avg score (last 100)={avg_score:.2f}, avg length (last 100)={avg_length:.2f}"
+                    )
+                    logging.info(self.env.t.date().isoformat())
+                    if False:
+                        self.env.system.simulate_until(self.env.t)
+                        # Add the frausds made by the adversary to the training data
+                        self.env.system.fit()
+                    #TODO Something like self.env.system.fit() on only the last X months of transations
+
                 try:
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 except ValueError as e:
@@ -211,7 +223,8 @@ if __name__ == "__main__":
         for algo in ("ppo", "rppo", "vae"):
             for use_anomaly in (True, False):
                 logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main_parallel(algo, use_anomaly, n_jobs=16, n_repetitions=32)
+                main(algorithm=algo, n_repetitions=5, anomaly=use_anomaly, ulb_data=False, initial_seed=0)
+                # main_parallel(algo, use_anomaly, n_jobs=1, n_repetitions=32)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

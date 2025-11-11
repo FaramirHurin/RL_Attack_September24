@@ -17,6 +17,7 @@ from .transaction import Transaction
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
 
+from Config.constants import CACHE_DIRECTORY
 
 class Banksys:
     def __init__(
@@ -204,14 +205,15 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def save(self, directory: str = "cache"):
+    def save(self, directory: str = CACHE_DIRECTORY):
         if not os.path.exists(directory):
             os.makedirs(directory)
         with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
             pickle.dump(self, f)
 
+
     @staticmethod
-    def load(directory: str = "cache"):
+    def load(directory: str = CACHE_DIRECTORY):
         """
         Load the banksys from the given directory.
 
