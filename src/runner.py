@@ -107,9 +107,10 @@ class Runner:
                     )
                     logging.info(self.env.t.date().isoformat())
                     if False:
-                        self.env.system.simulate_until(self.env.t)
+                        #self.env.system.simulate_until(self.env.t)
                         # Add the frausds made by the adversary to the training data
-                        self.env.system.fit()
+                        #self.env.system.fit()
+                        DEBUG=1
                     #TODO Something like self.env.system.fit() on only the last X months of transations
 
                 try:
@@ -200,7 +201,7 @@ def main(
             agent=agent,
             cardsim=CardSimParameters.paper_params(),
             clf_params=ClassificationParameters.paper_params(anomaly),
-            n_episodes=6000,
+            n_episodes=2000, # In the original it was 6000
             seed_value=seed,
             logdir=logdir,
             save=True,
@@ -223,7 +224,7 @@ if __name__ == "__main__":
         for algo in ("ppo", "rppo", "vae"):
             for use_anomaly in (True, False):
                 logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main(algorithm=algo, n_repetitions=5, anomaly=use_anomaly, ulb_data=False, initial_seed=0)
+                main(algorithm=algo, n_repetitions=1, anomaly=use_anomaly, ulb_data=False, initial_seed=0)
                 # main_parallel(algo, use_anomaly, n_jobs=1, n_repetitions=32)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
