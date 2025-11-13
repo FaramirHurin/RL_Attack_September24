@@ -136,6 +136,7 @@ class Banksys:
         self.current_time = until
         return features
 
+    # TODO Add the attack to self._transactions_df
     def process_transaction(self, trx: Transaction, update_balance: bool = True):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
@@ -149,6 +150,36 @@ class Banksys:
 
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
         self.terminals[trx.terminal_id].add(trx)
+        card_id, is_online, amount, terminal_id, timestamp, is_fraud, predicted_label = (
+        trx.card_id, trx.is_online , trx.amount, trx.terminal_id, trx.timestamp, trx.is_fraud, True)
+        to_add =  trx.as_df(with_label=True, with_predicted_label=True)
+
+        """
+        to_add = {
+            "card_id": card_id,
+            "is_online": is_online,
+            "amount": amount,
+            "terminal_id": terminal_id,
+            "timestamp": timestamp,
+            "is_fraud": is_fraud,
+            "predicted_label": True,
+        }
+        """
+        to_add = to_add.select(self._transactions_df.columns).cast(self._transactions_df.schema)
+        # Add to_add to self._transactions_df (which is sorted by timestamp column).
+        # First find the correct position to insert it to keep the sorting.
+        inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
+        self._transactions_df = pl.concat(
+            [
+                self._transactions_df.slice(0, inserting_pos),
+                to_add,
+                self._transactions_df.slice(inserting_pos),
+            ],
+            how="diagonal",
+
+        )
+
+
         return features
 
     def process_transactions(self, transactions: list[Transaction], update_balance: bool):

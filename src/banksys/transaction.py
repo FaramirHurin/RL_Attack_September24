@@ -46,11 +46,17 @@ class Transaction:
         """
         Convert the transaction to a Polars DataFrame.
         """
-        data = {key: [value] for key, value in self.__dict__.items()}
+        data = {}
+        for key, value in self.__dict__.items():
+            if isinstance(value, bool):
+                value = int(value)
+            data[key] = [value]
+
         if not with_label:
             data.pop("is_fraud", None)
         if not with_predicted_label:
             data.pop("predicted_label", None)
+
         return pl.DataFrame(data)
 
     @classmethod

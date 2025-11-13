@@ -19,7 +19,8 @@ from sklearn.preprocessing import MinMaxScaler
 
 from banksys import Card, Terminal, Transaction
 
-from Config.constants import WITH_MODIFICATION
+from Config.constants import WITH_MODIFICATION, CACHE_DIRECTORY
+
 
 class Cardsim:
     """
@@ -1040,7 +1041,7 @@ class Cardsim:
         return df, payers, payees
 
     def load(self, n_payers: int = 10_000, n_days: int = 365, start_date: str = "2023-01-01"):
-        cache_dir = os.path.join("cache", "cardsim")
+        cache_dir = os.path.join(CACHE_DIRECTORY, "cardsim")
         cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
@@ -1091,7 +1092,7 @@ class Cardsim:
         pd.DataFrame
             A data frame of payment transactions, features, and a fraud flag.
         """
-        cache_dir = os.path.join("cache", "cardsim")
+        cache_dir = os.path.join(CACHE_DIRECTORY, "cardsim")
         cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")

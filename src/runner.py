@@ -102,6 +102,7 @@ class Runner:
                 episode_num += 1
 
                 if episode_num % 100 == 0: # Log every 100 episodes- Shall it be time rather than episodes?
+                    # logging.info(f"Algorithm is {self.params.agent.__class__.__name__}")
                     logging.info(
                         f"Episode {episode_num}: total={total:.2f}, avg score (last 100)={avg_score:.2f}, avg length (last 100)={avg_length:.2f}"
                     )
@@ -130,7 +131,7 @@ class Runner:
 def run(p: Parameters):
     logging.info(f"Starting run with seed {p.seed_value}...")
     try:
-        runner = Runner(p, quiet=True)
+        runner = Runner(p, quiet=False)
         logging.info(f"Running with seed {p.seed_value}...")
         episodes = runner.run()
         return Run.create(p, episodes)
@@ -154,7 +155,7 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
         cardsim=CardSimParameters.paper_params(),
         save=False,
         n_episodes=6000,
-        seed_value=1,
+        seed_value=2,
     )
     exp = Experiment.create(params)
     total = 0.0
@@ -170,17 +171,17 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
             else:
                 total += r.total_amount
                 logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
-    objective = total / 32
+    objective = total / n_repetitions
     logging.info(f"Avg objective: {objective}")
     return objective
 
 
 def main(
-    algorithm: Literal["vae", "ppo", "rppo"],
+    algorithm: Literal["vae", "ppo", "rppo"], #
     n_repetitions: int,
     anomaly: bool,
     ulb_data: bool = False,
-    initial_seed: int = 0,
+    initial_seed: int = 12,
 ):
     for seed in range(initial_seed, n_repetitions):
         if algorithm == "vae":
@@ -201,7 +202,7 @@ def main(
             agent=agent,
             cardsim=CardSimParameters.paper_params(),
             clf_params=ClassificationParameters.paper_params(anomaly),
-            n_episodes=2000, # In the original it was 6000
+            n_episodes=6000, # In the original it was 6000
             seed_value=seed,
             logdir=logdir,
             save=True,
@@ -224,8 +225,8 @@ if __name__ == "__main__":
         for algo in ("ppo", "rppo", "vae"):
             for use_anomaly in (True, False):
                 logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main(algorithm=algo, n_repetitions=1, anomaly=use_anomaly, ulb_data=False, initial_seed=0)
-                # main_parallel(algo, use_anomaly, n_jobs=1, n_repetitions=32)
+                # main(algorithm=algo, n_repetitions=1, anomaly=use_anomaly, ulb_data=False, initial_seed=0)
+                main_parallel(algo, use_anomaly, n_jobs=1, n_repetitions=1)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e
