@@ -147,7 +147,10 @@ class Parameters:
 
     @property
     def banksys_dir(self):
-        hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
+        if self.ulb_data:
+            hhash = hashlib.sha256(str((self.ulb_data, self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
+        else:
+            hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
         return os.path.join(CACHE_DIRECTORY, hhash)
 
     def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True, fp_rate: float = 0.0, fn_rate: float = 0.0):

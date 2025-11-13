@@ -176,7 +176,6 @@ class Banksys:
                 self._transactions_df.slice(inserting_pos),
             ],
             how="diagonal",
-
         )
 
 

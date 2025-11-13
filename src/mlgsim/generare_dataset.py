@@ -216,6 +216,9 @@ def add_frauds(customer_profiles_table, terminal_profiles_table, transactions_df
 
 def main():
     DIR_OUTPUT = "./simulated-data-raw/"
+    # Crete directory if it does not exist
+    if not os.path.exists(DIR_OUTPUT):
+        os.makedirs(DIR_OUTPUT)
 
     (customer_profiles_table, terminal_profiles_table, transactions_df) = generate_dataset(
         n_customers=20000, n_terminals=40000, nb_days=365, start_date="2018-04-01", r=5

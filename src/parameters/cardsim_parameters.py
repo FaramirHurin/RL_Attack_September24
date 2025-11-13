@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import polars as pl
 import hashlib
+import subprocess
 
 
 @dataclass(eq=True)
@@ -13,9 +14,32 @@ class CardSimParameters:
         from cardsim import Cardsim
 
         if ulb_data:
-            transactions = pl.read_csv("MLG_Simulator/transactions.csv")
-            cards = pl.read_csv("MLG_Simulator/customer_profiles.csv")
-            terminals = pl.read_csv("MLG_Simulator/terminal_profiles.csv")
+            try:
+                transactions = pl.read_csv("src/mlgsim/transactions.csv")
+                cards = pl.read_csv("src/mlgsim/customer_profiles.csv")
+                terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")
+            except FileNotFoundError as e:
+                # --- Run the Python script to create the dataset---
+                subprocess.run(["python", "src/mlgsim/generate_datasets.py"], check=True)
+                # --- Run the Jupyter notebook ---
+                subprocess.run([
+                    "jupyter", "nbconvert",
+                    "--to", "notebook",
+                    "--execute",
+                    "--inplace",
+                    "src/mlgsim/prepare_datasets.ipynb"
+                ], check=True)
+
+                transactions = pl.read_csv("src/mlgsim/transactions.csv")
+                cards = pl.read_csv("src/mlgsim/customer_profiles.csv")
+                terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")
+
+
+            transactions = transactions.with_columns(
+               pl.col("timestamp").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S").alias("timestamp")
+            )
+
+
         else:
             simulator = Cardsim()
             transactions, cards, terminals = simulator.simulate(
