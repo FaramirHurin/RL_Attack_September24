@@ -84,6 +84,9 @@ class Runner:
                 self.agent.update_transition(transition, step_num, episode_num)
             except ValueError as e:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
+                DEBUG=1
+                self.agent.update_transition(transition, step_num, episode_num)
+                self.agent.DEBUG=True
                 return episodes
 
             current_episode = self.episodes[card]
@@ -215,7 +218,7 @@ def main(
 if __name__ == "__main__":
     # setup logging
     dotenv.load_dotenv()  # Load the "private" .env file
-    log_level = os.getenv("LOG_LEVEL", "info").upper()
+    log_level = os.getenv("LOG_LEVEL", "info").upper() #info
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,

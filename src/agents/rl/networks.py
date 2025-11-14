@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from abc import ABC, abstractmethod
 import torch
@@ -83,6 +84,9 @@ class ActorCritic(torch.nn.Module, ABC):
         means = means.reshape(*dims, self.n_actions)
         cov = cov.reshape(*dims, self.n_actions, self.n_actions)
         dist = distributions.MultivariateNormal(means, cov)
+
+        # logging.info([ (name, param.min().item(), param.max().item()) for name, param in self.actor.state_dict().items() ])
+
         return dist
 
 
