@@ -60,6 +60,7 @@ class ActorCritic(torch.nn.Module, ABC):
     @abstractmethod
     def critic_parameters(self) -> list[torch.nn.Parameter]: ...
 
+    ""
     def make_distribution(self, outputs: torch.Tensor):
         """
         Generate a multivariate normal distribution from the outputs of the actor network.
@@ -76,7 +77,7 @@ class ActorCritic(torch.nn.Module, ABC):
         cov = outputs[:, self.n_actions :]
         cov = cov.reshape(-1, self.n_actions, self.n_actions)
         norm = torch.norm(cov, p="fro", dim=(1, 2), keepdim=True)
-        cov = cov / (norm + 1e-8)
+        cov = cov / (norm + 1e-8) #-8
         cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
         cov = cov * norm
 

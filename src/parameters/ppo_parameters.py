@@ -176,7 +176,7 @@ class PPOParameters:
                 ),
                 entropy_c2=Schedule.linear(
                     start_value=0.08521542110698155,
-                    end_value=0.08272396424417085,
+                    end_value=0.08272396424417085, # 0.08272396424417085,
                     n_steps=2311,
                 ),
                 n_epochs=73,

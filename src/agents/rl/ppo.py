@@ -78,6 +78,7 @@ class PPO(Agent):
         self.max_entropy_loss = torch.tensor(0.0, device=self.device)
         self.max_loss = torch.tensor(0.0, device=self.device)
         self.max_adam_loss = 0.0
+        self.min_entropy_loss =  torch.tensor(0.0, device=self.device)
         self.DEBUG = False
 
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
@@ -221,6 +222,8 @@ class PPO(Agent):
                 new_log_probs = mini_policy.log_prob(minibatch.actions)
             except:
                 # Print some debug info
+                logging.info(f"Critic loss: {critic_loss.item():.6f} at step {step_num}, episode {episode_num}")
+
                 logging.info("Error computing new log probs during PPO training")
                 logging.info(f"minibatch.obs: {minibatch.obs}")
                 logging.info(f"minibatch.actions: {minibatch.actions}")
@@ -230,6 +233,7 @@ class PPO(Agent):
                         logging.info(f"Param: {name}, min: {param.min().item():.6f}, max: {param.max().item():.6f}, mean: {param.mean().item():.6f}")
                 mini_policy, _ = self.actor_critic.policy(minibatch.obs)
                 new_log_probs = mini_policy.log_prob(minibatch.actions)
+                raise Exception
 
             ratios = torch.exp(new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratios
@@ -240,7 +244,7 @@ class PPO(Agent):
             # ----- Entropy loss -----
             entropy = mini_policy.entropy()
             masked_entropy = entropy * minibatch.masks
-            entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
+            entropy_loss = torch.sum(masked_entropy)  / minibatch.masks_sum
 
             # ----- Logging new max loss values -----
             if critic_loss > self.max_critic_loss:
@@ -254,16 +258,38 @@ class PPO(Agent):
                              f"at step {step_num}, episode {episode_num}")
 
             if entropy_loss > self.max_entropy_loss:
-                logging.info(f"New max entropy loss: {entropy_loss.item():.6f} "
-                             f"(previous: {self.max_entropy_loss.item():.6f}) "
+
+                stop = np.random.choice([True] + [False] * 24)
+                if stop:
+                    logging.info(f"New max entropy loss: {entropy_loss.item():.6f} "
+                                 f"(previous: {self.max_entropy_loss.item():.6f}) "
+                                 f"at step {step_num}, episode {episode_num}")
+                    logging.info("Debugging max entropy loss issue")
+                    grad_info = []
+
+                    for name, p in self.actor_critic.named_parameters():
+                        if ".bias" in name:
+                            continue  # skip bias parameters
+                            # if p.grad is not None:
+                        grad_info.append((name, p.grad.norm().item()))
+
+                    logging.info(f"grad_info: {grad_info}")
+
+
+
+            if entropy_loss < self.min_entropy_loss:
+                logging.info(f"New min entropy loss: {entropy_loss.item():.6f} "
+                             f"(previous: {self.min_entropy_loss.item():.6f}) "
                              f"at step {step_num}, episode {episode_num}")
 
             self.max_actor_loss = torch.max(self.max_actor_loss, actor_loss)
             self.max_critic_loss = torch.max(self.max_critic_loss, critic_loss)
             self.max_entropy_loss = torch.max(self.max_entropy_loss, entropy_loss)
+            self.min_entropy_loss = torch.min(self.min_entropy_loss, entropy_loss)
 
             # ----- Total objective -----
             loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
+
 
             if loss > self.max_loss:
                 logging.info(f"New max total loss: {loss.item():.6f} "

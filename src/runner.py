@@ -184,7 +184,7 @@ def main(
     n_repetitions: int,
     anomaly: bool,
     ulb_data: bool = True,
-    initial_seed: int = 12,
+    initial_seed: int = 5,
 ):
     for seed in range(initial_seed, n_repetitions):
         if algorithm == "vae":
@@ -225,10 +225,10 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        for algo in ("ppo", "rppo", "vae"):
+        for algo in ("ppo", "rppo",): # "vae"
             for use_anomaly in [True]: #False
                 logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main(algorithm=algo, n_repetitions=1, anomaly=use_anomaly, ulb_data=True, initial_seed=0)
+                main(algorithm=algo, n_repetitions=2, anomaly=use_anomaly, ulb_data=True, initial_seed=0)
                 # main_parallel(algo,  use_anomaly, n_jobs=1, n_repetitions=1)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
