@@ -84,9 +84,7 @@ class Runner:
                 self.agent.update_transition(transition, step_num, episode_num)
             except ValueError as e:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
-                DEBUG=1
                 self.agent.update_transition(transition, step_num, episode_num)
-                self.agent.DEBUG=True
                 return episodes
 
             current_episode = self.episodes[card]
@@ -103,20 +101,6 @@ class Runner:
                     f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
                 )
                 episode_num += 1
-
-                if episode_num % 100 == 0: # Log every 100 episodes- Shall it be time rather than episodes?
-                    # logging.info(f"Algorithm is {self.params.agent.__class__.__name__}")
-                    logging.info(
-                        f"Episode {episode_num}: total={total:.2f}, avg score (last 100)={avg_score:.2f}, avg length (last 100)={avg_length:.2f}"
-                    )
-                    logging.info(self.env.t.date().isoformat())
-                    if False:
-                        #self.env.system.simulate_until(self.env.t)
-                        # Add the frausds made by the adversary to the training data
-                        #self.env.system.fit()
-                        DEBUG=1
-                    #TODO Something like self.env.system.fit() on only the last X months of transations
-
                 try:
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
                 except ValueError as e:
@@ -135,33 +119,14 @@ def run(p: Parameters):
     logging.info(f"Starting run with seed {p.seed_value}...")
     try:
         runner = Runner(p, quiet=False)
-        logging.info(f"Running with seed {p.seed_value}...")
         episodes = runner.run()
         return Run.create(p, episodes)
     except Exception as e:
         logging.error(f"Run with seed {p.seed_value}: Error occurred while running experiment: {e}", exc_info=True)
 
 
-def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n_jobs: int = 8, n_repetitions: int = 32) -> float:
-    match algorithm:
-        case "ppo":
-            agent = PPOParameters.best_ppo(use_anomaly)
-        case "rppo":
-            agent = PPOParameters.best_rppo(use_anomaly)
-        case "vae":
-            agent = VAEParameters.best_vae(use_anomaly)
-        case _:
-            raise ValueError(f"Unknown algorithm: {algorithm}")
-    params = Parameters(
-        agent,
-        clf_params=ClassificationParameters.paper_params(use_anomaly),
-        cardsim=CardSimParameters.paper_params(),
-        save=False,
-        n_episodes=2000, #6000
-        seed_value=2,
-    )
-    exp = Experiment.create(params)
-    total = 0.0
+def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
+    runs = list[Run]()
     with Pool(n_jobs) as pool:
         handles = list[AsyncResult[Run | None]]()
         for p in exp.repeat(n_repetitions):
@@ -172,64 +137,54 @@ def main_parallel(algorithm: Literal["ppo", "rppo", "vae"], use_anomaly: bool, n
             if r is None:
                 logging.error(f"Run with seed {p.seed_value} failed.")
             else:
-                total += r.total_amount
+                runs.append(r)
                 logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
-    objective = total / n_repetitions
-    logging.info(f"Avg objective: {objective}")
-    return objective
+    return runs
 
 
 def main(
-    algorithm: Literal["vae", "ppo", "rppo"], #
-    n_repetitions: int,
+    algorithm: Literal["vae", "ppo", "rppo"],
     anomaly: bool,
-    ulb_data: bool = True,
-    initial_seed: int = 5,
+    n_repetitions: int = 1,
+    ulb_data: bool = False,
+    initial_seed: int = 0,
+    n_jobs: int = 1,
 ):
-    for seed in range(initial_seed, n_repetitions):
-        if algorithm == "vae":
-            agent = VAEParameters.best_vae(anomaly)
-        elif algorithm == "rppo":
-            agent = PPOParameters.best_rppo(anomaly)
-        elif algorithm == "ppo":
-            agent = PPOParameters.best_ppo(anomaly)
-        else:
-            raise ValueError(f"Unknown algorithm: {algorithm}")
-
-        if ulb_data:
-            logdir = f"logs/ULB/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-        else:
-            logdir = f"logs/exp-retrain/{anomaly}-anomaly/{algorithm}/seed-{seed}"
-        params = Parameters(
-            # agent=PPOParameters.best_rppo(),
-            agent=agent,
-            cardsim=CardSimParameters.paper_params(),
-            clf_params=ClassificationParameters.paper_params(anomaly),
-            n_episodes=2000, # In the original it was 6000
-            seed_value=seed,
-            logdir=logdir,
-            save=True,
-            ulb_data=ulb_data,
-        )
-        Experiment.create(params)
-        run(params)
+    if algorithm == "vae":
+        agent = VAEParameters.best_vae(anomaly)
+    elif algorithm == "rppo":
+        agent = PPOParameters.best_rppo(anomaly)
+    elif algorithm == "ppo":
+        agent = PPOParameters.best_ppo(anomaly)
+        agent.use_covariance_matrix = False
+    else:
+        raise ValueError(f"Unknown algorithm: {algorithm}")
+    params = Parameters(
+        agent=agent,
+        cardsim=CardSimParameters.paper_params(with_modification=True),
+        clf_params=ClassificationParameters.paper_params(anomaly),
+        n_episodes=2000,
+        seed_value=initial_seed,
+        logdir=None,
+        save=True,
+        ulb_data=ulb_data,
+    )
+    exp = Experiment.create(params)
+    if n_jobs == 1:
+        return [run(p) for p in exp.repeat(n_repetitions)]
+    return run_parallel(exp, n_jobs=n_jobs, n_repetitions=n_repetitions)
 
 
 if __name__ == "__main__":
-    # setup logging
     dotenv.load_dotenv()  # Load the "private" .env file
-    log_level = os.getenv("LOG_LEVEL", "info").upper() #info
+    log_level = os.getenv("LOG_LEVEL", "info").upper()  # info
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        for algo in ("ppo", "rppo",): # "vae"
-            for use_anomaly in [True]: #False
-                logging.info(f"Starting experiments for algorithm={algo}, use_anomaly={use_anomaly}")
-                main(algorithm=algo, n_repetitions=2, anomaly=use_anomaly, ulb_data=True, initial_seed=0)
-                # main_parallel(algo,  use_anomaly, n_jobs=1, n_repetitions=1)
+        main(algorithm="ppo", anomaly=True, initial_seed=2)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

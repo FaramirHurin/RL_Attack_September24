@@ -20,11 +20,6 @@ from .vae_parameters import VAEParameters
 from .cardsim_parameters import CardSimParameters
 from .classification_parameters import ClassificationParameters
 
-from Config.constants import WITH_MODIFICATION, CACHE_DIRECTORY
-
-
-
-
 
 @dataclass(eq=True)
 class Parameters:
@@ -150,13 +145,20 @@ class Parameters:
         if self.ulb_data:
             hhash = hashlib.sha256(str((self.ulb_data, self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
         else:
-            hhash = hashlib.sha256(str((self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
-        return os.path.join(CACHE_DIRECTORY, hhash)
+            hhash = hashlib.sha256((self.clf_params.sha256() + self.cardsim.sha256()).encode("utf-8")).hexdigest()
+        return os.path.join("cache", hhash)
 
-    def create_banksys(self, use_cache: bool = True, silent: bool = False, fit: bool = True, fp_rate: float = 0.0, fn_rate: float = 0.0):
+    def create_banksys(
+        self,
+        cache_dir: str | None = None,
+        silent: bool = False,
+        fit: bool = True,
+        fp_rate: float = 0.0,
+        fn_rate: float = 0.0,
+    ):
         from banksys import Banksys
 
-        transactions, cards, terminals = self.cardsim.get_simulation_data(use_cache, self.ulb_data)
+        transactions, cards, terminals = self.cardsim.get_simulation_data(cache_dir)
         return Banksys(
             transactions,
             cards,
@@ -209,9 +211,14 @@ class Parameters:
             except FileNotFoundError:
                 pass
         os.makedirs(self.logdir, exist_ok=True)
+        os.makedirs(self.banksys_dir, exist_ok=True)
         file_path = os.path.join(self.logdir, "params.json")
         with open(file_path, "wb") as f:
-            f.write(orjson.dumps(self, default=serialize_unknown))
+            f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))
+        with open(os.path.join(self.banksys_dir, "clf_params.json"), "wb") as f:
+            f.write(orjson.dumps(self.clf_params, default=serialize_unknown, option=orjson.OPT_INDENT_2))
+        with open(os.path.join(self.banksys_dir, "cardsim_params.json"), "wb") as f:
+            f.write(orjson.dumps(self.cardsim, default=serialize_unknown, option=orjson.OPT_INDENT_2))
 
     def default_logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")

@@ -17,7 +17,6 @@ from .transaction import Transaction
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
 
-from Config.constants import CACHE_DIRECTORY
 
 class Banksys:
     def __init__(
@@ -150,9 +149,9 @@ class Banksys:
 
         self.cards[trx.card_id].add(trx, update_balance=update_balance)
         self.terminals[trx.terminal_id].add(trx)
-        card_id, is_online, amount, terminal_id, timestamp, is_fraud, predicted_label = (
-        trx.card_id, trx.is_online , trx.amount, trx.terminal_id, trx.timestamp, trx.is_fraud, True)
-        to_add =  trx.as_df(with_label=True, with_predicted_label=True)
+        # card_id, is_online, amount, terminal_id, timestamp, is_fraud, predicted_label = (
+        # trx.card_id, trx.is_online , trx.amount, trx.terminal_id, trx.timestamp, trx.is_fraud, True)
+        to_add = trx.as_df(with_label=True, with_predicted_label=True, schema=self._transactions_df.schema)
 
         """
         to_add = {
@@ -165,7 +164,8 @@ class Banksys:
             "predicted_label": True,
         }
         """
-        to_add = to_add.select(self._transactions_df.columns).cast(self._transactions_df.schema)
+        # x = to_add.match_to_schema(self._transactions_df.schema)
+        # to_add = to_add.match_to_schema(self._transactions_df.schema)  # to_add.select(self._transactions_df.columns).cast(self._transactions_df.schema)
         # Add to_add to self._transactions_df (which is sorted by timestamp column).
         # First find the correct position to insert it to keep the sorting.
         inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
@@ -175,9 +175,8 @@ class Banksys:
                 to_add,
                 self._transactions_df.slice(inserting_pos),
             ],
-            how="diagonal",
+            how="vertical",
         )
-
 
         return features
 
@@ -235,15 +234,14 @@ class Banksys:
         assert closest_terminal is not None
         return closest_terminal
 
-    def save(self, directory: str = CACHE_DIRECTORY):
+    def save(self, directory: str):
         if not os.path.exists(directory):
             os.makedirs(directory)
         with open(os.path.join(directory, "banksys.pkl"), "wb") as f:
             pickle.dump(self, f)
 
-
     @staticmethod
-    def load(directory: str = CACHE_DIRECTORY):
+    def load(directory: str):
         """
         Load the banksys from the given directory.
 

@@ -2,10 +2,8 @@
 # Cardsim: A Bayesian simulator for payment card fraud detection research
 # Author: Jeff Allen
 # -----------------------------------------------------------------------------#
-import multiprocessing as mp
 import logging
 import os
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,8 +16,6 @@ from scipy.stats import lognorm, triang
 from sklearn.preprocessing import MinMaxScaler
 
 from banksys import Card, Terminal, Transaction
-
-from Config.constants import WITH_MODIFICATION, CACHE_DIRECTORY
 
 
 class Cardsim:
@@ -61,7 +57,6 @@ class Cardsim:
 
     def __init__(
         self,
-        log_level: str = "INFO",
         seed: Optional[int] = None,
         dcpc_start_year: int = 2022,
         dcpc_end_year: int = 2023,
@@ -204,18 +199,8 @@ class Cardsim:
             default is 0.01.
         """
         # Configures logging level for the class
-        self.logger = logging.getLogger(__name__ + ".Cardsim")
-        if self.logger.handlers:
-            self.logger.handlers.clear()  # Clear any existing handlers
-        self.logger.addHandler(logging.StreamHandler(sys.stdout))
-        self.logger.setLevel(log_level)
         # Seeds: vary for key simulation components, so data are not identical
         self.base_seed = seed
-        self.sample_rng = np.random.default_rng(self.derive_seed(1))
-        self.payer_rng = np.random.default_rng(self.derive_seed(2))
-        self.payee_rng = np.random.default_rng(self.derive_seed(3))
-        self.transaction_rng = np.random.default_rng(self.derive_seed(4))
-        self.fraud_rng = np.random.default_rng(self.derive_seed(5))
         # World
         self.dcpc_start_year = dcpc_start_year
         self.dcpc_end_year = dcpc_end_year
@@ -254,28 +239,6 @@ class Cardsim:
     @property
     def t_start(self) -> datetime:
         return datetime(self.dcpc_end_year, 1, 1)
-
-    def derive_seed(self, seed_modifier: int):
-        """
-        Derive a seed for a core component of the simulator.
-
-        Parameters
-        ----------
-        seed_modifier : int
-            A number for incrementing the seed.
-
-        Returns
-        -------
-        Int or None
-            A modified seed number or None.
-        """
-        if self.base_seed is not None:
-            derived_seed = self.base_seed + seed_modifier
-            self.logger.debug(f"derived seed is: {derived_seed}")
-            return derived_seed
-        else:
-            self.logger.debug("No seed modifier passed - returning None")
-            return None
 
     @staticmethod
     def import_dcpc_data(collection: str = "day", start_year: int = 2022, end_year: int = 2023, folder: Optional[str] = None):
@@ -343,28 +306,46 @@ class Cardsim:
         """
 
         # Import data ------------------
-        self.logger.info("Sourcing DCPC data")
-        indivs = Cardsim.import_dcpc_data(
-            collection="ind",
-            start_year=self.dcpc_start_year,
-            end_year=self.dcpc_end_year,
-            folder=self.dcpc_folder,
-        )
+        logging.info("Sourcing DCPC data")
+        cache_file = os.path.join("cache", f"dcpc_ind-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
+        if os.path.exists(cache_file):
+            indivs = pd.read_csv(cache_file)
+            logging.info("Sourcing of individual data from cache successful")
+        else:
+            indivs = Cardsim.import_dcpc_data(
+                collection="ind",
+                start_year=self.dcpc_start_year,
+                end_year=self.dcpc_end_year,
+                folder=self.dcpc_folder,
+            )
+            indivs.to_csv(cache_file, index=False)
 
-        daily = Cardsim.import_dcpc_data(
-            collection="day",
-            start_year=self.dcpc_start_year,
-            end_year=self.dcpc_end_year,
-            folder=self.dcpc_folder,
-        )
+        cache_file = os.path.join("cache", f"dcpc_day-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
+        if os.path.exists(cache_file):
+            daily = pd.read_csv(cache_file)
+            logging.info("Sourcing of daily data from cache successful")
+        else:
+            daily = Cardsim.import_dcpc_data(
+                collection="day",
+                start_year=self.dcpc_start_year,
+                end_year=self.dcpc_end_year,
+                folder=self.dcpc_folder,
+            )
+            daily.to_csv(cache_file, index=False)
 
-        transactions = Cardsim.import_dcpc_data(
-            collection="tran",
-            start_year=self.dcpc_start_year,
-            end_year=self.dcpc_end_year,
-            folder=self.dcpc_folder,
-        )
-        self.logger.info("Sourcing successful; formatting data")
+        cache_file = os.path.join("cache", f"dcpc_trx-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
+        if os.path.exists(cache_file):
+            transactions = pd.read_csv(cache_file)
+            logging.info("Sourcing of transactions from cache successful")
+        else:
+            transactions = Cardsim.import_dcpc_data(
+                collection="tran",
+                start_year=self.dcpc_start_year,
+                end_year=self.dcpc_end_year,
+                folder=self.dcpc_folder,
+            )
+            transactions.to_csv(cache_file, index=False)
+        logging.info("Sourcing successful; formatting data")
 
         # Format individual data ------------------
         """
@@ -430,7 +411,7 @@ class Cardsim:
 
         card_txns_daily["txns_w"] = card_txns_daily["txns"] * card_txns_daily["dow_weight"]
 
-        self.logger.info("DCPC data sourcing and formatting complete")
+        logging.info("DCPC data sourcing and formatting complete")
         return card_txns, card_txns_daily
 
     def sample_payments(self, pmnt_series, m, n):
@@ -452,7 +433,7 @@ class Cardsim:
         Numpy array
             A numpy array of samples of size m, n
         """
-        return self.sample_rng.choice(pmnt_series, size=(m, n), replace=True)
+        return np.random.choice(pmnt_series, size=(m, n), replace=True)
 
     @staticmethod
     def calculate_mad(samples, scaled=True):
@@ -561,16 +542,16 @@ class Cardsim:
             return np.sqrt(np.log(1 + (sd**2 / mean**2)))
 
     def generate_payer_profiles(self, n_payers: int, atxns_distributions: np.ndarray, avalue_distributions: pd.DataFrame):
-        self.logger.info(f"Generating payer profiles for {n_payers} payers")
+        logging.info(f"Generating payer profiles for {n_payers} payers")
         df = pd.DataFrame(
             {
                 "payer_id": range(n_payers),
-                "payer_x": self.payer_rng.integers(0, self.grid_size, n_payers),
-                "payer_y": self.payer_rng.integers(0, self.grid_size, n_payers),
-                "mean_frequency": self.payer_rng.choice(atxns_distributions, size=n_payers),  # type: ignore
+                "payer_x": np.random.randint(0, self.grid_size, n_payers),
+                "payer_y": np.random.randint(0, self.grid_size, n_payers),
+                "mean_frequency": np.random.choice(atxns_distributions, size=n_payers),  # type: ignore
             }
         )
-        sampled_indices = self.payer_rng.choice(avalue_distributions.index, size=len(df), replace=True)
+        sampled_indices = np.random.choice(avalue_distributions.index, size=len(df), replace=True)
         df["debit_mean"] = avalue_distributions.loc[sampled_indices, "dc_medians"].values
         df["debit_sd"] = avalue_distributions.loc[sampled_indices, "dc_mad"].values
         df["credit_mean"] = avalue_distributions.loc[sampled_indices, "cc_medians"].values
@@ -595,12 +576,12 @@ class Cardsim:
         Generate payee profiles.
         """
         n_payees = int(payers.shape[0] / self.payer_payee_factor)
-        self.logger.info(f"Generating payee profiles for {n_payees} payees")
+        logging.info(f"Generating payee profiles for {n_payees} payees")
         payees = pd.DataFrame(
             {
                 "payee_id": range(n_payees),
-                "payee_x": self.payee_rng.integers(0, self.grid_size, n_payees),
-                "payee_y": self.payee_rng.integers(0, self.grid_size, n_payees),
+                "payee_x": np.random.randint(0, self.grid_size, n_payees),
+                "payee_y": np.random.randint(0, self.grid_size, n_payees),
             }
         )
         return payees, n_payees
@@ -660,7 +641,7 @@ class Cardsim:
         # Cross-join so that each payer is associated with each date
         dates_payers = pd.merge(dates_df, payers[payer_fields], how="cross")
         # The number of transactions in a day, drawn from Poisson
-        dates_payers["n_txn"] = self.transaction_rng.poisson(dates_payers["mean_frequency"])
+        dates_payers["n_txn"] = np.random.poisson(dates_payers["mean_frequency"])
         # Only retain observations that have transactions
         dates_payers = dates_payers[dates_payers["n_txn"] > 0].reset_index(drop=True)
 
@@ -721,7 +702,7 @@ class Cardsim:
             mp = self.remote_marginal_p
             cp = self.remote_conditional_p
 
-        pmnt_attribute = self.transaction_rng.choice([1, 0], size=n_samples, p=[mp, 1 - mp])
+        pmnt_attribute = np.random.choice([1, 0], size=n_samples, p=[mp, 1 - mp])
         p_x = np.where(pmnt_attribute == 1, mp, 1 - mp)
         p_x_given_fraud = np.where(pmnt_attribute == 1, cp, 1 - cp)
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
@@ -729,7 +710,7 @@ class Cardsim:
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
         return pmnt_attribute, likelihood_ratio
 
-    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame, with_modification: bool = WITH_MODIFICATION):
+    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame, with_modification: bool):
         """
         Generate transaction values and likelihood ratios.
 
@@ -773,7 +754,7 @@ class Cardsim:
             df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"]) / (
                 df["payer_delta_x"] * df["payer_delta_y"]
             )
-            transaction_value = self.transaction_rng.lognormal(df["mu"], df["sigma"])
+            transaction_value = np.random.lognormal(df["mu"], df["sigma"])
             transaction_value = transaction_value.round(2)
             # Drop the delta columns
             df = df.drop(columns=["payer_delta_x", "payer_delta_y"])  # , "payee_delta_x", "payee_delta_y"
@@ -782,7 +763,7 @@ class Cardsim:
             df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"])
             df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
             df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
-            transaction_value = self.transaction_rng.lognormal(df["mu"], df["sigma"])
+            transaction_value = np.random.lognormal(df["mu"], df["sigma"])
             transaction_value = transaction_value.round(2)
 
         # Likelihood ratio calculations. Approximating probability with densities using PDF.
@@ -821,7 +802,7 @@ class Cardsim:
         # Select mode for triangular distribution based on location type
         mode_vector = np.where(df["remote"] == 1, remote_mode, inperson_mode)
         # Draw payee indices from triangular distribution
-        drawn_index = self.transaction_rng.triangular(left=min_index, mode=mode_vector, right=max_index, size=len(df))
+        drawn_index = np.random.triangular(left=min_index, mode=mode_vector, right=max_index, size=len(df))
 
         # Round indices and ensure within bounds
         # Give the variable the same name as the var that will be merged
@@ -934,10 +915,10 @@ class Cardsim:
         probs = tod_pmf["marginal_pmf"].to_numpy()
 
         # Generate hours using hourly PMF
-        selected_hours = self.transaction_rng.choice(hours, size=n_samples, p=probs)
+        selected_hours = np.random.choice(hours, size=n_samples, p=probs)
 
         # Select random seconds
-        selected_seconds = self.transaction_rng.integers(0, 3600, size=n_samples)
+        selected_seconds = np.random.randint(0, 3600, size=n_samples)
 
         if return_seconds:
             return selected_hours * 3600 + selected_seconds
@@ -994,8 +975,10 @@ class Cardsim:
         fraud_flag = (posterior_odds >= threshold_odds).astype(int)
         return fraud_flag
 
-    def make_transactions_dataframe(self, n_payers: int, n_days: int, start_date: str):
-        self.logger.debug("Starting world generation")
+    def make_transactions_dataframe(
+        self, n_payers: int, n_days: int, start_date: str, with_modification: bool
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        logging.debug("Starting world generation")
         world_start = time.time()
         card_txns, card_txns_daily = self.source_format_dcpc_data()
         txn_dist, value_dist = self.generate_pmnt_distributions(card_txns, card_txns_daily)
@@ -1005,14 +988,14 @@ class Cardsim:
 
         world_end = time.time()
         world_runtime = world_end - world_start
-        self.logger.info(f"Generated world in {world_runtime} seconds")
-        self.logger.info("Starting phase two: generating transactions within world")
+        logging.info(f"Generated world in {world_runtime} seconds")
+        logging.info("Starting phase two: generating transactions within world")
         tx_start = time.time()
 
         df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
         df["credit_card"], card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
         df["remote"], location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers, payees)
+        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers, payees, with_modification)
         df, distance_likelihood_ratio = self.generate_add_payee_distance(df, n_payees, distances)
         tod_pmf = self.generate_hourly_probabilities()
 
@@ -1034,85 +1017,69 @@ class Cardsim:
 
         tx_end = time.time()
         transactions_runtime = tx_end - tx_start
-        self.logger.debug(f"Generated transactions in {transactions_runtime:.2f} seconds")
+        logging.debug(f"Generated transactions in {transactions_runtime:.2f} seconds")
 
         simulator_runtime = world_runtime + transactions_runtime
-        self.logger.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
+        logging.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
         return df, payers, payees
 
-    def load(self, n_payers: int = 10_000, n_days: int = 365, start_date: str = "2023-01-01"):
-        cache_dir = os.path.join(CACHE_DIRECTORY, "cardsim")
-        cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
+    def load(
+        self,
+        n_payers: int,
+        n_days: int,
+        start_date: str,
+        with_modification: bool,
+        cache_dir: str | None = None,
+    ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+        if cache_dir is None:
+            cache_dir = os.path.join("cache", "cardsim")
+        cached_transactions = os.path.join(
+            cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}{'-modified' if with_modification else ''}.csv"
+        )
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
         cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
-        logging.debug(f"Loading transactions from {cached_transactions}")
-        trx = pl.read_csv(
-            cached_transactions,
-            schema={
-                "day_index": pl.Int32,
-                "date": pl.Date,
-                "payer_id": pl.Int32,
-                "credit_card": pl.Int32,
-                "remote": pl.Int32,
-                "amount": pl.Float64,
-                "payee_id": pl.Int32,
-                "distance": pl.Float32,
-                "time_seconds": pl.Int32,
-                "date_time": pl.Datetime,
-                "hour": pl.Int32,
-                "fraud": pl.Int32,
-                "run_id": pl.Utf8,
-            },
-        )
-        cards = pl.read_csv(cached_payers)
-        terminals = pl.read_csv(cached_payees)
+        logging.info(f"Loading transactions from {cached_transactions}...")
+        try:
+            trx = pl.read_csv(
+                cached_transactions,
+                schema={
+                    "day_index": pl.Int32,
+                    "date": pl.Date,
+                    "payer_id": pl.Int32,
+                    "credit_card": pl.Int32,
+                    "remote": pl.Int32,
+                    "amount": pl.Float64,
+                    "payee_id": pl.Int32,
+                    "distance": pl.Float32,
+                    "time_seconds": pl.Int32,
+                    "date_time": pl.Datetime,
+                    "hour": pl.Int32,
+                    "fraud": pl.Int32,
+                    "run_id": pl.Utf8,
+                },
+            )
+            cards = pl.read_csv(cached_payers)
+            terminals = pl.read_csv(cached_payees)
+        except FileNotFoundError:
+            logging.info("Cache not found, running simulation...")
+            trx, cards, terminals = self.simulate(n_payers, n_days, start_date, with_modification)
+            logging.info(f"Simulation complete, caching results to {cache_dir}")
+            os.makedirs(cache_dir, exist_ok=True)
+            trx.write_csv(cached_transactions)
+            cards.write_csv(cached_payers)
+            terminals.write_csv(cached_payees)
         return trx, cards, terminals
 
     def simulate(
         self,
-        n_payers: int = 10_000,
-        n_days: int = 365,
-        start_date: str = "2023-01-01",
-        use_cache: bool = True,
+        n_payers: int,
+        n_days: int,
+        start_date: str,
+        with_modification: bool,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        """Run the payment transaction simulator.
-
-        Parameters
-        ----------
-        n_payers : int, optional
-            The number of payers, by default 10000
-        n_days : int, optional
-            Number of days the simulator should run, by default 365
-        start_date : str, optional
-            Fictional start date for the simulator in the format YYYY-MM-DD,
-            by default '2023-01-01'
-
-        Returns
-        -------
-        pd.DataFrame
-            A data frame of payment transactions, features, and a fraud flag.
-        """
-        cache_dir = os.path.join(CACHE_DIRECTORY, "cardsim")
-        cached_transactions = os.path.join(cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}.csv")
-        cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
-        cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
-        if use_cache:
-            try:
-                logging.debug(f"Loading transactions from {cached_transactions}")
-                trx, cards, terminals = self.load(n_payers, n_days, start_date)
-            except FileNotFoundError:
-                return self.simulate(n_payers, n_days, start_date, use_cache=False)
-        else:
-            trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date)
-            os.makedirs(cache_dir, exist_ok=True)
-            trx.to_csv(cached_transactions, index=False)
-            cards.to_csv(cached_payers, index=False)
-            terminals.to_csv(cached_payees, index=False)
-            trx = pl.from_pandas(trx)
-            cards = pl.from_pandas(cards)
-            terminals = pl.from_pandas(terminals)
-
-        trx = trx.rename(
+        trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date, with_modification)
+        # Transactions
+        trx = pl.from_pandas(trx).rename(
             {
                 "date_time": "timestamp",
                 "payer_id": "card_id",
@@ -1124,26 +1091,16 @@ class Cardsim:
         to_drop = set(trx.columns) - set(Transaction.field_names())
         trx = trx.drop(*to_drop)
 
-        cards = cards.rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
+        # Cards
+        cards = pl.from_pandas(cards).rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
         to_drop = set(cards.columns) - set(Card.field_names())
         cards = cards.drop(*to_drop)
 
-        terminals = terminals.rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
+        # Terminals
+        terminals = pl.from_pandas(terminals).rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
         to_drop = set(terminals.columns) - set(Terminal.field_names())
         terminals = terminals.drop(*to_drop)
         return trx, cards, terminals
-
-        # Polars is (much) faster for this (≃20x)
-        transactions = list[Transaction]()
-        start = time.time()
-        n_jobs = mp.cpu_count()
-        chunk_size = int(len(trx) / n_jobs) + 1
-        logging.info("Creating transaction objects from DataFrame")
-        with mp.Pool(n_jobs) as pool:
-            transactions = pool.map(Transaction.from_df, trx.iter_slices(chunk_size))
-        transactions = [tx for sublist in transactions for tx in sublist]
-        self.logger.info(f"Created transaction objects in {time.time() - start:.2f} seconds")
-        return Card.from_df(cards), Terminal.from_df(terminals), transactions
 
     # Convenience -------------------------------------------------------------
 
@@ -1172,7 +1129,7 @@ class Cardsim:
             file_name = file_name
 
         path = folder + "/" + file_name
-        self.logger.info(f"Saving data to {path}")
+        logging.info(f"Saving data to {path}")
         if csv:
             path = path + ".csv"
             df.to_csv(path, index=False)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 from datetime import timedelta
 from optuna import Trial
 from typing import Literal
@@ -53,7 +53,7 @@ class ClassificationParameters:
                 use_anomaly=True,
                 n_trees=98,
                 balance_factor=0.06268092204600313,
-                contamination='auto',
+                contamination="auto",
                 training_duration=timedelta(days=150),
                 quantiles={
                     "amount": (0.0, 0.9999170024954384),
@@ -104,8 +104,8 @@ class ClassificationParameters:
             },
         )
 
+    def sha256(self) -> str:
+        return hashlib.sha256(str(astuple(self)).encode("utf-8")).hexdigest()
+
     def __hash__(self):
-        to_hash = [self.use_anomaly, self.n_trees, self.balance_factor, self.contamination, self.training_duration]
-        to_hash.extend(sorted(self.quantiles.items()))
-        to_hash.extend(sorted(self._rules.items()))
-        return int(hashlib.sha256(str(tuple(to_hash)).encode("utf-8")).hexdigest(), 16)
+        return int(self.sha256(), 16)

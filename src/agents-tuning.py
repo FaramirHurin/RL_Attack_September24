@@ -38,7 +38,7 @@ def experiment(trial: optuna.Trial) -> float:
     params = Parameters(
         agent=PPOParameters.suggest_rppo(trial),
         clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
-        cardsim=CardSimParameters.paper_params(),
+        cardsim=CardSimParameters.paper_params(with_modification=True),
         save=False,
         n_episodes=4000,
         seed_value=0,
@@ -66,7 +66,7 @@ def main():
     global USE_ANOMALY
     p = Parameters(
         clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
-        cardsim=CardSimParameters.paper_params(),
+        cardsim=CardSimParameters.paper_params(with_modification=True),
         save=False,
     )
     if not p.banksys_is_in_cache():

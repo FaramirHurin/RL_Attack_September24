@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 from abc import ABC, abstractmethod
 import torch
@@ -33,12 +32,18 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
 
 
 class ActorCritic(torch.nn.Module, ABC):
-    def __init__(self, n_actions: int):
+    def __init__(self, n_actions: int, use_covariance_matrix: bool, device: torch.device):
         super().__init__()
         self.n_actions = n_actions
-        # n_actions for the means
-        # n_actions ** 2 for the covariance matrix
-        self.output_size = n_actions + n_actions**2
+        self.device = device
+        self.use_covariance_matrix = use_covariance_matrix
+        if use_covariance_matrix:
+            # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
+            # n_actions for the means
+            # n_actions ** 2 for the covariance matrix
+            self.output_size = n_actions + n_actions**2
+        else:
+            self.output_size = n_actions
 
     @abstractmethod
     def policy(
@@ -60,7 +65,6 @@ class ActorCritic(torch.nn.Module, ABC):
     @abstractmethod
     def critic_parameters(self) -> list[torch.nn.Parameter]: ...
 
-    ""
     def make_distribution(self, outputs: torch.Tensor):
         """
         Generate a multivariate normal distribution from the outputs of the actor network.
@@ -74,30 +78,27 @@ class ActorCritic(torch.nn.Module, ABC):
         outputs = outputs.view(-1, self.output_size)
         means = outputs[:, : self.n_actions]
         means = torch.nn.functional.softplus(means)
-        cov = outputs[:, self.n_actions :]
-        cov = cov.reshape(-1, self.n_actions, self.n_actions)
-        norm = torch.norm(cov, p="fro", dim=(1, 2), keepdim=True)
-        cov = cov / (norm + 1e-8) #-8
-        cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
-        cov = cov * norm
-
-        # Reshape
         means = means.reshape(*dims, self.n_actions)
-        cov = cov.reshape(*dims, self.n_actions, self.n_actions)
-        dist = distributions.MultivariateNormal(means, cov)
-
-        # logging.info([ (name, param.min().item(), param.max().item()) for name, param in self.actor.state_dict().items() ])
-
+        if self.use_covariance_matrix:
+            cov = outputs[:, self.n_actions :]
+            cov = cov.reshape(-1, self.n_actions, self.n_actions)
+            norm = torch.norm(cov, p="fro", dim=(1, 2), keepdim=True)
+            cov = cov / (norm + 1e-8)
+            cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
+            cov = cov * norm
+            cov = cov.reshape(*dims, self.n_actions, self.n_actions)
+            dist = distributions.MultivariateNormal(means, cov)
+        else:
+            cov = torch.diag(torch.ones(self.n_actions)).unsqueeze(dim=0)
+            dist = distributions.MultivariateNormal(means, cov)
         return dist
 
 
 class LinearActorCritic(ActorCritic):
-    def __init__(self, state_size: int, n_actions: int, device: torch.device):
-        super().__init__(n_actions)
+    def __init__(self, state_size: int, n_actions: int, device: torch.device, use_covariance_matrix: bool):
+        super().__init__(n_actions, use_covariance_matrix, device)
         self.n_actions = n_actions
         self.device = device
-        # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
-        n_action_outputs = n_actions + n_actions**2
         INNER_SIZE_ACTIONS = 64
         INNER_SIZE_SEQUNTIAL = 64
         self.actor = torch.nn.Sequential(
@@ -106,7 +107,7 @@ class LinearActorCritic(ActorCritic):
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
-            torch.nn.Linear(INNER_SIZE_ACTIONS, n_action_outputs),
+            torch.nn.Linear(INNER_SIZE_ACTIONS, self.output_size),
         ).to(self.device)
 
         self.critic = torch.nn.Sequential(
@@ -156,8 +157,8 @@ class RNN(torch.nn.Module):
 
 
 class RecurrentActorCritic(ActorCritic):
-    def __init__(self, state_size: int, n_actions: int, device: torch.device):
-        super().__init__(n_actions)
+    def __init__(self, state_size: int, n_actions: int, device: torch.device, use_covariance_matrix: bool):
+        super().__init__(n_actions, use_covariance_matrix, device)
         self.hidden_states_actor = None
         self.hidden_states_critic = None
         self.saved_hidden_states = None, None

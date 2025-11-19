@@ -1,3 +1,5 @@
+from dataclasses import astuple
+import hashlib
 import logging
 import random
 from datetime import timedelta
@@ -144,3 +146,10 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
 
     def seed(self, seed_value: int):
         random.seed(seed_value)
+
+    def sha256(self):
+        return hashlib.sha256(str(astuple(self)).encode("utf-8")).hexdigest()
+
+    def __hash__(self) -> int:
+        h = self.sha256()
+        return int(h, 16)

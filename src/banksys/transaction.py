@@ -42,7 +42,7 @@ class Transaction:
             return False
         return self.predicted_label
 
-    def as_df(self, with_label: bool = False, with_predicted_label: bool = False) -> pl.DataFrame:
+    def as_df(self, with_label: bool = False, with_predicted_label: bool = False, schema=None) -> pl.DataFrame:
         """
         Convert the transaction to a Polars DataFrame.
         """
@@ -51,13 +51,11 @@ class Transaction:
             if isinstance(value, bool):
                 value = int(value)
             data[key] = [value]
-
         if not with_label:
             data.pop("is_fraud", None)
         if not with_predicted_label:
             data.pop("predicted_label", None)
-
-        return pl.DataFrame(data)
+        return pl.DataFrame(data, schema=schema)
 
     @classmethod
     def field_names(cls) -> list[str]:

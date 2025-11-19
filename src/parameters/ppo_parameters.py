@@ -26,6 +26,7 @@ class PPOParameters:
     is_recurrent: bool
     normalize_rewards: bool
     normalize_advantages: bool
+    use_covariance_matrix: bool = True
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class PPOParameters:
         grad_norm_clipping: Optional[float] = None,
         normalize_rewards: bool = True,
         normalize_advantages: bool = True,
+        use_covariance_matrix: bool = True,
     ):
         self.is_recurrent = is_recurrent
         if self.is_recurrent and not train_on == "episode":
@@ -55,6 +57,7 @@ class PPOParameters:
         self.lr_critic = lr_critic
         self.n_epochs = n_epochs
         self.eps_clip = eps_clip
+        self.use_covariance_matrix = use_covariance_matrix
         if isinstance(critic_c1, (float, int)):
             critic_c1 = Schedule.constant(critic_c1)
         self.critic_c1 = critic_c1
@@ -97,12 +100,13 @@ class PPOParameters:
             case _:
                 raise ValueError(f"Unknown value for `train_on`: {self.train_on}")
         if self.is_recurrent:
-            network = RecurrentActorCritic(env.observation_size, env.n_actions, device)
+            network = RecurrentActorCritic(env.observation_size, env.n_actions, device, self.use_covariance_matrix)
         else:
-            network = LinearActorCritic(env.observation_size, env.n_actions, device)
+            network = LinearActorCritic(env.observation_size, env.n_actions, device, self.use_covariance_matrix)
         self_dict = self.as_dict()
         self_dict.pop("is_recurrent")
         self_dict.pop("train_on")
+        self_dict.pop("use_covariance_matrix")
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod

@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from utils import random_generator
 from utils import extract_time
@@ -86,9 +85,7 @@ def TimeGAN(data, parameters):
     """
     hidden_dim = parameters["hidden_dim"]
     num_layers = parameters["num_layers"]
-    iterations = parameters["iterations"]
     batch_size = parameters["batch_size"]
-    module = parameters["module"]
     epoch = parameters["epoch"]
     no, seq_len, dim = np.asarray(data).shape
     z_dim = dim
@@ -183,7 +180,6 @@ def TimeGAN(data, parameters):
         # training the generator and discriminator.
         for kk in range(2):
             X = next(iter(loader))
-            random_data  # = random_generator(batch_size=batch_size, z_dim=dim,
             # T_mb=extract_time(data)[0], max_seq_len=extract_time(data)[1])
 
             # Generator Training
@@ -269,7 +265,6 @@ def TimeGAN(data, parameters):
             supervisor_optimizer.step()
         # train Discriminator
         for batch_index, X in enumerate(loader):
-            random_data  # = random_generator(batch_size=batch_size, z_dim=dim,
             # T_mb=extract_time(data)[0], max_seq_len=extract_time(data)[1])
 
             z = torch.tensor(random_data)
@@ -389,13 +384,11 @@ def TimeGAN(data, parameters):
                 + str(np.sqrt(E_loss0.detach().numpy()))
             )
 
-            random_test = random_generator(1, dim, extract_time(data)[0], extract_time(data)[1])
             test_sample = Generator(torch.tensor(random_generator(1, dim, extract_time(data)[0], extract_time(data)[1])).float())[0]
             test_sample = torch.reshape(test_sample, (1, seq_len, hidden_dim))
             test_recovery = Recovery(test_sample)
             test_recovery = torch.reshape(test_recovery[0], (1, seq_len, dim))
             fig, ax = plt.subplots()
-            ax1 = plt.plot(test_recovery[0].detach().numpy())
             plt.show()
 
             if itt % 2:
