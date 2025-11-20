@@ -93,11 +93,10 @@ class Banksys:
         if until > self.attack_end:
             raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
         start = self.next_trx.timestamp
-        stop = min(until, self.attack_end)
-        n = self._transactions_df.filter(pl.col("timestamp").is_between(start, stop)).height
+        n = self._transactions_df.filter(pl.col("timestamp").is_between(start, until)).height
         pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=self.silent)
         features = list[dict[str, Any]]()
-        while self.next_trx.timestamp < stop:
+        while self.next_trx.timestamp < until:
             features.append(self.make_transaction_features(self.next_trx))
             self.cards[self.next_trx.card_id].add(self.next_trx, update_balance=False)
             self.terminals[self.next_trx.terminal_id].add(self.next_trx)
@@ -143,42 +142,20 @@ class Banksys:
         """
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        if trx.predicted_label is None:
-            label = self.clf.predict(pl.DataFrame(features))
-            trx.predicted_label = label.item()
-
-        self.cards[trx.card_id].add(trx, update_balance=update_balance)
-        self.terminals[trx.terminal_id].add(trx)
-        # card_id, is_online, amount, terminal_id, timestamp, is_fraud, predicted_label = (
-        # trx.card_id, trx.is_online , trx.amount, trx.terminal_id, trx.timestamp, trx.is_fraud, True)
-        to_add = trx.as_df(with_label=True, with_predicted_label=True, schema=self._transactions_df.schema)
-
-        """
-        to_add = {
-            "card_id": card_id,
-            "is_online": is_online,
-            "amount": amount,
-            "terminal_id": terminal_id,
-            "timestamp": timestamp,
-            "is_fraud": is_fraud,
-            "predicted_label": True,
-        }
-        """
-        # x = to_add.match_to_schema(self._transactions_df.schema)
-        # to_add = to_add.match_to_schema(self._transactions_df.schema)  # to_add.select(self._transactions_df.columns).cast(self._transactions_df.schema)
-        # Add to_add to self._transactions_df (which is sorted by timestamp column).
-        # First find the correct position to insert it to keep the sorting.
-        inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
-        self._transactions_df = pl.concat(
-            [
-                self._transactions_df.slice(0, inserting_pos),
-                to_add,
-                self._transactions_df.slice(inserting_pos),
-            ],
-            how="vertical",
-        )
-
-        return features
+        trx.predicted_label = self.clf.predict(pl.DataFrame(features)).item()
+        if not trx.fraud_is_detected:
+            self.cards[trx.card_id].add(trx, update_balance=update_balance)
+            self.terminals[trx.terminal_id].add(trx)
+            to_add = trx.as_df(with_label=True, with_predicted_label=True, schema=self._transactions_df.schema)
+            inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
+            self._transactions_df = pl.concat(
+                [
+                    self._transactions_df.slice(0, inserting_pos),
+                    to_add,
+                    self._transactions_df.slice(inserting_pos),
+                ],
+                how="vertical",
+            )
 
     def process_transactions(self, transactions: list[Transaction], update_balance: bool):
         """

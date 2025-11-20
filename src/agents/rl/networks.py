@@ -89,7 +89,7 @@ class ActorCritic(torch.nn.Module, ABC):
             cov = cov.reshape(*dims, self.n_actions, self.n_actions)
             dist = distributions.MultivariateNormal(means, cov)
         else:
-            cov = torch.diag(torch.ones(self.n_actions)).unsqueeze(dim=0)
+            cov = torch.diag(torch.ones(self.n_actions, device=self.device)).unsqueeze(dim=0)
             dist = distributions.MultivariateNormal(means, cov)
         return dist
 

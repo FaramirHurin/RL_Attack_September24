@@ -84,7 +84,6 @@ class Runner:
                 self.agent.update_transition(transition, step_num, episode_num)
             except ValueError as e:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
-                self.agent.update_transition(transition, step_num, episode_num)
                 return episodes
 
             current_episode = self.episodes[card]
@@ -134,9 +133,7 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
             handles.append(pool.apply_async(run, (p,)))
         for h in handles:
             r = h.get()
-            if r is None:
-                logging.error(f"Run with seed {p.seed_value} failed.")
-            else:
+            if r is not None:
                 runs.append(r)
                 logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
     return runs
@@ -163,7 +160,7 @@ def main(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=True),
         clf_params=ClassificationParameters.paper_params(anomaly),
-        n_episodes=2000,
+        n_episodes=6000,
         seed_value=initial_seed,
         logdir=None,
         save=True,
@@ -184,7 +181,12 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=True, initial_seed=2)
+        for algo in ("ppo", "rppo"):
+            for use_anomaly in (True, False):
+                try:
+                    main(algorithm=algo, anomaly=use_anomaly, n_repetitions=20, n_jobs=8)
+                except Exception:
+                    logging.error(f"An error occurred during main execution with algo={algo}, anomaly={use_anomaly}", exc_info=True)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e
