@@ -5,7 +5,7 @@
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -296,7 +296,7 @@ class Cardsim:
             cols = ["id", "cc_adopt", "dc_adopt"]
             sort = ["id"]
 
-        dfs = []
+        dfs = list[pl.DataFrame]()
 
         if folder is not None:
             # Convert to Path object for OS-agnostic sourcing
@@ -311,12 +311,11 @@ class Cardsim:
                 source = folder_path / f"dcpc_{year}_{collection}level_public_xls.csv"  # type: ignore
             else:
                 source = f"https://www.atlantafed.org/-/media/documents/banking/consumer-payments/survey-diary-consumer-payment-choice/{year}/dcpc_{year}_{collection}level_public_xls.csv"
-            df = pd.read_csv(source, usecols=cols).sort_values(by=sort)
-            df["year"] = year
+            df = pl.read_csv(source, columns=cols).sort(by=sort).with_columns(year=pl.lit(year))
             dfs.append(df)
+        return pl.concat(dfs)
 
-        return pd.concat(dfs)
-
+    @measure_duration()
     def source_format_dcpc_data(self):
         """
         Source and format the Diary of Consumer Payment Choice (DCPC) data.
@@ -326,7 +325,7 @@ class Cardsim:
         logging.info("Sourcing DCPC data")
         cache_file = os.path.join("cache", f"dcpc_ind-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
         if os.path.exists(cache_file):
-            indivs = pd.read_csv(cache_file)
+            indivs = pl.read_csv(cache_file)
             logging.info("Sourcing of individual data from cache successful")
         else:
             indivs = Cardsim.import_dcpc_data(
@@ -335,11 +334,11 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
-            indivs.to_csv(cache_file, index=False)
+            indivs.write_csv(cache_file)
 
         cache_file = os.path.join("cache", f"dcpc_day-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
         if os.path.exists(cache_file):
-            daily = pd.read_csv(cache_file)
+            daily = pl.read_csv(cache_file)
             logging.info("Sourcing of daily data from cache successful")
         else:
             daily = Cardsim.import_dcpc_data(
@@ -348,11 +347,11 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
-            daily.to_csv(cache_file, index=False)
+            daily.write_csv(cache_file)
 
         cache_file = os.path.join("cache", f"dcpc_trx-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
         if os.path.exists(cache_file):
-            transactions = pd.read_csv(cache_file)
+            transactions = pl.read_csv(cache_file)
             logging.info("Sourcing of transactions from cache successful")
         else:
             transactions = Cardsim.import_dcpc_data(
@@ -361,9 +360,12 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
-            transactions.to_csv(cache_file, index=False)
+            transactions.write_csv(cache_file)
         logging.info("Sourcing successful; formatting data")
 
+        indivs = indivs.to_pandas()
+        daily = daily.to_pandas()
+        transactions = transactions.to_pandas()
         # Format individual data ------------------
         """
         Create indicator for whether respondent has adopted debit or credit 
@@ -513,7 +515,7 @@ class Cardsim:
             n=self.value_samples_n,
         )
 
-        avalue_distributions = pd.DataFrame(
+        avalue_distributions = pl.DataFrame(
             {
                 "dc_means": np.mean(dc_value_samples, axis=1),
                 "dc_stds": np.std(dc_value_samples, axis=1),
@@ -570,7 +572,7 @@ class Cardsim:
                 "mean_frequency": np.random.choice(atxns_distributions, size=n_payers),  # type: ignore
             }
         )
-        sampled_indices = np.random.choice(avalue_distributions.index, size=len(df), replace=True)
+        sampled_indices = np.random.choice(avalue_distributions.index, size=df.height, replace=True)
         df = df.with_columns(
             [
                 pl.Series("debit_mean", avalue_distributions.loc[sampled_indices, "dc_medians"].values),
@@ -666,8 +668,13 @@ class Cardsim:
             A data frame of transactions, where the number of rows corresponds
             to the number of transactions.
         """
-
-        dates_df = pl.DataFrame({"day_index": np.arange(n_days), "date": pd.date_range(start_date, periods=n_days)})
+        start = datetime.fromisoformat(start_date)
+        dates_df = pl.DataFrame(
+            {
+                "day_index": np.arange(n_days),
+                "date": pl.date_range(start, end=start + timedelta(days=n_days - 1), interval="1d", eager=True),
+            }
+        )
         # Cross-join so that each payer is associated with each date
         dates_payers = dates_df.join(payers.select("payer_id", "mean_frequency"), how="cross")
         # The number of transactions in a day, drawn from Poisson, and only retain observations that have transactions
@@ -727,9 +734,11 @@ class Cardsim:
             mp = self.remote_marginal_p
             cp = self.remote_conditional_p
 
-        pmnt_attribute = np.random.choice([1, 0], size=n_samples, p=[mp, 1 - mp])
-        p_x = np.where(pmnt_attribute == 1, mp, 1 - mp)
-        p_x_given_fraud = np.where(pmnt_attribute == 1, cp, 1 - cp)
+        # pmnt_attribute = np.random.choice([1, 0], size=n_samples, p=[mp, 1 - mp])
+        pmnt_attribute = (np.random.random(size=n_samples) > (1 - mp)).astype(int)
+        mask = pmnt_attribute == 1
+        p_x = np.where(mask, mp, 1 - mp)
+        p_x_given_fraud = np.where(mask, cp, 1 - cp)
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
         likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
@@ -1006,7 +1015,7 @@ class Cardsim:
         world_start = time.time()
         card_txns, card_txns_daily = self.source_format_dcpc_data()
         txn_dist, value_dist = self.generate_pmnt_distributions(card_txns, card_txns_daily)
-        payers = self.generate_payer_profiles(n_payers, txn_dist, value_dist)
+        payers = self.generate_payer_profiles(n_payers, txn_dist, value_dist.to_pandas())
         payees, n_payees = self.generate_payee_profiles(payers)
         distances = self.calculate_distances(payers, payees)
 
@@ -1016,8 +1025,8 @@ class Cardsim:
         tx_start = time.time()
 
         df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
-        credit_card, card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
-        remote, location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
+        credit_card, card_likelihood_ratio = self.generate_payment_attribute(n_samples=df.height, atype="credit_card")
+        remote, location_likelihood_ratio = self.generate_payment_attribute(n_samples=df.height, atype="remote")
 
         df = df.with_columns(credit_card=credit_card, remote=remote)
         amount, value_likelihood_ratio = self.generate_transaction_value(df, payers, with_modification)
@@ -1031,8 +1040,6 @@ class Cardsim:
             date_time=pl.col("date") + ms,
             hour=time_seconds // 3600,
         )
-        # df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
-        # df["hour"] = df["date_time"].dt.hour
 
         tod_likelihood_ratio = self.calculate_tod_likelihood_ratio(df, tod_pmf)
         df = df.with_columns(
@@ -1045,12 +1052,8 @@ class Cardsim:
             )
         )
 
-        tx_end = time.time()
-        transactions_runtime = tx_end - tx_start
+        transactions_runtime = time.time() - tx_start
         logging.debug(f"Generated transactions in {transactions_runtime:.2f} seconds")
-
-        simulator_runtime = world_runtime + transactions_runtime
-        logging.info(f"Simulator completed in {simulator_runtime:.2f} seconds")
         return df, payers, payees
 
     def load(
