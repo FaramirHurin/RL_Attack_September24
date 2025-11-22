@@ -18,6 +18,23 @@ from sklearn.preprocessing import MinMaxScaler
 from banksys import Card, Terminal, Transaction
 
 
+def measure_duration():
+    """Decorator that measures and prints the execution time of a function."""
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            duration = end_time - start_time
+            logging.info(f"{func.__name__} executed in {duration:.2f} seconds")
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 class Cardsim:
     """
     A class for simulating payment card transactions and fraud.
@@ -467,6 +484,7 @@ class Cardsim:
         else:
             return mad
 
+    @measure_duration()
     def generate_pmnt_distributions(self, card_txns: pd.DataFrame, card_txns_daily: pd.DataFrame):
         """
         Generate distributions of representative values for number of daily
@@ -541,9 +559,10 @@ class Cardsim:
         else:
             return np.sqrt(np.log(1 + (sd**2 / mean**2)))
 
+    @measure_duration()
     def generate_payer_profiles(self, n_payers: int, atxns_distributions: np.ndarray, avalue_distributions: pd.DataFrame):
         logging.info(f"Generating payer profiles for {n_payers} payers")
-        df = pd.DataFrame(
+        df = pl.DataFrame(
             {
                 "payer_id": range(n_payers),
                 "payer_x": np.random.randint(0, self.grid_size, n_payers),
@@ -552,32 +571,43 @@ class Cardsim:
             }
         )
         sampled_indices = np.random.choice(avalue_distributions.index, size=len(df), replace=True)
-        df["debit_mean"] = avalue_distributions.loc[sampled_indices, "dc_medians"].values
-        df["debit_sd"] = avalue_distributions.loc[sampled_indices, "dc_mad"].values
-        df["credit_mean"] = avalue_distributions.loc[sampled_indices, "cc_medians"].values
-        df["credit_sd"] = avalue_distributions.loc[sampled_indices, "cc_mad"].values
-        df["debit_mean_fraud"] = df["debit_mean"] * self.debit_fraud_mult
-        df["credit_mean_fraud"] = df["credit_mean"] * self.credit_fraud_mult
+        df = df.with_columns(
+            [
+                pl.Series("debit_mean", avalue_distributions.loc[sampled_indices, "dc_medians"].values),
+                pl.Series("debit_sd", avalue_distributions.loc[sampled_indices, "dc_mad"].values),
+                pl.Series("credit_mean", avalue_distributions.loc[sampled_indices, "cc_medians"].values),
+                pl.Series("credit_sd", avalue_distributions.loc[sampled_indices, "cc_mad"].values),
+            ]
+        )
+        df = df.with_columns(
+            [
+                (pl.col("debit_mean") * self.debit_fraud_mult).alias("debit_mean_fraud"),
+                (pl.col("credit_mean") * self.credit_fraud_mult).alias("credit_mean_fraud"),
+            ]
+        )
 
         # Prep vars for lognormal distribution
-        df["debit_ln_mu"] = Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=True)
-        df["credit_ln_mu"] = Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=True)
-        df["debit_ln_sd"] = Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=False)
-        df["credit_ln_sd"] = Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=False)
-        df["debit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["debit_mean_fraud"], df["debit_sd"], mu=True)
-        df["credit_ln_mu_fraud"] = Cardsim.calculate_tvalue_params(df["credit_mean_fraud"], df["credit_sd"], mu=True)
-
-        df["balance"] = (df["debit_mean"] * df["mean_frequency"]) * 60  # Average spending per month
-
+        df = df.with_columns(
+            [
+                pl.Series("debit_ln_mu", Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=True)),
+                pl.Series("credit_ln_mu", Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=True)),
+                pl.Series("debit_ln_sd", Cardsim.calculate_tvalue_params(df["debit_mean"], df["debit_sd"], mu=False)),
+                pl.Series("credit_ln_sd", Cardsim.calculate_tvalue_params(df["credit_mean"], df["credit_sd"], mu=False)),
+                pl.Series("debit_ln_mu_fraud", Cardsim.calculate_tvalue_params(df["debit_mean_fraud"], df["debit_sd"], mu=True)),
+                pl.Series("credit_ln_mu_fraud", Cardsim.calculate_tvalue_params(df["credit_mean_fraud"], df["credit_sd"], mu=True)),
+                (pl.col("debit_mean") * pl.col("mean_frequency") * 60).alias("balance"),
+            ]
+        )
         return df
 
-    def generate_payee_profiles(self, payers: pd.DataFrame):
+    @measure_duration()
+    def generate_payee_profiles(self, payers: pl.DataFrame):
         """
         Generate payee profiles.
         """
-        n_payees = int(payers.shape[0] / self.payer_payee_factor)
+        n_payees = int(payers.height / self.payer_payee_factor)
         logging.info(f"Generating payee profiles for {n_payees} payees")
-        payees = pd.DataFrame(
+        payees = pl.DataFrame(
             {
                 "payee_id": range(n_payees),
                 "payee_x": np.random.randint(0, self.grid_size, n_payees),
@@ -586,7 +616,8 @@ class Cardsim:
         )
         return payees, n_payees
 
-    def calculate_distances(self, payers: pd.DataFrame, payees: pd.DataFrame):
+    @measure_duration()
+    def calculate_distances(self, payers: pl.DataFrame, payees: pl.DataFrame):
         """
         Calculate the distance matrix between payers and payees and related
         components.
@@ -598,26 +629,26 @@ class Cardsim:
         - Each element (i, j) is the difference between payer i and payee j
         - Overlay Euclidean distance calc: sqrt((x1 - x2)^2 + (y1 - y2)^2)
         - Ultimately, each entry is distance between payer i and payee j
-        - Finally, convert to a long data frame with fields:
-        - payer, payee, distance, payee_order
-        - Long data frame will be merged with transactions data frame
+        - Finally, convert to a long data frame with fields [payer, payee, distance, payee_order]
         """
-        distance_matrix = np.sqrt(
-            (payers["payer_x"].values[:, None] - payees["payee_x"].values) ** 2  # type: ignore
-            + (payers["payer_y"].values[:, None] - payees["payee_y"].values) ** 2  # type: ignore
-        ).astype(np.float32)
+        payer_x = payers["payer_x"].to_numpy()[:, None]  # shape (n, 1)
+        payer_y = payers["payer_y"].to_numpy()[:, None]  # shape (n, 1)
+        payee_x = payees["payee_x"].to_numpy()  # Shape (m, )
+        payee_y = payees["payee_y"].to_numpy()  # Shape (m, )
+        n_payers = payers.height
+        n_payees = payees.height
+        distance_matrix = np.sqrt((payer_x - payee_x) ** 2 + (payer_y - payee_y) ** 2)  # Shape (n, m)
+        payer_ids = np.repeat(np.arange(n_payers), n_payees)
+        payee_ids = np.tile(np.arange(n_payees), n_payers)
+        distances = distance_matrix.ravel().astype(np.float32)
+        return (
+            pl.DataFrame({"payer_id": payer_ids, "payee_id": payee_ids, "distance": distances})
+            .sort(by=["payer_id", "distance"], nulls_last=True)
+            .with_columns(payee_order=pl.col("payer_id").cum_count().over("payer_id"))
+        )
 
-        df = pd.DataFrame(distance_matrix)
-        df = df.reset_index().rename(columns={"index": "payer_id"})
-        df_melted = df.melt(id_vars=["payer_id"], var_name="payee_id", value_name="distance")
-        # Convert payee_id to integer (it was initially a column name)
-        df_melted["payee_id"] = df_melted["payee_id"].astype(int)
-        df_melted = df_melted.sort_values(["payer_id", "distance"]).reset_index(drop=True)
-        # Add the order of payees by distance for each payer for later use
-        df_melted["payee_order"] = df_melted.groupby("payer_id").cumcount()
-        return df_melted
-
-    def generate_baseline_transactions(self, payers: pd.DataFrame, n_days: int, start_date: str) -> pd.DataFrame:
+    @measure_duration()
+    def generate_baseline_transactions(self, payers: pl.DataFrame, n_days: int, start_date: str):
         """
         Generate the baseline transactions for the simulator. Produces a
         dataframe with payer IDs and dates corresponding to each transaction.
@@ -636,21 +667,15 @@ class Cardsim:
             to the number of transactions.
         """
 
-        dates_df = pd.DataFrame({"day_index": np.arange(n_days), "date": pd.date_range(start_date, periods=n_days)})
-        payer_fields = ["payer_id", "mean_frequency"]
+        dates_df = pl.DataFrame({"day_index": np.arange(n_days), "date": pd.date_range(start_date, periods=n_days)})
         # Cross-join so that each payer is associated with each date
-        dates_payers = pd.merge(dates_df, payers[payer_fields], how="cross")
-        # The number of transactions in a day, drawn from Poisson
-        dates_payers["n_txn"] = np.random.poisson(dates_payers["mean_frequency"])
-        # Only retain observations that have transactions
-        dates_payers = dates_payers[dates_payers["n_txn"] > 0].reset_index(drop=True)
+        dates_payers = dates_df.join(payers.select("payer_id", "mean_frequency"), how="cross")
+        # The number of transactions in a day, drawn from Poisson, and only retain observations that have transactions
+        dates_payers = dates_payers.with_columns(n_txn=np.random.poisson(dates_payers["mean_frequency"])).filter(pl.col("n_txn") > 0)
 
         # Explode the dataframe based on the number of transactions. Resulting
-        # number of (non-unique) payer-date combinations should correspond to
-        # n_txn.
-        exploded_df = dates_payers.reindex(dates_payers.index.repeat(dates_payers["n_txn"]))
-        fields = ["day_index", "date", "payer_id"]
-        return exploded_df[fields].copy().reset_index(drop=True)  # type: ignore
+        # number of (non-unique) payer-date combinations should correspond to n_txn
+        return dates_payers.with_columns(pl.col("n_txn").repeat_by("n_txn")).explode("n_txn").select("day_index", "date", "payer_id")
 
     def calculate_cp_complement(self, p_x: np.ndarray, p_x_given_fraud: np.ndarray) -> np.ndarray:
         """Calculate the complement of the conditional probability for a given
@@ -670,9 +695,9 @@ class Cardsim:
         """
 
         p_x_given_not_fraud = (p_x - (p_x_given_fraud * self.fraud_rate)) / (1 - self.fraud_rate)
-
         return p_x_given_not_fraud
 
+    @measure_duration()
     def generate_payment_attribute(self, n_samples: int, atype: Literal["credit_card", "remote"] = "credit_card"):
         """
         Generate a card type or location type payment attribute and likelihood
@@ -710,7 +735,8 @@ class Cardsim:
         likelihood_ratio = np.minimum(likelihood_ratio, self.lr_cap)
         return pmnt_attribute, likelihood_ratio
 
-    def generate_transaction_value(self, df: pd.DataFrame, payers: pd.DataFrame, payees: pd.DataFrame, with_modification: bool):
+    @measure_duration()
+    def generate_transaction_value(self, df: pl.DataFrame, payers: pl.DataFrame, with_modification: bool):
         """
         Generate transaction values and likelihood ratios.
 
@@ -726,55 +752,63 @@ class Cardsim:
             A vector of transaction values.
         """
         if "day_index" not in df.columns:
-            raise ValueError("'df' should be baseline transactions")
-        df = df.copy()
+            raise ValueError("'df' should be baseline transactions but is missing a 'day_index' column")
         # Merge the payment amount details
-        amount_vars = ["payer_id", "debit_ln_mu", "debit_ln_sd", "debit_ln_mu_fraud", "credit_ln_mu", "credit_ln_sd", "credit_ln_mu_fraud"]
-        df = pd.merge(df, payers[amount_vars], how="left", on="payer_id")
+        df = df.join(
+            payers.select(
+                "payer_id",
+                "debit_ln_mu",
+                "debit_ln_sd",
+                "debit_ln_mu_fraud",
+                "credit_ln_mu",
+                "credit_ln_sd",
+                "credit_ln_mu_fraud",
+            ),
+            on="payer_id",
+            how="left",
+        )
 
         if with_modification:
             # Merge the payee details
             # payee_vars = ["payee_id", "payee_x", "payee_y"]
             # df = pd.merge(df, payees[payee_vars], how="left", on="payee_id")
             # Merge the payer details
-            payer_vars = ["payer_id", "payer_x", "payer_y"]
-            df = pd.merge(df, payers[payer_vars], how="left", on="payer_id")
-
-            df["payer_delta_x"] = df["payer_x"] - df["payer_x"].mean()
-            df["payer_delta_y"] = df["payer_y"] - df["payer_y"].mean()
+            df = df.join(payers.select("payer_id", "payer_x", "payer_y"), on="payer_id", how="left").with_columns(
+                payer_delta_x=pl.col("payer_x") - pl.col("payer_x").mean(),
+                payer_delta_y=pl.col("payer_y") - pl.col("payer_y").mean(),
+            )
             # df["payee_delta_x"] = df["payee_x"] - df["payee_x"].mean() / df["payee_x"].mean()
             # df["payee_delta_y"] = df["payee_y"] - df["payee_y"].mean() / df["payee_y"].mean()
 
             payer_scaler = MinMaxScaler(feature_range=(0.8, 1.2))  # type: ignore
-            df[["payer_delta_x", "payer_delta_y"]] = payer_scaler.fit_transform(df[["payer_delta_x", "payer_delta_y"]])
-
-            # Create a single column pulling debit and credit params, where relevant
-            df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"]) * (df["payer_delta_x"] * df["payer_delta_y"])
-            df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
-            df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"]) / (
-                df["payer_delta_x"] * df["payer_delta_y"]
+            payer_scaled = payer_scaler.fit_transform(df[["payer_delta_x", "payer_delta_y"]].to_numpy())
+            df = df.with_columns(
+                payer_delta_x=payer_scaled[:, 0],
+                payer_delta_y=payer_scaled[:, 1],
             )
-            transaction_value = np.random.lognormal(df["mu"], df["sigma"])
-            transaction_value = transaction_value.round(2)
-            # Drop the delta columns
-            df = df.drop(columns=["payer_delta_x", "payer_delta_y"])  # , "payee_delta_x", "payee_delta_y"
+            # Create a single column pulling debit and credit params, where relevant
+            mask = df["credit_card"] == 1
+            mu = np.where(mask, df["credit_ln_mu"], df["debit_ln_mu"]) * (df["payer_delta_x"] * df["payer_delta_y"])
+            sigma = np.where(mask, df["credit_ln_sd"], df["debit_ln_sd"])
+            fraud_mu = np.where(mask, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"]) / (df["payer_delta_x"] * df["payer_delta_y"])
         else:
             # Create a single column pulling debit and credit params, where relevant
-            df["mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu"], df["debit_ln_mu"])
-            df["sigma"] = np.where(df["credit_card"] == 1, df["credit_ln_sd"], df["debit_ln_sd"])
-            df["fraud_mu"] = np.where(df["credit_card"] == 1, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
-            transaction_value = np.random.lognormal(df["mu"], df["sigma"])
-            transaction_value = transaction_value.round(2)
+            mask = df["credit_card"] == 1
+            mu = np.where(mask, df["credit_ln_mu"], df["debit_ln_mu"])
+            sigma = np.where(mask, df["credit_ln_sd"], df["debit_ln_sd"])
+            fraud_mu = np.where(mask, df["credit_ln_mu_fraud"], df["debit_ln_mu_fraud"])
 
+        transaction_value = np.random.lognormal(mu, sigma).astype(np.float32).round(2)
         # Likelihood ratio calculations. Approximating probability with densities using PDF.
-        p_x = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["mu"]))
-        p_x_given_fraud = lognorm.pdf(transaction_value, s=df["sigma"], scale=np.exp(df["fraud_mu"]))
+        p_x = lognorm.pdf(transaction_value, s=sigma, scale=np.exp(mu))
+        p_x_given_fraud = lognorm.pdf(transaction_value, s=sigma, scale=np.exp(fraud_mu))
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
         value_likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
         value_likelihood_ratio = np.minimum(value_likelihood_ratio, self.lr_cap)
         return transaction_value, value_likelihood_ratio
 
-    def generate_add_payee_distance(self, df: pd.DataFrame, n_payees: int, distances: pd.DataFrame):
+    @measure_duration()
+    def generate_add_payee_distance(self, df: pl.DataFrame, n_payees: int, distances: pl.DataFrame):
         """
         Generate the payee distances and add them to the transactions data
         frame.
@@ -791,7 +825,7 @@ class Cardsim:
         """
         if "remote" not in df.columns:
             raise ValueError("'df' needs a location type column")
-        df = df.copy()
+        # df = df.copy()
         # Set up min, max, and mode indices for triangular distributions
         min_index = 0
         max_index = n_payees - 1  # zero-based indexing
@@ -802,12 +836,12 @@ class Cardsim:
         # Select mode for triangular distribution based on location type
         mode_vector = np.where(df["remote"] == 1, remote_mode, inperson_mode)
         # Draw payee indices from triangular distribution
-        drawn_index = np.random.triangular(left=min_index, mode=mode_vector, right=max_index, size=len(df))
+        drawn_index = np.random.triangular(left=min_index, mode=mode_vector, right=max_index, size=df.height)
 
         # Round indices and ensure within bounds
         # Give the variable the same name as the var that will be merged
-        df["payee_order"] = np.clip(np.round(drawn_index).astype(int), min_index, max_index)
-        df = df.merge(distances, how="left", on=["payer_id", "payee_order"])
+        df = df.with_columns(payee_order=np.clip(np.round(drawn_index).astype(int), min_index, max_index))
+        df = df.join(distances, on=["payer_id", "payee_order"], how="left").drop("payee_order")
 
         # Distance likelihood ratio
         # Scipy expects: x (value), loc (left), scale (right - left), and c,
@@ -824,7 +858,7 @@ class Cardsim:
 
         distance_likelihood_ratio = p_x_given_fraud / p_x_given_not_fraud
         distance_likelihood_ratio = np.minimum(distance_likelihood_ratio, self.lr_cap)
-        return df.drop(columns="payee_order"), distance_likelihood_ratio
+        return df, distance_likelihood_ratio
 
     @staticmethod
     def calculate_time_density(weights: dict, windows: dict, tri_peak: float) -> np.ndarray:
@@ -869,6 +903,7 @@ class Cardsim:
 
         return density
 
+    @measure_duration()
     def generate_hourly_probabilities(self):
         """Generate marginal and conditional probabilities for each hour."""
         hours = np.arange(24)
@@ -885,47 +920,37 @@ class Cardsim:
         # Normalize to get a PMF
         marginal_pmf = marginal_density / np.sum(marginal_density)
         conditional_pmf = conditional_density / np.sum(conditional_density)
-        df = pd.DataFrame({"hour": hours, "marginal_pmf": marginal_pmf, "conditional_pmf": conditional_pmf})
         if self.tod_smoothing_param is not None:
-            df["conditional_pmf"] = (df["marginal_pmf"] * self.tod_smoothing_param) + (
-                df["conditional_pmf"] * (1 - self.tod_smoothing_param)
-            )
+            conditional_pmf = marginal_pmf * self.tod_smoothing_param + conditional_pmf * (1 - self.tod_smoothing_param)
+        df = pl.DataFrame({"hour": hours, "marginal_pmf": marginal_pmf, "conditional_pmf": conditional_pmf})
         return df
 
-    def generate_transaction_time(self, n_samples: int, tod_pmf: pd.DataFrame, return_seconds: bool = True) -> np.ndarray:
+    @measure_duration()
+    def generate_transaction_time(self, n_samples: int, tod_pmf: pl.DataFrame) -> np.ndarray:
         """
-        Generate a vector of times for payment transactions.
+        Generate a vector of times (in seconds) for payment transactions.
 
         Parameters
         ----------
         n_samples : int
             The number of samples to generate.
-        return_seconds : bool
-            True returns the time in seconds. False returns the time in hours.
-            The default is True.
 
         Returns
         -------
         np.ndarray
-            A vector of transaction times.
+            A vector of transaction times in seconds.
 
         """
-
         hours = np.arange(24)
         probs = tod_pmf["marginal_pmf"].to_numpy()
-
         # Generate hours using hourly PMF
         selected_hours = np.random.choice(hours, size=n_samples, p=probs)
-
         # Select random seconds
         selected_seconds = np.random.randint(0, 3600, size=n_samples)
+        return selected_hours * 3600 + selected_seconds
 
-        if return_seconds:
-            return selected_hours * 3600 + selected_seconds
-        else:
-            return selected_hours
-
-    def calculate_tod_likelihood_ratio(self, df: pd.DataFrame, tod_pmf: pd.DataFrame):
+    @measure_duration()
+    def calculate_tod_likelihood_ratio(self, df: pl.DataFrame, tod_pmf: pl.DataFrame):
         """
         Calculate the time of day likelihood ratios by merging the hourly
         PMFs.
@@ -939,8 +964,7 @@ class Cardsim:
         if "hour" not in df.columns:
             raise ValueError("'df' should contain time of day elements")
 
-        df = df.copy()
-        df = pd.merge(df, tod_pmf, how="left", on="hour")
+        df = df.join(tod_pmf, on="hour", how="left")
         p_x = df["marginal_pmf"].to_numpy()
         p_x_given_fraud = df["conditional_pmf"].to_numpy()
         p_x_given_not_fraud = self.calculate_cp_complement(p_x, p_x_given_fraud)
@@ -948,6 +972,7 @@ class Cardsim:
         tod_likelihood_ratio = np.minimum(tod_likelihood_ratio, self.lr_cap)
         return tod_likelihood_ratio
 
+    @measure_duration()
     def generate_fraud(
         self,
         distance_likelihood_ratio: np.ndarray,
@@ -975,9 +1000,8 @@ class Cardsim:
         fraud_flag = (posterior_odds >= threshold_odds).astype(int)
         return fraud_flag
 
-    def make_transactions_dataframe(
-        self, n_payers: int, n_days: int, start_date: str, with_modification: bool
-    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    @measure_duration()
+    def make_transactions_dataframe(self, n_payers: int, n_days: int, start_date: str, with_modification: bool):
         logging.debug("Starting world generation")
         world_start = time.time()
         card_txns, card_txns_daily = self.source_format_dcpc_data()
@@ -986,34 +1010,40 @@ class Cardsim:
         payees, n_payees = self.generate_payee_profiles(payers)
         distances = self.calculate_distances(payers, payees)
 
-        world_end = time.time()
-        world_runtime = world_end - world_start
+        world_runtime = time.time() - world_start
         logging.info(f"Generated world in {world_runtime} seconds")
         logging.info("Starting phase two: generating transactions within world")
         tx_start = time.time()
 
         df = self.generate_baseline_transactions(payers, n_days=n_days, start_date=start_date)
-        df["credit_card"], card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
-        df["remote"], location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
-        df["amount"], value_likelihood_ratio = self.generate_transaction_value(df, payers, payees, with_modification)
+        credit_card, card_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="credit_card")
+        remote, location_likelihood_ratio = self.generate_payment_attribute(n_samples=len(df), atype="remote")
+
+        df = df.with_columns(credit_card=credit_card, remote=remote)
+        amount, value_likelihood_ratio = self.generate_transaction_value(df, payers, with_modification)
+        df = df.with_columns(amount=amount)
         df, distance_likelihood_ratio = self.generate_add_payee_distance(df, n_payees, distances)
         tod_pmf = self.generate_hourly_probabilities()
 
-        df["time_seconds"] = self.generate_transaction_time(n_samples=len(df), tod_pmf=tod_pmf)
-        df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
-        df["hour"] = df["date_time"].dt.hour
+        time_seconds = self.generate_transaction_time(n_samples=df.height, tod_pmf=tod_pmf)
+        ms = pl.Series(values=time_seconds * 1000, dtype=pl.Duration("ms"))
+        df = df.with_columns(
+            date_time=pl.col("date") + ms,
+            hour=time_seconds // 3600,
+        )
+        # df["date_time"] = df["date"] + pd.to_timedelta(df["time_seconds"], unit="s")
+        # df["hour"] = df["date_time"].dt.hour
 
         tod_likelihood_ratio = self.calculate_tod_likelihood_ratio(df, tod_pmf)
-        df["fraud"] = self.generate_fraud(
-            distance_likelihood_ratio=distance_likelihood_ratio,
-            card_likelihood_ratio=card_likelihood_ratio,
-            location_likelihood_ratio=location_likelihood_ratio,
-            tod_likelihood_ratio=tod_likelihood_ratio,
-            value_likelihood_ratio=value_likelihood_ratio,
+        df = df.with_columns(
+            fraud=self.generate_fraud(
+                distance_likelihood_ratio=distance_likelihood_ratio,
+                card_likelihood_ratio=card_likelihood_ratio,
+                location_likelihood_ratio=location_likelihood_ratio,
+                tod_likelihood_ratio=tod_likelihood_ratio,
+                value_likelihood_ratio=value_likelihood_ratio,
+            )
         )
-
-        self.run_id = f"S{self.base_seed}P{n_payers}D{n_days}"
-        df["run_id"] = self.run_id
 
         tx_end = time.time()
         transactions_runtime = tx_end - tx_start
@@ -1029,7 +1059,7 @@ class Cardsim:
         n_days: int,
         start_date: str,
         with_modification: bool,
-        cache_dir: str | None = None,
+        cache_dir: str | None,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
         if cache_dir is None:
             cache_dir = os.path.join("cache", "cardsim")
@@ -1079,7 +1109,7 @@ class Cardsim:
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
         trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date, with_modification)
         # Transactions
-        trx = pl.from_pandas(trx).rename(
+        trx = trx.rename(
             {
                 "date_time": "timestamp",
                 "payer_id": "card_id",
@@ -1092,12 +1122,12 @@ class Cardsim:
         trx = trx.drop(*to_drop)
 
         # Cards
-        cards = pl.from_pandas(cards).rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
+        cards = cards.rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
         to_drop = set(cards.columns) - set(Card.field_names())
         cards = cards.drop(*to_drop)
 
         # Terminals
-        terminals = pl.from_pandas(terminals).rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
+        terminals = terminals.rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
         to_drop = set(terminals.columns) - set(Terminal.field_names())
         terminals = terminals.drop(*to_drop)
         return trx, cards, terminals

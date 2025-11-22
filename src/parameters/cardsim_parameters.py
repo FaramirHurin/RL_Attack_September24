@@ -1,8 +1,7 @@
 from dataclasses import dataclass, astuple
 import polars as pl
 import hashlib
-import nbformat
-from nbconvert.preprocessors import ExecutePreprocessor
+import os
 
 
 @dataclass(eq=True)
@@ -13,7 +12,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, cache_dir: str | None = None):
+    def get_simulation_data(self, cache_dir: str | None = os.path.join("cache", "cardsim")):
         from cardsim import Cardsim
 
         if self.ulb_data:
@@ -23,20 +22,19 @@ class CardSimParameters:
                 terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")
             except FileNotFoundError:
                 from mlgsim.generare_dataset import main as generate_dataset
+                import subprocess
 
                 generate_dataset()
-                FILENAME = "src/mlgsim/prepare_datasets.ipynb"
-                with open(FILENAME) as f:
-                    nb = nbformat.read(f, nbformat.NO_CONVERT)
-                ep = ExecutePreprocessor(timeout=600)
-                output = ep.preprocess(nb)
+                # with open(FILENAME) as f:
+                #     nb = nbformat.read(f, nbformat.NO_CONVERT)
+                # ep = ExecutePreprocessor(timeout=600)
+                # output = ep.preprocess(nb)
                 # --- Run the Python script to create the dataset---
                 # subprocess.run(["python", "src/mlgsim/generate_datasets.py"], check=True)
                 # --- Run the Jupyter notebook ---
-                # subprocess.run(
-                #     ["jupyter", "nbconvert", "--to", "notebook", "--execute", "--inplace", "src/mlgsim/prepare_datasets.ipynb"], check=True
-                # )
-
+                subprocess.run(
+                    ["jupyter", "nbconvert", "--to", "notebook", "--execute", "--inplace", "src/mlgsim/prepare_datasets.ipynb"], check=True
+                )
                 transactions = pl.read_csv("src/mlgsim/transactions.csv")
                 cards = pl.read_csv("src/mlgsim/customer_profiles.csv")
                 terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")
@@ -44,17 +42,17 @@ class CardSimParameters:
             transactions = transactions.with_columns(
                 pl.col("timestamp").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S").alias("timestamp")
             )
+            return transactions, cards, terminals
 
-        else:
-            simulator = Cardsim()
-            transactions, cards, terminals = simulator.load(
-                n_days=self.n_days,
-                n_payers=self.n_payers,
-                start_date=self.start_date,
-                cache_dir=cache_dir,
-                with_modification=self.with_modification,
-            )
-        return transactions, cards, terminals
+        if cache_dir is None:
+            return Cardsim().simulate(self.n_payers, self.n_days, self.start_date, self.with_modification)
+        return Cardsim().load(
+            n_days=self.n_days,
+            n_payers=self.n_payers,
+            start_date=self.start_date,
+            cache_dir=cache_dir,
+            with_modification=self.with_modification,
+        )
 
     @staticmethod
     def paper_params(with_modification: bool):
