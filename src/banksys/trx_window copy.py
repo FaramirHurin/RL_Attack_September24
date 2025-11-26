@@ -5,11 +5,9 @@ from .transaction import Transaction
 
 
 class TransactionWindow:
-    def __init__(self, aggregation_windows: Sequence[timedelta]):
+    def __init__(self):
         self.transactions = list[Transaction]()
         self.fields = Transaction.field_names()
-        self.windows = sorted(aggregation_windows)
-        self.max_window = max(aggregation_windows)
 
     def update(self, current_time: datetime, expire_after: timedelta):
         remove_before = current_time - expire_after
@@ -51,7 +49,11 @@ class TransactionWindow:
         """
         results = dict[str, float]()
         n_frauds = 0
-        self.update(timestamp, max(aggregation_windows))
+        remove_before = timestamp - max(aggregation_windows)
+        i = 0
+        while i < len(self.transactions) and self.transactions[i].timestamp < remove_before:
+            i += 1
+        self.transactions = self.transactions[i:]
         window_size = len(self.transactions)
         i = len(self.transactions) - 1
         for duration in aggregation_windows:

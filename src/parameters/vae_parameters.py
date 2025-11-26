@@ -44,6 +44,10 @@ class VAEParameters:
             beta=self.beta,
         )
 
+    @property
+    def name(self):
+        return "VAE"
+
     @staticmethod
     def best_vae(anomaly: bool):
         if anomaly:

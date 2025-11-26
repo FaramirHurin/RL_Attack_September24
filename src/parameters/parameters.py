@@ -1,24 +1,26 @@
 import logging
 import os
 import random
-import shutil
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Literal, Optional, Sequence
+from datetime import datetime
+from typing import Optional
+from functools import cached_property
+import shutil
 
 import numpy as np
 import orjson
 import hashlib
-import pandas as pd
 import torch
 
 from agents import Agent
 from environment import CardSimEnv
+from utils import serialize_unknown
 
 from .ppo_parameters import PPOParameters
 from .vae_parameters import VAEParameters
 from .cardsim_parameters import CardSimParameters
 from .classification_parameters import ClassificationParameters
+from .env_parameters import EnvParameters
 
 
 @dataclass(eq=True)
@@ -26,201 +28,61 @@ class Parameters:
     agent: PPOParameters | VAEParameters | None
     cardsim: CardSimParameters
     clf_params: ClassificationParameters
-    n_episodes: int
-    know_client: bool
-    terminal_fract: float
-    seed_value: int
-    card_pool_size: int
-    include_weekday: bool
-    avg_card_block_delay_days: int
-    logdir: str
-    aggregation_windows: Sequence[timedelta]
-    agent_name: Literal["ppo", "rppo", "vae", ""]
+    env_params: EnvParameters
+    seed: int
 
     def __init__(
         self,
         agent: PPOParameters | VAEParameters | None = None,
-        cardsim: CardSimParameters = CardSimParameters(),
-        clf_params: ClassificationParameters = ClassificationParameters(),
-        n_episodes: int = 4000,
-        know_client: bool = False,
-        terminal_fract: float = 0.1,
-        seed_value: Optional[int] = None,
-        card_pool_size: int = 50,
-        avg_card_block_delay_days: int = 7,
-        logdir: Optional[str] = None,
-        save: bool = True,
-        include_weekday: bool = True,
-        ulb_data: bool = False,
-        aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        cardsim: Optional[CardSimParameters] = None,
+        clf_params: Optional[ClassificationParameters] = None,
+        env_params: Optional[EnvParameters] = None,
+        seed: int = 0,
+        *,
+        regenerate_dataset: bool = False,
+        regenerate_banksys: bool = False,
         **kwargs,
     ):
+        ######################################
+        # Set the seed before ANYTHING else  #
+        ######################################
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        self.seed = seed
+
         kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
         if len(kwargs) > 0:
             logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
         self.agent = agent
+        if cardsim is None:
+            cardsim = CardSimParameters()
         self.cardsim = cardsim
-        self.n_episodes = n_episodes
-        self.know_client = know_client
-        self.terminal_fract = terminal_fract
-        if seed_value is None:
-            seed_value = hash(datetime.now().isoformat()) % 2**32
-        self.seed_value = seed_value
-        self.avg_card_block_delay_days = avg_card_block_delay_days
+        if clf_params is None:
+            clf_params = ClassificationParameters()
         self.clf_params = clf_params
-        self.card_pool_size = card_pool_size
-        self.include_weekday = include_weekday
-        self.aggregation_windows = []
-        self.ulb_data = ulb_data
-        for window in aggregation_windows:
-            if isinstance(window, (float, int)):
-                window = timedelta(seconds=window)
-            self.aggregation_windows.append(window)
-        match self.agent:
-            case PPOParameters():
-                if self.agent.is_recurrent:
-                    self.agent_name = "rppo"
-                else:
-                    self.agent_name = "ppo"
-            case VAEParameters():
-                self.agent_name = "vae"
-            case None:
-                self.agent_name = ""
-            case _:
-                raise ValueError("Unknown agent type")
-        if logdir is None:
-            logdir = self.default_logdir()
-        self.logdir = logdir
-        self.seed()
-        if save:
-            self.save()
+        if env_params is None:
+            env_params = EnvParameters()
+        self.env_params = env_params
+        if regenerate_dataset:
+            shutil.rmtree(self.dataset_dir)
+            regenerate_banksys = True
+        if regenerate_banksys:
+            os.remove(self.banksys_file)
 
-    def seed(self):
-        """
-        Seed the random number generator.
-        """
-        random.seed(self.seed_value)
-        np.random.seed(self.seed_value)
-        torch.manual_seed(self.seed_value)
-
-    def create_agent(self, env: CardSimEnv, device: Optional[torch.device] = None) -> Agent:
-        if device is None:
-            device = self.get_device_by_seed()
+    def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         match self.agent:
             case None:
                 raise ValueError("Agent is not set. Please provide an agent.")
             case VAEParameters():
-                return self.agent.get_agent(env, device, self.know_client, self.agent.quantile)
+                return self.agent.get_agent(env, device, self.env_params.know_client, self.agent.quantile)
             case PPOParameters():
                 return self.agent.get_agent(env, device)
             case _:
                 raise ValueError("Unknown agent type")
 
-    def create_env(self):
-        from banksys import Banksys
-
-        try:
-            banksys = Banksys.load(self.banksys_dir)
-        except (FileNotFoundError, ValueError):
-            logging.info("Banksys not found, creating a new one")
-            banksys = self.create_banksys()
-            banksys.save(self.banksys_dir)
-        env = CardSimEnv(
-            system=banksys,
-            avg_card_block_delay=timedelta(days=self.avg_card_block_delay_days),
-            customer_location_is_known=self.know_client,
-            normalize_location=self.agent_name in ("ppo", "rppo"),
-            include_weekday=self.include_weekday,
-        )
-        return env
-
-    def banksys_is_in_cache(self):
-        """
-        Check if the Banksys directory exists.
-        """
-        return os.path.exists(self.banksys_dir)
-
-    @property
-    def banksys_dir(self):
-        if self.ulb_data:
-            hhash = hashlib.sha256(str((self.ulb_data, self.clf_params, self.cardsim)).encode("utf-8")).hexdigest()
-        else:
-            hhash = hashlib.sha256((self.clf_params.sha256() + self.cardsim.sha256()).encode("utf-8")).hexdigest()
-        return os.path.join("cache", hhash)
-
-    def create_banksys(
-        self,
-        cache_dir: str | None = None,
-        silent: bool = False,
-        fit: bool = True,
-        fp_rate: float = 0.0,
-        fn_rate: float = 0.0,
-    ):
-        from banksys import Banksys
-
-        transactions, cards, terminals = self.cardsim.get_simulation_data(cache_dir)
-        return Banksys(
-            transactions,
-            cards,
-            terminals,
-            aggregation_windows=self.aggregation_windows,
-            attackable_terminal_factor=self.terminal_fract,
-            clf_params=self.clf_params,
-            fp_rate=fp_rate,
-            fn_rate=fn_rate,
-            silent=silent,
-            fit=fit,
-        )
-
-    def datasets_exists(self, directory: Optional[str] = None) -> bool:
-        """
-        Check if the training and test datasets exist in the specified directory.
-        If no directory is specified, use the default banksys directory.
-        """
-        if directory is None:
-            directory = self.banksys_dir
-        train_path = os.path.join(directory, "train.csv")
-        if not os.path.exists(train_path):
-            return False
-        test_path = os.path.join(directory, "test.csv")
-        return os.path.exists(test_path)
-
-    def load_datasets(self, directory: Optional[str] = None):
-        """
-        Load the training and test datasets from the specified directory.
-        If no directory is specified, use the default banksys directory.
-        """
-        if directory is None:
-            directory = self.banksys_dir
-        train_x = pd.read_csv(os.path.join(directory, "train.csv"))
-        train_y = train_x.pop("label").to_numpy(dtype=np.bool)
-        test_x = pd.read_csv(os.path.join(directory, "test.csv"))
-        test_y = test_x.pop("label").to_numpy(dtype=np.bool)
-        return train_x, train_y, test_x, test_y
-
-    def get_device_by_seed(self) -> torch.device:
-        if not torch.cuda.is_available():
-            return torch.device("cpu")
-        device = f"cuda:{self.seed_value % torch.cuda.device_count()}"
-        return torch.device(device)
-
-    def save(self):
-        if self.logdir in ("test", "debug", "logs/test", "log/tests", "log/debug"):
-            try:
-                shutil.rmtree(self.logdir)
-            except FileNotFoundError:
-                pass
-        os.makedirs(self.logdir, exist_ok=True)
-        os.makedirs(self.banksys_dir, exist_ok=True)
-        file_path = os.path.join(self.logdir, "params.json")
-        with open(file_path, "wb") as f:
-            f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))
-        with open(os.path.join(self.banksys_dir, "clf_params.json"), "wb") as f:
-            f.write(orjson.dumps(self.clf_params, default=serialize_unknown, option=orjson.OPT_INDENT_2))
-        with open(os.path.join(self.banksys_dir, "cardsim_params.json"), "wb") as f:
-            f.write(orjson.dumps(self.cardsim, default=serialize_unknown, option=orjson.OPT_INDENT_2))
-
-    def default_logdir(self):
+    @cached_property
+    def logdir(self):
         timestamp = datetime.now().isoformat().replace(":", "-")
         if self.clf_params.use_anomaly:
             anomaly = "anomaly"
@@ -235,18 +97,93 @@ class Parameters:
         assert isinstance(data, dict), "Parameters should be a dictionary"
         match data["agent_name"]:
             case "ppo" | "rppo":
-                data["agent"] = PPOParameters.from_json(data["agent"])
+                agent = PPOParameters.from_json(data["agent"])
             case "vae":
-                data["agent"] = VAEParameters(**data["agent"])
+                agent = VAEParameters(**data["agent"])
             case _:
                 raise ValueError(f"Unknown agent type: {data['agent_name']}")
-        data["cardsim"] = CardSimParameters(**data["cardsim"])
-        data["clf_params"] = ClassificationParameters(**data["clf_params"])
-        return Parameters(**data)
+        cardsim = CardSimParameters(**data["cardsim"])
+        clf_params = ClassificationParameters(**data["clf_params"])
+        env_params = EnvParameters(**data["env_params"])
+        return Parameters(
+            agent=agent,
+            cardsim=cardsim,
+            clf_params=clf_params,
+            env_params=env_params,
+            **data,
+        )
 
+    @property
+    def agent_name(self) -> str:
+        if self.agent is None:
+            return ""
+        return self.agent.name
 
-def serialize_unknown(data):
-    match data:
-        case timedelta():
-            return data.total_seconds()
-    raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")
+    def sha256(self) -> str:
+        serialized = orjson.dumps(self, default=serialize_unknown)
+        return hashlib.sha256(serialized).hexdigest()
+
+    def make_env(self):
+        self.prepare_run()
+        return CardSimEnv(self.banksys, self.env_params)
+
+    @property
+    def banksys(self):
+        self.prepare_run()
+        from banksys import Banksys
+
+        return Banksys.load(self.banksys_file)
+
+    @cached_property
+    def cache_dir(self):
+        """
+        The unique directory where the data required for the run is cached.
+
+        This data includes the simulation dataset and banksys model trained on this dataset.
+        """
+        return os.path.join("cache", self.sha256())
+
+    @property
+    def banksys_file(self):
+        return os.path.join(self.cache_dir, "banksys.pkl")
+
+    @property
+    def dataset_dir(self):
+        return os.path.join(self.cache_dir, "dataset")
+
+    @property
+    def params_file(self):
+        return os.path.join(self.cache_dir, "params.json")
+
+    @property
+    def is_ready(self) -> bool:
+        if not os.path.exists(self.cache_dir):
+            return False
+        if not os.path.exists(self.banksys_file):
+            return False
+        if not os.path.exists(self.params_file):
+            return False
+        return True
+
+    def prepare_run(self):
+        """
+        Ensures that everything is ready for the run, i.e.:
+         1. If there exists a Banksys in the cache, return.
+         2. Otherwise:
+            a. Generate the dataset
+            b. Create and train the Banksys
+            c. Save the Banksys to the cache
+        """
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir, exist_ok=True)
+        # Save parameters
+        if not os.path.exists(self.params_file):
+            with open(self.params_file, "wb") as f:
+                f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))
+        # If the banksys file exists, then we are set
+        if os.path.exists(self.banksys_file):
+            return
+
+        transactions, payers, terminals = self.cardsim.get_simulation_data(self.dataset_dir)
+        banksys = self.clf_params.make_banksys(transactions, payers, terminals)
+        banksys.save(self.banksys_file)

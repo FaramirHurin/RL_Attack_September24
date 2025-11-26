@@ -1,81 +1,77 @@
-from dataclasses import astuple
 import hashlib
 import logging
 import random
-from datetime import timedelta
+from dataclasses import astuple
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
-from banksys import Card, Transaction
+from banksys import Payer, Terminal, Transaction
 from exceptions import AttackPeriodExpired, InsufficientFundsError
 
 from .action import Action
-from .card_registry import CardRegistry
+from .payer_registry import PayerRegistry
 from .priority_queue import PriorityQueue
 
 if TYPE_CHECKING:
     from banksys import Banksys
+    from parameters.env_parameters import EnvParameters
 
 
 class CardSimEnv(MARLEnv[ContinuousSpace]):
     def __init__(
         self,
         system: "Banksys",
-        avg_card_block_delay: timedelta,
-        *,
-        include_weekday: bool = True,
-        customer_location_is_known: bool = False,
-        normalize_location: bool = False,
+        params: "EnvParameters",
     ):
-        self.normalize_location = normalize_location
-        obs_size = 4
-        if customer_location_is_known:
+        self.normalize_location = params.normalize_location
+        obs_size = 6  # time_ratio, hour_of_day, total_stolen, n_frauds, latest_fraud_amount, sufficient_funds
+        if params.know_client:  # x, y
             obs_size += 2
-        if include_weekday:
+        if params.include_weekday:  # one-hot weekday
             obs_size += 7
 
-        action_space = ContinuousSpace(
-            low=np.array([0.01] + [0.0] * 4),
-            high=np.array([100_000, 200, 200, 1, avg_card_block_delay.total_seconds() / 3600]),  # avg_card_block_delay.days,
-            labels=["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"],  # "delay_days",
-        )
+        low = [0.01] + [0.0] * 4
+        high = [1_000, 200, 200, 1, params.avg_card_block_delay.total_seconds() / 3600]
+        labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
+        if params.can_choose_debit_credit:
+            low += [0]
+            high += [1]
+            labels += ["is_credit"]
         super().__init__(
             1,
-            action_space=action_space,
+            action_space=ContinuousSpace(low, high, labels),
             observation_shape=(obs_size,),
             state_shape=(obs_size,),
         )
+        self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
         self.system = system
-        self.card_registry = CardRegistry(system.cards, avg_card_block_delay)
-        self.customer_location_is_known = customer_location_is_known
-        self.include_weekday = include_weekday
-        self.action_buffer = PriorityQueue[tuple[Card, np.ndarray]]()
+        self.payer_registry = PayerRegistry(system.payers, params.avg_card_block_delay)
+        self.customer_location_is_known = params.customer_location_is_known
+        self.include_weekday = params.include_weekday
+        self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
         logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
-        self.card_registry.reset(self.system.cards)
+        self.payer_registry.reset()
         self.action_buffer.clear()
-        return
 
     def spawn_card(self):
-        card = self.card_registry.release_card(self.t)
+        card = self.payer_registry.release_payer(self.t)
         state = self.compute_state(card)
         return card, Observation(state, self.available_actions()), State(state)
 
-    def buffer_action(self, np_action: np.ndarray, card: Card):
+    def buffer_action(self, np_action: np.ndarray, card: Payer):
         action = Action.from_numpy(np_action)
-        card.attempted_attacks += 1
-        # delta = timedelta(hours=action.delay_hours) + timedelta(minutes=1)
-        execution_time = self.t + timedelta(hours=action.delay_hours)
+        execution_time = self.t + action.timedelta
         self.action_buffer.push((card, np_action), execution_time)
 
-    def get_observation(self, card: Card):
+    def get_observation(self, card: Payer):
         state = self.compute_state(card)
         return Observation(state, self.available_actions())
 
-    def get_state(self, card: Card):
+    def get_state(self, card: Payer):
         state = self.compute_state(card)
         return State(state)
 
@@ -87,19 +83,30 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def isodate(self):
         return self.t.date().isoformat()
 
-    def compute_state(self, card: Card):
-        time_ratio = self.card_registry.get_remaining_time_ratio(card, self.t)
-        features = [card.attempted_attacks, time_ratio, card.is_credit, self.t.hour / 24]
+    def compute_state(self, payer: Payer):
+        time_ratio = self.payer_registry.get_remaining_time_ratio(payer, self.t)
+        features = [time_ratio, self.t.hour / 24, *self.payer_registry.get_features(payer)]
         if self.include_weekday:
             one_hot_weekday = [0.0] * 7
             one_hot_weekday[self.t.weekday()] = 1.0
             features += one_hot_weekday
         if self.customer_location_is_known:
-            x, y = card.x, card.y
+            x, y = payer.x, payer.y
             if self.normalize_location:
                 x, y = x / 200, y / 200
             features += [x, y]
         return np.array(features, dtype=np.float32)
+
+    def get_closest_terminal(self, x: float, y: float) -> Terminal:
+        closest_terminal = None
+        closest_distance = float("inf")
+        for terminal in self.attackable_terminals:
+            distance = (terminal.x - x) ** 2 + (terminal.y - y) ** 2
+            if distance < closest_distance:
+                closest_terminal = terminal
+                closest_distance = distance
+        assert closest_terminal is not None
+        return closest_terminal
 
     @property
     def t(self):
@@ -109,40 +116,46 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         """
         Performs the next action in the queue.
         """
-        t, (card, np_action) = self.action_buffer.ppop()
+        t, (payer, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
         if t >= self.system.attack_end:
-            raise AttackPeriodExpired(
-                f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached (current date: {t.isoformat()})"
-            )
+            raise AttackPeriodExpired(f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached")
         info = dict[str, Any](t=t.isoformat())
         if self.normalize_location:
             action.terminal_x *= 200
             action.terminal_y *= 200
-        if self.card_registry.has_expired(card, t):
-            self.card_registry.clear(card)
+        if self.payer_registry.has_expired(payer, t):
+            self.payer_registry.clear(payer)
             reward = 0.0
             done = True
             info["expired"] = True
-            self.system.simulate_until(t)
         else:
-            terminal_id = self.system.get_closest_terminal(card.x, card.y).id
-            trx = Transaction(action.amount, t, terminal_id, card.id, action.is_online, is_fraud=True)
+            self.system.simulate_until(t)
+            trx = Transaction(
+                amount=action.amount,
+                timestamp=t,
+                terminal_id=self.get_closest_terminal(payer.x, payer.y).id,
+                payer_id=payer.id,
+                is_online=action.is_online,
+                is_credit=action.is_credit,
+                is_fraud=True,
+            )
             try:
                 self.system.process_transaction(trx)
-                transaction_denied = False
-                # TODO: the logic of this is such that if a fraud is detected but there are insufficient funds,
-                # the cause of detection is "insufficient_funds" and does not include the fraud detection reason.
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]
-                    transaction_denied = True
+                    reward = 0.0
+                    self.payer_registry.clear(payer)
+                else:
+                    self.payer_registry.notify_transaction_processed(trx)
+                    reward = trx.amount
             except InsufficientFundsError:
                 info["insufficient_funds"] = True
-                transaction_denied = True
+                reward = 0.0
+                self.payer_registry.notify_insufficient_funds(trx)
             done = trx.fraud_is_detected
-            reward = 0.0 if transaction_denied else trx.amount
-        state = self.compute_state(card)
-        return card, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info), np_action
+        state = self.compute_state(payer)
+        return payer, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info), np_action
 
     def seed(self, seed_value: int):
         random.seed(seed_value)

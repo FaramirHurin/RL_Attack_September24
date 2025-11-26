@@ -14,7 +14,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
 if TYPE_CHECKING:
-    from banksys import Card, Terminal, Transaction
+    from banksys import Payer, Terminal, Transaction
     from banksys.banksys import Banksys
 
 from .agent import Agent
@@ -220,7 +220,7 @@ class VaeAgent(Agent):
         transactions_df = transactions_df.merge(terminals_df, on="terminal_id", how="left")
 
         if self.know_client:
-            customers = self.banksys.cards
+            customers = self.banksys.payers
             transactions_df = self._trx_and_customers(transactions_df, customers)
         transactions_df["hour"] = transactions_df["timestamp"].dt.hour
         return transactions_df
@@ -273,6 +273,7 @@ class VaeAgent(Agent):
             terminal_y=as_dict["terminal_y"],
             is_online=as_dict["is_online"],
             delay_hours=as_dict["delay_hours"],
+            is_credit=as_dict["is_credit"],
         )
         return action.to_numpy(), None
 
@@ -297,7 +298,7 @@ class VaeAgent(Agent):
         :param current_time: current time
         :return: DataFrame with the transactions
         """
-        transactions: list["Transaction"] = []
+        transactions = list[Transaction]()
         for terminal in terminals:
             for transaction in terminal.transactions.transactions:
                 #################################################
@@ -316,7 +317,7 @@ class VaeAgent(Agent):
         return transactions_df
 
     @staticmethod
-    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Card"]) -> pd.DataFrame:
+    def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Payer"]) -> pd.DataFrame:
         """
         Preprocess the transactions and use s.
         :param transactionsDF: DataFrame with the transactions

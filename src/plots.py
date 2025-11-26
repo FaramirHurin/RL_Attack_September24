@@ -12,7 +12,6 @@ import orjson
 from parameters import Parameters, serialize_unknown
 from marlenv import Episode
 
-
 from banksys import Transaction
 from environment import Action
 
@@ -161,10 +160,11 @@ class Run:
                     amount=action.amount,
                     timestamp=t,
                     terminal_id=0,
-                    card_id=log_item.card_id,
+                    payer_id=log_item.card_id,
                     is_online=action.is_online,
                     is_fraud=True,
                     predicted_label=False,
+                    is_credit=action.is_credit,
                 )
             )
         res[-1].predicted_label = True
@@ -201,7 +201,7 @@ class Experiment:
         Repeat the experiment n times.
         """
         if initial_seed is None:
-            initial_seed = self.params.seed_value + self.n_runs
+            initial_seed = self.params.seed + self.n_runs
         for seed in range(initial_seed, initial_seed + n):
             logdir = os.path.join(self.logdir, f"seed-{seed}")
             # os.makedirs(logdir, exist_ok=True)
@@ -213,12 +213,11 @@ class Experiment:
 
     @staticmethod
     def create(params: Parameters):
-        logdir = params.logdir
-        os.makedirs(logdir, exist_ok=True)
-        params_path = os.path.join(logdir, "params.json")
+        params_path = os.path.join(params.logdir, "params.json")
+        os.makedirs(params.logdir, exist_ok=True)
         with open(params_path, "wb") as f:
             f.write(orjson.dumps(params, default=serialize_unknown, option=orjson.OPT_SERIALIZE_NUMPY))
-        return Experiment(logdir, params, {})
+        return Experiment(params.logdir, params, {})
 
     @staticmethod
     def load(directory: str):
@@ -303,16 +302,16 @@ def plot_transactions(transactions: list[Transaction]):
     fraud_dates, fraud_amounts, fraud_colours = [], [], []
     genuine_dates, genuine_amounts, genuine_colours = [], [], []
     for t in transactions:
-        if t.card_id not in COLOURS:
-            COLOURS[t.card_id] = np.random.rand(3)
+        if t.payer_id not in COLOURS:
+            COLOURS[t.payer_id] = np.random.rand(3)
         if t.predicted_label:
             fraud_dates.append(t.timestamp)
             fraud_amounts.append(t.amount)
-            fraud_colours.append(COLOURS[t.card_id])
+            fraud_colours.append(COLOURS[t.payer_id])
         else:
             genuine_dates.append(t.timestamp)
             genuine_amounts.append(t.amount)
-            genuine_colours.append(COLOURS[t.card_id])
+            genuine_colours.append(COLOURS[t.payer_id])
     # Create a scatter plot
     ax.scatter(fraud_dates, fraud_amounts, c=fraud_colours, marker="x", s=50)
     ax.scatter(genuine_dates, genuine_amounts, c=genuine_colours, marker="o", s=50)

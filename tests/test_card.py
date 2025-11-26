@@ -1,10 +1,10 @@
-from banksys import Card, Transaction
+from banksys import Payer, Transaction
 from datetime import datetime
 from exceptions import InsufficientFundsError
 
 
 def test_balance():
-    c = Card(0, 0, 0, 20, True)
+    c = Payer(0, 0, 0, 20, True)
     t = Transaction(20, datetime.now(), 0, 0, False, True)
     c.add(t, update_balance=False)
 

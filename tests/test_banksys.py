@@ -1,7 +1,7 @@
 import copy
 import os
 import shutil
-from banksys import Banksys, Transaction, Card, Terminal
+from banksys import Banksys, Transaction, Payer, Terminal
 import polars as pl
 from datetime import datetime
 from parameters import Parameters, CardSimParameters, ClassificationParameters
@@ -45,25 +45,25 @@ def test_simulate_until():
 def test_balance_and_date():
     transactions = [
         # Warmup
-        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 0
-        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 1
-        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 2
-        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 3
-        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 4
-        Transaction(90, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 5
-        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 6
-        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 7
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 0
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 1
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 2
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 3
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 4
+        Transaction(90, datetime(2023, 1, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 5
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 6
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 7
         # Training data
-        Transaction(170, datetime(2023, 2, 1), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 8
-        Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
+        Transaction(170, datetime(2023, 2, 1), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 8
+        Transaction(160, datetime(2023, 2, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 9
         # Test transaction (to prevent the system from crashing because there are no transactions to process)
-        Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
-        Transaction(140, datetime(2023, 3, 11), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 11), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 10
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
         trx_df,
-        pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)]),
+        pl.DataFrame([Payer(0, 10, 25, 500), Payer(1, 20, 30, 1000)]),
         pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)]),
         aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
@@ -72,40 +72,40 @@ def test_balance_and_date():
         fn_rate=0,
     )
     trx = transactions[-2]
-    system.cards[trx.card_id].balance = 500
+    system.payers[trx.payer_id].balance = 500
     system.process_transaction(trx)
-    assert system.cards[trx.card_id].balance == 500 - trx.amount, "Balance should be updated after transaction"
+    assert system.payers[trx.payer_id].balance == 500 - trx.amount, "Balance should be updated after transaction"
 
 
 def test_n_transacations_per_card():
     transactions = [
         # Warmup
-        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 0
-        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 1
-        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 2
-        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 3
-        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 4
-        Transaction(90, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 5
-        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 6
-        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=False),  # 7
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 0
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 1
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 2
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 3
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 4
+        Transaction(90, datetime(2023, 1, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 5
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 6
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 7
         # Training data
-        Transaction(170, datetime(2023, 2, 1), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 8
-        Transaction(160, datetime(2023, 2, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),  # 9
+        Transaction(170, datetime(2023, 2, 1), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 8
+        Transaction(160, datetime(2023, 2, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),  # 9
         # Test transaction (to prevent the system from crashing because there are no transactions to process)
-        Transaction(140, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
-        Transaction(140, datetime(2023, 3, 15), terminal_id=1, card_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 10
+        Transaction(140, datetime(2023, 3, 15), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),  # 10
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
         trx_df,
-        pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)]),
+        pl.DataFrame([Payer(0, 10, 25, 500), Payer(1, 20, 30, 1000)]),
         pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)]),
         aggregation_windows=(timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         clf_params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
     )
 
-    trx = Transaction(120, datetime(2023, 3, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=True)  # 10
-    card = system.cards[trx.card_id]
+    trx = Transaction(120, datetime(2023, 3, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=True)  # 10
+    card = system.payers[trx.payer_id]
     past_transactions = card.transactions.get_window().copy()
     system.process_transaction(trx, update_balance=True)
     future_transactions = card.transactions.get_window().copy()
@@ -119,25 +119,25 @@ def test_n_transacations_per_card():
 
 
 def test_make_features():
-    cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
+    cards = pl.DataFrame([Payer(0, 10, 25, 500), Payer(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(0, 75, 95), Terminal(1, 17, 56)])
 
     transactions = [
         # Training data
-        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),
-        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(390, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(390, datetime(2023, 1, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
         # Actual agregation
-        Transaction(170, datetime(2023, 2, 14), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(160, datetime(2023, 2, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(170, datetime(2023, 2, 14), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(160, datetime(2023, 2, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
         # Transaction far in the future to allow for an attack
-        Transaction(190, datetime(2024, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2024, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
@@ -152,7 +152,7 @@ def test_make_features():
     )
 
     def make_check(trx: Transaction):
-        card_transactions = [t for t in transactions if t.card_id == trx.card_id]
+        card_transactions = [t for t in transactions if t.payer_id == trx.payer_id]
         term_transactions = [t for t in transactions if t.terminal_id == trx.terminal_id]
         card_trx_per_agg = dict[timedelta, list[Transaction]]()
         term_trx_per_agg = dict[timedelta, list[Transaction]]()
@@ -183,7 +183,7 @@ def test_make_features():
             assert features.pop(f"terminal_risk_last_{delta}") == risk_score
         assert len(features) == 0, f"All features should be tested but {features.keys()} remain untested"
 
-    make_check(Transaction(180, datetime(2023, 3, 3), terminal_id=0, card_id=0, is_online=True, is_fraud=False))
+    make_check(Transaction(180, datetime(2023, 3, 3), terminal_id=0, payer_id=0, is_online=True, is_fraud=False))
 
 
 def test_save_load():
@@ -206,25 +206,25 @@ def test_save_load():
 
 
 def test_aggregated_features():
-    cards = pl.DataFrame([Card(0, 10, 25, 500), Card(1, 20, 30, 1000)])
+    cards = pl.DataFrame([Payer(0, 10, 25, 500), Payer(1, 20, 30, 1000)])
     terminals = pl.DataFrame([Terminal(index, 75, 95) for index in range(20)])
 
     transactions = [
         # Training data
-        Transaction(100, datetime(2023, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=False),
-        Transaction(200, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(150, datetime(2023, 1, 2), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(120, datetime(2023, 1, 5), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(180, datetime(2023, 1, 10), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(390, datetime(2023, 1, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(210, datetime(2023, 1, 20), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(130, datetime(2023, 1, 30), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),
+        Transaction(200, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(150, datetime(2023, 1, 2), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(120, datetime(2023, 1, 5), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(180, datetime(2023, 1, 10), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(390, datetime(2023, 1, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(210, datetime(2023, 1, 20), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(130, datetime(2023, 1, 30), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
         # Actual agregation
-        Transaction(170, datetime(2023, 2, 14), terminal_id=1, card_id=1, is_online=True, is_fraud=False),
-        Transaction(160, datetime(2023, 2, 15), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
-        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(170, datetime(2023, 2, 14), terminal_id=1, payer_id=1, is_online=True, is_fraud=False),
+        Transaction(160, datetime(2023, 2, 15), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2023, 3, 2, hour=23, minute=59), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
         # Transaction far in the future to allow for an attack
-        Transaction(190, datetime(2024, 1, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True),
+        Transaction(190, datetime(2024, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
     ]
     trx_df = pl.DataFrame(transactions)
     system = Banksys(
@@ -237,7 +237,7 @@ def test_aggregated_features():
         fp_rate=0,
         fn_rate=0,
     )
-    trx_0 = Transaction(190, datetime(2023, 8, 1), terminal_id=0, card_id=0, is_online=False, is_fraud=True)
+    trx_0 = Transaction(190, datetime(2023, 8, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=True)
     features = system.make_transaction_features(trx_0)
     aggr_1_day_0 = features.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
     assert aggr_1_day_0 == 0, "There should be no transactions in the last week before processing the first transaction"
@@ -245,7 +245,7 @@ def test_aggregated_features():
 
     for index in range(4):
         day = index + 1
-        trx_1 = Transaction(200, datetime(2023, 8, 1 + day), terminal_id=index, card_id=0, is_online=False, is_fraud=True)
+        trx_1 = Transaction(200, datetime(2023, 8, 1 + day), terminal_id=index, payer_id=0, is_online=False, is_fraud=True)
         features_1 = system.make_transaction_features(trx_1)
         aggr_1_day = features_1.pop(f"card_n_trx_last_{timedelta(weeks=1)}")
         system.process_transaction(trx_1, update_balance=False)
