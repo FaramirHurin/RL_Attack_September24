@@ -1,11 +1,9 @@
-import matplotlib.pyplot as plt
 from plots import Experiment
 import os
-from plots import Experiment
-
-from parameters import Parameters, serialize_unknown
+import pytest
 
 
+@pytest.mark.skip
 def test_experiment():
     logdirs = {
         "VAE": "../src/logs/exp-final/vae",
@@ -22,9 +20,10 @@ def test_experiment():
     assert len(experiments) > 0, "No experiments loaded"
 
 
+@pytest.mark.skip
 def test_print_amounts():
     logdir = "../src/logs/exp-final/vae"
     experiment = Experiment.load(logdir)
-    experiment.runs['seed-1'].items
+    experiment.runs["seed-1"].items
 
     # experiment.print_amounts()

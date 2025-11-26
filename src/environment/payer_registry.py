@@ -15,6 +15,7 @@ class PayerRegistry:
         self.sigma = self.expected_lifespan / 5
         self.previous_frauds = dict[Payer, list[Transaction]]()
         self.sufficient_funds = dict[Payer, bool]()
+        self.balance_upper_bound = dict[Payer, float]()
 
     def release_payer(self, t: datetime):
         """
@@ -38,32 +39,40 @@ class PayerRegistry:
         return self.expected_expirations[payer] < t
 
     def reset(self):
+        self.payers = list(self.all_payers.values())
         self.expected_expirations.clear()
         self.actual_expirations.clear()
         self.release_dates.clear()
-        self.payers = list(self.all_payers.values())
         self.previous_frauds.clear()
+        self.sufficient_funds.clear()
+        self.balance_upper_bound.clear()
 
     def clear(self, payer: Payer):
         self.expected_expirations.pop(payer, None)
         self.actual_expirations.pop(payer, None)
         self.release_dates.pop(payer, None)
         self.previous_frauds.pop(payer, None)
+        self.sufficient_funds.pop(payer, None)
+        self.balance_upper_bound.pop(payer, None)
 
-    def get_features(self, payer: Payer):
-        frauds = self.previous_frauds.get(payer, [])
-        n_frauds = len(frauds)
-        if n_frauds == 0:
-            sufficient_funds = -1.0
+    def get_features(self, payer: Payer, t: datetime):
+        successful_frauds = self.previous_frauds.get(payer, [])
+        balance_upper_bound = self.balance_upper_bound.get(payer, None)
+        n_attempts = len(successful_frauds)
+        if balance_upper_bound is not None:
+            n_attempts += 1
+        if len(successful_frauds) == 0:
             total_stolen = 0.0
-            latest_fraud_amount = 0.0
         else:
-            sufficient_funds = float(self.sufficient_funds.get(payer, True))
-            total_stolen = sum(trx.amount for trx in frauds) / 100.0
-            latest_fraud_amount = frauds[-1].amount / 100.0
-        return [total_stolen, float(n_frauds), latest_fraud_amount, sufficient_funds]
+            total_stolen = sum(trx.amount for trx in successful_frauds)
+        return [
+            self._get_remaining_time_ratio(payer, t),
+            total_stolen / 100.0,
+            float(n_attempts),
+            balance_upper_bound / 100.0 if balance_upper_bound is not None else -1.0,
+        ]
 
-    def get_remaining_time_ratio(self, payer: Payer, t: datetime):
+    def _get_remaining_time_ratio(self, payer: Payer, t: datetime):
         if payer not in self.expected_expirations:
             return 1.0
         expected_expiration = self.expected_expirations[payer]
@@ -73,10 +82,14 @@ class PayerRegistry:
 
     def notify_transaction_processed(self, trx: Transaction):
         payer = self.all_payers[trx.payer_id]
-        frauds = self.previous_frauds.get(payer, [])
-        frauds.append(trx)
-        self.previous_frauds[payer] = frauds
+        if payer not in self.previous_frauds:
+            self.previous_frauds[payer] = [trx]
+        else:
+            self.previous_frauds[payer].append(trx)
+        if payer in self.balance_upper_bound:
+            self.balance_upper_bound[payer] -= trx.amount
 
     def notify_insufficient_funds(self, trx: Transaction):
         payer = self.all_payers[trx.payer_id]
         self.sufficient_funds[payer] = False
+        self.balance_upper_bound[payer] = trx.amount

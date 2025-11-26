@@ -1,4 +1,4 @@
-from dataclasses import Field, dataclass
+from dataclasses import Field, dataclass, asdict
 from datetime import datetime
 import polars as pl
 from utils import fields2schema
@@ -26,7 +26,7 @@ class Transaction:
         payer_id: int,
         is_online: bool,
         is_fraud: bool,
-        is_credit: bool,
+        is_credit: bool = False,
         predicted_label: bool | None = None,
     ):
         if terminal_id is None:
@@ -49,20 +49,16 @@ class Transaction:
             return False
         return self.predicted_label
 
-    def as_df(self, with_label: bool = False, with_predicted_label: bool = False, schema=None) -> pl.DataFrame:
+    def as_df(self, with_label: bool = False, with_predicted_label: bool = False) -> pl.DataFrame:
         """
         Convert the transaction to a Polars DataFrame.
         """
-        data = {}
-        for key, value in self.__dict__.items():
-            if isinstance(value, bool):
-                value = int(value)
-            data[key] = [value]
+        data = asdict(self)
         if not with_label:
             data.pop("is_fraud", None)
         if not with_predicted_label:
             data.pop("predicted_label", None)
-        return pl.DataFrame(data, schema=schema)
+        return pl.DataFrame(data)
 
     @classmethod
     def field_names(cls, with_predicted_label: bool = True) -> list[str]:

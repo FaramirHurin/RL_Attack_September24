@@ -14,19 +14,19 @@ class ClassificationParameters:
     training_duration: timedelta
     quantiles: dict[str, tuple[float, float]]
     aggregation_windows: Sequence[timedelta]
-    _rules: dict[float, float]
+    _rules: dict[float, int]
     fp_rate: float
     fn_rate: float
 
     def __init__(
         self,
         use_anomaly: bool = True,
-        n_trees: int = 50,
+        n_trees: int = 100,
         balance_factor: float = 0.1,
         contamination: float | Literal["auto"] = "auto",
         training_duration: timedelta | float = timedelta(days=30),
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
-        rules: dict[timedelta, float] = {
+        rules: dict[timedelta, int] = {
             timedelta(hours=1): 6,
             timedelta(days=1): 16,
             timedelta(weeks=1): 30,
@@ -53,7 +53,7 @@ class ClassificationParameters:
             self.aggregation_windows.append(window)
 
     @property
-    def rules(self) -> dict[timedelta, float]:
+    def rules(self) -> dict[timedelta, int]:
         """
         Returns the rules as a dictionary with timedelta keys.
         """
@@ -132,10 +132,6 @@ class ClassificationParameters:
             transactions,
             payers,
             terminals,
-            aggregation_windows=self.aggregation_windows,
-            clf_params=self,
-            fp_rate=self.fp_rate,
-            fn_rate=self.fn_rate,
+            params=self,
             silent=silent,
-            fit=fit,
         )

@@ -22,7 +22,7 @@ def test_action_from_numpy():
     assert action.amount == 100
     assert action.terminal_x == 1
     assert action.terminal_y == 2
-    assert action.is_online is True  # True is represented as 1
+    assert action.is_online  # True is represented as 1
     assert action.delay_hours == 3
 
 

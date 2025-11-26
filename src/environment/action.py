@@ -12,7 +12,7 @@ class Action:
     terminal_y: float
     is_online: bool
     delay_hours: float
-    is_credit: bool
+    # is_credit: bool
 
     def __init__(
         self,
@@ -21,13 +21,13 @@ class Action:
         terminal_y: float,
         is_online: bool,
         delay_hours: float,
-        is_credit: bool,
+        # is_credit: bool,
     ):
         self.amount = max(0.01, min(100_000, amount))
         self.terminal_x = max(0, min(200, terminal_x))
         self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
-        self.is_credit = is_credit
+        # self.is_credit = is_credit
         # Ensure delay_hours is positive and non-zero (at least 5 minutes)
         if delay_hours <= 0:
             delay_hours = (5 / 60) * random.random()
@@ -40,17 +40,17 @@ class Action:
     @staticmethod
     def from_numpy(array: np.ndarray):
         """Convert a numpy array to an Action object."""
-        amount, terminal_x, terminal_y, is_online, delay_hours, is_credit = array
+        amount, terminal_x, terminal_y, is_online, delay_hours = array
         is_online = is_online > 0.5
-        is_credit = is_credit > 0.5
+        # is_credit = is_credit > 0.5
         delay_hours = max(0, delay_hours)
         to_return = Action(
             amount=round(float(amount), 2),
             terminal_x=float(terminal_x),
             terminal_y=float(terminal_y),
-            is_online=is_online,
+            is_online=bool(is_online),
             delay_hours=float(delay_hours),
-            is_credit=is_credit,
+            # is_credit=is_credit,
         )
         return to_return
 

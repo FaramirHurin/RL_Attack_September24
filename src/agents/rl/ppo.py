@@ -83,12 +83,16 @@ class PPO(Agent):
         self.debug_logs = {
             "min_critic_loss": [],
             "max_critic_loss": [],
+            "mean_critic_loss": [],
             "min_actor_loss": [],
             "max_actor_loss": [],
+            "mean_actor_loss": [],
             "min_entropy_loss": [],
             "max_entropy_loss": [],
+            "mean_entropy_loss": [],
             "min_log_prob": [],
             "max_log_prob": [],
+            "mean_log_prob": [],
         }
 
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
@@ -184,12 +188,16 @@ class PPO(Agent):
 
         self.debug_logs["min_log_prob"].append(new_log_probs.min().item())
         self.debug_logs["max_log_prob"].append(new_log_probs.max().item())
+        self.debug_logs["mean_log_prob"].append(new_log_probs.mean().item())
         self.debug_logs["min_critic_loss"].append(min(critic_losses))
         self.debug_logs["max_critic_loss"].append(max(critic_losses))
+        self.debug_logs["mean_critic_loss"].append(np.mean(critic_losses))
         self.debug_logs["min_actor_loss"].append(min(actor_losses))
         self.debug_logs["max_actor_loss"].append(max(actor_losses))
+        self.debug_logs["mean_actor_loss"].append(np.mean(actor_losses))
         self.debug_logs["min_entropy_loss"].append(min(entropy_losses))
         self.debug_logs["max_entropy_loss"].append(max(entropy_losses))
+        self.debug_logs["mean_entropy_loss"].append(np.mean(entropy_losses))
 
     def train2(self, batch: Batch, step_num: int, episode_num: int):
         if self.normalize_rewards:

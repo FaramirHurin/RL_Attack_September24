@@ -84,8 +84,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         return self.t.date().isoformat()
 
     def compute_state(self, payer: Payer):
-        time_ratio = self.payer_registry.get_remaining_time_ratio(payer, self.t)
-        features = [time_ratio, self.t.hour / 24, *self.payer_registry.get_features(payer)]
+        features = [self.t.hour / 24, *self.payer_registry.get_features(payer, self.t)]
         if self.include_weekday:
             one_hot_weekday = [0.0] * 7
             one_hot_weekday[self.t.weekday()] = 1.0
@@ -137,7 +136,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 terminal_id=self.get_closest_terminal(payer.x, payer.y).id,
                 payer_id=payer.id,
                 is_online=action.is_online,
-                is_credit=action.is_credit,
+                is_credit=False,  # action.is_credit,
                 is_fraud=True,
             )
             try:

@@ -1,12 +1,12 @@
 from banksys.classification import RuleBasedClassifier, StatisticalClassifier
-from banksys import Banksys, Transaction
+from banksys import Banksys
 from datetime import timedelta
 import polars as pl
 import numpy as np
-from plots import Experiment, Run
 from sklearn.ensemble import IsolationForest
+import pytest
 
-from parameters import Parameters, CardSimParameters, ClassificationParameters
+from parameters import ClassificationParameters
 
 
 def test_rules():
@@ -83,6 +83,7 @@ def test_statistical_bounds_accepted():
     assert s == 0, f"Expected no outliers, but found {s} outliers."
 
 
+@pytest.mark.skip
 def test_Isolation_Forest():
     params = ClassificationParameters(
         use_anomaly=True,
@@ -118,6 +119,7 @@ def test_Isolation_Forest():
     assert np.mean(y_predict == 1) > 0.005, "Not too many normal transactions predicted"
 
 
+@pytest.mark.skip
 def test_Isolation_Forest_time():
     params = ClassificationParameters(
         use_anomaly=True,

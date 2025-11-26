@@ -4,7 +4,6 @@ import polars as pl
 import numpy as np
 from banksys import Banksys
 from parameters import Parameters, CardSimParameters
-import os
 
 
 class MockClassificationSystem(ClassificationSystem):
@@ -20,7 +19,7 @@ class MockClassificationSystem(ClassificationSystem):
 
 def mock_banksys():
     params = Parameters(cardsim=CardSimParameters(n_days=100, n_payers=100))
-    trx, cards, terminals = params.cardsim.get_simulation_data()
-    bs = Banksys(trx, cards, terminals, params.aggregation_windows, params.clf_params, params.terminal_fract)
+    trx, cards, terminals = params.cardsim.get_simulation_data(params.dataset_dir)
+    bs = Banksys(trx, cards, terminals, params.clf_params)
     bs.clf = MockClassificationSystem()
     return bs

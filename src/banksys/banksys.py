@@ -2,12 +2,11 @@ import logging
 import os
 import pickle
 from functools import cached_property
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 from tqdm import tqdm
-import pyinstrument
 from .payer import Payer
 from .classification import ClassificationSystem
 from .terminal import Terminal
@@ -26,34 +25,25 @@ class Banksys:
         transactions_df: pl.DataFrame,
         cards_df: pl.DataFrame,
         terminals_df: pl.DataFrame,
-        aggregation_windows: Sequence[timedelta],
-        clf_params: "ClassificationParameters",
-        fp_rate=0.00,
-        fn_rate=0.00,
+        params: "ClassificationParameters",
         silent: bool = False,
-        fit: bool = True,
     ):
-        max_aggregation_duration = max(*aggregation_windows) if len(aggregation_windows) > 1 else aggregation_windows[0]
-
-        # If transactions_df is a pandas DataFrame, convert it to polars
-        # if isinstance(transactions_df, pd.DataFrame):
-        #    transactions_df['timestamp'] = pd.to_datetime(transactions_df['timestamp']).dt.to_pydatetime()
-        #    transactions_df = pl.from_pandas(transactions_df)
-        #
-        #    cards_df = pl.from_pandas(cards_df)
-        #    terminals_df = pl.from_pandas(terminals_df)
-
+        max_aggregation_duration = (
+            max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
+        )
         self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
         self.training_start = self.current_time + max_aggregation_duration
-        self.attack_start = self.training_start + clf_params.training_duration
+        self.attack_start = self.training_start + params.training_duration
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
         self.silent = silent
-        self.clf = ClassificationSystem(clf_params)
+        self.clf = ClassificationSystem(params)
 
         self._transactions_df = (
             transactions_df.sort("timestamp")  # Sort by timestamp
-            .with_columns(self._approximate_labels(transactions_df, fp_rate=fp_rate, fn_rate=fn_rate))  # Add training "predicted_label"
+            .with_columns(
+                self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
+            )  # Add training "predicted_label"
             .with_columns(
                 pl.when(pl.col("timestamp") > self.attack_start)  # Remove 'predicted_label' for the attack set.
                 .then(None)
@@ -63,11 +53,10 @@ class Banksys:
         )
         self.trx_iterator = self._transactions_df.iter_rows(named=True)
         self.next_trx = Transaction(**next(self.trx_iterator))
-        self.payers = sorted(Payer.from_df(cards_df), key=lambda c: c.id)
-        self.terminals = sorted(Terminal.from_df(terminals_df), key=lambda t: t.id)
-        self.aggregation_windows = aggregation_windows
-        if fit:
-            self.fit()
+        self.payers = sorted(Payer.from_df(cards_df, params.aggregation_windows), key=lambda c: c.id)
+        self.terminals = sorted(Terminal.from_df(terminals_df, params.aggregation_windows), key=lambda t: t.id)
+        self.aggregation_windows = params.aggregation_windows
+        self.fit()
 
     def fit(self):
         """
@@ -83,8 +72,8 @@ class Banksys:
         train_x = pl.DataFrame(features)
         train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(pl.DataFrame(train_x), train_y)
+        # return train_x.columns
 
-    @pyinstrument.profile()
     def fast_forward(self, until: datetime):
         """
         Fast forward the system to the given date, adding all the transactions to the
@@ -110,7 +99,6 @@ class Banksys:
         self.current_time = until
         return features
 
-    @pyinstrument.profile()
     def simulate_until(self, until: datetime):
         """
         Simulate the system until the given date, processing all transactions up to that date (excluded).
@@ -125,7 +113,7 @@ class Banksys:
         features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.payer_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch, update_balance=False))
+                features.append(self.process_transactions(batch))
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -134,75 +122,45 @@ class Banksys:
             batch.append(self.next_trx)
             self.next_trx = Transaction(**next(self.trx_iterator))
         if len(batch) > 0:
-            features.append(self.process_transactions(batch, update_balance=False))
+            features.append(self.process_transactions(batch))
         self.current_time = until
         return features
 
-    @pyinstrument.profile()
-    def process_transaction(self, trx: Transaction, update_balance: bool = True):
+    def process_transaction(self, trx: Transaction):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
         """
+        assert trx.predicted_label is None, "Transaction has already been processed !"
+        assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        trx.predicted_label = self.clf.predict(pl.DataFrame(features)).item()
-        if not trx.fraud_is_detected:
-            self.payers[trx.payer_id].add(trx, update_balance=update_balance)
-            self.terminals[trx.terminal_id].add(trx)
-            to_add = trx.as_df(with_label=True, with_predicted_label=True, schema=self._transactions_df.schema)
-            inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
-            self._transactions_df = pl.concat(
-                [
-                    self._transactions_df.slice(0, inserting_pos),
-                    to_add,
-                    self._transactions_df.slice(inserting_pos),
-                ],
-                how="vertical",
-            )
-
-    def process_transaction2(self, trx: Transaction):
-        """
-        Meant to process attack transactions, i.e. classify them and add them to the system if
-        they are not detected as fraudulent.
-        """
-        self.simulate_until(trx.timestamp)
-        features = self.make_transaction_features(trx)
-        label = self.clf.predict(pl.DataFrame(features))
-        trx.predicted_label = label.item()
-        if not trx.fraud_is_detected:
-            self.payers[trx.payer_id].add(trx, update_balance=True)
-            self.terminals[trx.terminal_id].add(trx)
+        features_df = pl.DataFrame(features)  # , schema=self.features_columns)
+        trx.predicted_label = self.clf.predict(features_df).item()
+        self.payers[trx.payer_id].add(trx, update_balance=True)
+        self.terminals[trx.terminal_id].add(trx)
         return features
+        to_add = trx.as_df(with_label=True, with_predicted_label=True)
+        inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
+        self._transactions_df = pl.concat(
+            [
+                self._transactions_df.slice(0, inserting_pos),
+                to_add,
+                self._transactions_df.slice(inserting_pos),
+            ],
+            how="vertical",
+        )
 
-    @pyinstrument.profile()
-    def process_transactions(self, transactions: list[Transaction], update_balance: bool):
+    def process_transactions(self, transactions: list[Transaction]):
         """
         Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
         """
         # TODO: After 7 days, update the predicted label of all past transactions to
         # be equal to the real label, to simulate delayed fraud detection.
-        df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
+        df = pl.DataFrame((self.make_transaction_features(trx) for trx in transactions))  # , schema=self.features_columns)
         labels = self.clf.predict(df)
         # Use transactions labels
         # labels = pl.Series([trx.is_fraud for trx in transactions])
-        for trx, label in zip(transactions, labels):
-            trx.predicted_label = label
-            self.terminals[trx.terminal_id].add(trx)
-            self.payers[trx.payer_id].add(trx, update_balance=update_balance)
-        return df
-
-    def process_transactions2(self, transactions: list[Transaction], predict_label: bool = True):
-        """
-        Meant for simulated transactions.
-        Receives a list of chronological transactions and processes them.
-        Assigning a label to each transaction if `predict_label` is `True`, otherwise uses the true label.
-        """
-        df = pl.DataFrame(self.make_transaction_features(trx) for trx in transactions)
-        if predict_label:
-            labels = self.clf.predict(df)
-        else:
-            labels = [t.is_fraud for t in transactions]
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)
@@ -217,8 +175,8 @@ class Banksys:
             "is_online": trx.is_online,
             "amount": trx.amount,
             **{day: val for day, val in zip(WEEKDAYS, weekday)},
-            **self.payers[trx.payer_id].transactions.count_and_mean(self.aggregation_windows, trx.timestamp),
-            **self.terminals[trx.terminal_id].compute_features(),
+            **self.payers[trx.payer_id].compute_features(trx.timestamp),
+            **self.terminals[trx.terminal_id].compute_features(trx.timestamp),
         }
 
     def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):

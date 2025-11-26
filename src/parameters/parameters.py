@@ -68,7 +68,10 @@ class Parameters:
             shutil.rmtree(self.dataset_dir)
             regenerate_banksys = True
         if regenerate_banksys:
-            os.remove(self.banksys_file)
+            try:
+                os.remove(self.banksys_file)
+            except OSError:
+                pass
 
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         match self.agent:
