@@ -102,7 +102,7 @@ class LinearActorCritic(ActorCritic):
         INNER_SIZE_ACTIONS = 64
         INNER_SIZE_SEQUNTIAL = 64
         self.actor = torch.nn.Sequential(
-            torch.nn.BatchNorm1d(state_size),
+            # torch.nn.BatchNorm1d(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
@@ -111,7 +111,7 @@ class LinearActorCritic(ActorCritic):
         ).to(self.device)
 
         self.critic = torch.nn.Sequential(
-            torch.nn.LayerNorm(state_size),
+            # torch.nn.LayerNorm(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),

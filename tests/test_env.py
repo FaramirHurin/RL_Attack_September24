@@ -19,6 +19,14 @@ def test_spawn_card():
     assert isinstance(payer, Payer)
 
 
+def test_obs_size():
+    bs = mock_banksys()
+    env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
+    obs_size = env.observation_size
+    _, obs, *_ = env.spawn_card()
+    assert len(obs.data) == obs_size
+
+
 def test_observation():
     bs = mock_banksys()
     env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))

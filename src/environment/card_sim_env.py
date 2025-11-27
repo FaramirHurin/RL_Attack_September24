@@ -26,12 +26,13 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         params: "EnvParameters",
     ):
         self.normalize_location = params.normalize_location
-        obs_size = 6  # time_ratio, hour_of_day, total_stolen, n_frauds, latest_fraud_amount, sufficient_funds
-        if params.know_client:  # x, y
-            obs_size += 2
-        if params.include_weekday:  # one-hot weekday
-            obs_size += 7
-
+        self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
+        self.system = system
+        self.payer_registry = PayerRegistry(system.payers, params.avg_card_block_delay)
+        self.customer_location_is_known = params.customer_location_is_known
+        self.include_weekday = params.include_weekday
+        self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
+        obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 4
         high = [1_000, 200, 200, 1, params.avg_card_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
@@ -42,16 +43,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         super().__init__(
             1,
             action_space=ContinuousSpace(low, high, labels),
-            observation_shape=(obs_size,),
-            state_shape=(obs_size,),
+            observation_shape=obs.shape,
+            state_shape=obs.shape,
         )
-        self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
-        self.system = system
-        self.payer_registry = PayerRegistry(system.payers, params.avg_card_block_delay)
-        self.customer_location_is_known = params.customer_location_is_known
-        self.include_weekday = params.include_weekday
-        self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
-        logging.info(f"Attack possible from {self.system.attack_start} to {self.system.attack_end}")
 
     def reset(self):
         self.payer_registry.reset()

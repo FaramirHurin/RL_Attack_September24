@@ -14,7 +14,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, cache_root: str = "cache"):
+    def get_simulation_data(self, cache_root: str):
         from cardsim import Cardsim
 
         if self.ulb_data:
@@ -60,7 +60,7 @@ class CardSimParameters:
         return os.path.join(cache_root, hash_digest)
 
     @staticmethod
-    def paper_params(with_modification: bool):
+    def paper_params(with_modification: bool, ulb_data: bool = False):
         """
         - n_days: 365 * 2 + 150 + 30
         - n_payers: 20_000
@@ -71,7 +71,7 @@ class CardSimParameters:
             n_payers=20_000,
             start_date="2023-01-01",
             with_modification=with_modification,
-            ulb_data=False,
+            ulb_data=ulb_data,
         )
 
     def save(self, cache_root: str):

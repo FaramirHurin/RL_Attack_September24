@@ -1,11 +1,43 @@
-from parameters import Parameters, CardSimParameters
+from parameters import Parameters, CardSimParameters, PPOParameters, VAEParameters, ClassificationParameters
+import os
 
 
-def test_dataset_dir_different():
-    p1 = Parameters(cardsim=CardSimParameters(n_days=50))
+CACHE_ROOT = os.path.join("cache")
+
+
+def test_cardsim_dir():
+    p1 = CardSimParameters(n_days=100)
+    p2 = CardSimParameters(n_days=200)
+    p3 = CardSimParameters(n_days=100)
+    dir1 = p1.cache_dir(CACHE_ROOT)
+    dir2 = p2.cache_dir(CACHE_ROOT)
+    dir3 = p3.cache_dir(CACHE_ROOT)
+    assert dir1 != dir2
+    assert dir1 == dir3
+
+
+def test_dataset_dir():
+    p1 = Parameters(cardsim=CardSimParameters(n_days=50), agent=PPOParameters())
     p2 = Parameters(cardsim=CardSimParameters(n_days=51))
+    p3 = Parameters(cardsim=CardSimParameters(n_days=50), agent=VAEParameters())
     assert p1.dataset_dir != p2.dataset_dir
+    assert p1.dataset_dir == p3.dataset_dir
 
 
 def test_banksys_dir():
-    assert False
+    p1 = ClassificationParameters(fn_rate=0.02)
+    p2 = ClassificationParameters(fn_rate=0.01)
+    p3 = ClassificationParameters(fn_rate=0.02)
+    dir1 = p1.cache_dir(CACHE_ROOT)
+    dir2 = p2.cache_dir(CACHE_ROOT)
+    dir3 = p3.cache_dir(CACHE_ROOT)
+    assert dir1 != dir2
+    assert dir1 == dir3
+
+
+def test_cache_dir():
+    p1 = Parameters(seed=1)
+    p2 = Parameters(seed=2)
+    p3 = Parameters(seed=1)
+    assert p1.cache_root != p2.cache_root
+    assert p1.cache_root == p3.cache_root

@@ -13,7 +13,7 @@ from tqdm import tqdm
 from banksys import Payer
 from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
-from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
+from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters, EnvParameters
 from plots import Experiment, Run
 import utils
 
@@ -168,13 +168,12 @@ def main(
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters(),
+        cardsim=CardSimParameters.paper_params(with_modification=False, ulb_data=ulb_data),
         clf_params=ClassificationParameters(use_anomaly=anomaly),
-        n_episodes=6000,
+        env_params=EnvParameters(
+            n_episodes=6000,
+        ),
         seed=initial_seed,
-        logdir=None,
-        save=True,
-        ulb_data=ulb_data,
     )
     exp = Experiment.create(params)
     if n_jobs == 1:
@@ -191,12 +190,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        for algo in ("ppo", "ppo"):
-            for use_anomaly in (True, False):
-                try:
-                    main(algorithm=algo, anomaly=use_anomaly, n_repetitions=1, n_jobs=1)
-                except Exception:
-                    logging.error(f"An error occurred during main execution with algo={algo}, anomaly={use_anomaly}", exc_info=True)
+        main(algorithm="ppo", anomaly=True, n_repetitions=1, n_jobs=1)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

@@ -204,9 +204,8 @@ class Experiment:
         if initial_seed is None:
             initial_seed = self.params.seed + self.n_runs
         for seed in range(initial_seed, initial_seed + n):
-            logdir = os.path.join(self.logdir, f"seed-{seed}")
             # os.makedirs(logdir, exist_ok=True)
-            yield replace(self.params, seed_value=seed, save=False, logdir=logdir)
+            yield replace(self.params, seed=seed)
 
     @property
     def n_runs(self):

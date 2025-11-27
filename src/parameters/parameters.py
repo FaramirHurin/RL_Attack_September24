@@ -1,4 +1,3 @@
-import logging
 import os
 import random
 import shutil
@@ -37,11 +36,10 @@ class Parameters:
         clf_params: Optional[ClassificationParameters] = None,
         env_params: Optional[EnvParameters] = None,
         seed: int = 0,
-        cache_root: str = "cache",
+        cache_root: str | None = None,
         *,
         regenerate_dataset: bool = False,
         regenerate_banksys: bool = False,
-        **kwargs,
     ):
         ######################################
         # Set the seed before ANYTHING else  #
@@ -50,11 +48,9 @@ class Parameters:
         np.random.seed(seed)
         torch.manual_seed(seed)
         self.seed = seed
-
-        kwargs.pop("agent_name", None)  # agent_name is set automatically with the "repeat" method
-        if len(kwargs) > 0:
-            logging.warning(f"Unknown parameters: {kwargs}. They will be ignored.")
         self.agent = agent
+        if cache_root is None:
+            cache_root = os.path.join("cache", f"seed-{seed}")
         self.cache_root = cache_root
         if cardsim is None:
             cardsim = CardSimParameters()

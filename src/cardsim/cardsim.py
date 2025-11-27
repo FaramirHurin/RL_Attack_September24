@@ -1090,10 +1090,8 @@ class Cardsim:
         n_days: int,
         start_date: str,
         with_modification: bool,
-        cache_dir: str | None,
+        cache_dir: str,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        if cache_dir is None:
-            cache_dir = os.path.join("cache", "cardsim")
         cached_transactions = os.path.join(
             cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}{'-modified' if with_modification else ''}.csv"
         )

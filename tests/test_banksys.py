@@ -50,8 +50,10 @@ def make_trx(
 def test_invalid_dates():
     params = Parameters(
         cardsim=CardSimParameters(n_days=50, n_payers=100),
-        clf_params=ClassificationParameters(training_duration=timedelta(days=30)),
-        aggregation_windows=(timedelta(days=30),),
+        clf_params=ClassificationParameters(
+            training_duration=timedelta(days=30),
+            aggregation_windows=(timedelta(days=30),),
+        ),
     )  # Not enough data for the classification system
     transactions, cards, terminals = params.cardsim.get_simulation_data(params.dataset_dir)
     try:
