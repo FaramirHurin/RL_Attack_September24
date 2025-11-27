@@ -10,6 +10,7 @@ class ClassificationParameters:
     use_anomaly: bool
     n_trees: int
     balance_factor: float
+    """Balance factor for the Balanced Random Forest."""
     contamination: float | Literal["auto"]
     training_duration: timedelta
     quantiles: dict[str, tuple[float, float]]

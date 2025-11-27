@@ -14,8 +14,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
 if TYPE_CHECKING:
-    from banksys import Payer, Terminal, Transaction
-    from banksys.banksys import Banksys
+    from banksys import Payer, Banksys
 
 from .agent import Agent
 
@@ -273,48 +272,9 @@ class VaeAgent(Agent):
             terminal_y=as_dict["terminal_y"],
             is_online=as_dict["is_online"],
             delay_hours=as_dict["delay_hours"],
-            is_credit=as_dict["is_credit"],
+            # is_credit=as_dict["is_credit"],
         )
         return action.to_numpy(), None
-
-        # # Reset index
-        # small_df = small_df.reset_index(drop=True)
-        # trx = small_df.loc[0, ["is_online", "amount", "terminal_x", "terminal_y", "delay_hours"]]  # type: ignore
-        # trx["delay_day"] = 0
-        # # Move delay_hours to the last column
-        # trx = trx[["is_online", "amount", "terminal_x", "terminal_y", "delay_hours"]]
-        # # Print terminal_x and terminal_y, amount, is_online and delay_hours
-        # # print(f"Chosen transaction: {trx['terminal_x']}, {trx['terminal_y']}, amount: {trx['amount']}, is_online: {trx['is_online']}, delay_hours: {trx['delay_hours']}")
-        # trx = trx
-        # trx = trx.astype(np.float32)
-        # trx = trx.to_numpy().reshape(1, -1)
-        # return trx, None
-
-    @staticmethod
-    def get_trx_from_terminals(terminals: list["Terminal"], current_time: datetime) -> pd.DataFrame:
-        """
-        Get the transactions from the terminals
-        :param terminals: list of terminals
-        :param current_time: current time
-        :return: DataFrame with the transactions
-        """
-        transactions = list[Transaction]()
-        for terminal in terminals:
-            for transaction in terminal.transactions.transactions:
-                #################################################
-                #                                               #
-                #             THIS IS LIKELY GOING TO FAIL      #
-                #       DO WE NEED TO TAKE THE DF AS INPUT ?    #
-                #                                               #
-                #################################################
-                transaction.payee_x = terminal.x  # type: ignore
-                transaction.payee_y = terminal.y  # type: ignore
-            transactions += terminal.transactions.transactions
-            # Add terminal coordinates to the transactions
-
-        transactions = [transaction for transaction in transactions if transaction.timestamp <= current_time]
-        transactions_df = pd.DataFrame([transaction.__dict__ for transaction in transactions])
-        return transactions_df
 
     @staticmethod
     def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Payer"]) -> pd.DataFrame:

@@ -27,6 +27,7 @@ class Banksys:
         terminals_df: pl.DataFrame,
         params: "ClassificationParameters",
         silent: bool = False,
+        clf: ClassificationSystem | None = None,
     ):
         max_aggregation_duration = (
             max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
@@ -37,8 +38,10 @@ class Banksys:
         self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
         self.silent = silent
-        self.clf = ClassificationSystem(params)
-
+        if clf is not None:
+            self.clf = clf
+        else:
+            self.clf = ClassificationSystem(params)
         self._transactions_df = (
             transactions_df.sort("timestamp")  # Sort by timestamp
             .with_columns(

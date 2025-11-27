@@ -29,8 +29,6 @@ class Transaction:
         is_credit: bool = False,
         predicted_label: bool | None = None,
     ):
-        if terminal_id is None:
-            print()
         self.amount = amount
         self.timestamp = timestamp
         self.terminal_id = terminal_id

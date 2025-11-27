@@ -164,7 +164,7 @@ class Run:
                     is_online=action.is_online,
                     is_fraud=True,
                     predicted_label=False,
-                    is_credit=action.is_credit,
+                    # is_credit=action.is_credit,
                 )
             )
         res[-1].predicted_label = True

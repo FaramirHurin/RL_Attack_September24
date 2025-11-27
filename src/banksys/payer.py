@@ -74,10 +74,7 @@ class Payer:
             }
         amounts, counts = self._window.compute_avg_amount_and_count_by_window(t)
         results = dict[str, float]()
-        for i, (count, amount) in enumerate(zip(counts, amounts)):
+        for i, (count, avg_amount) in enumerate(zip(counts, amounts)):
             results[self._count_feature_names[i]] = count
-            if count == 0:
-                results[self._avg_feature_names[i]] = 0.0
-            else:
-                results[self._avg_feature_names[i]] = amount / count
+            results[self._avg_feature_names[i]] = avg_amount
         return results
