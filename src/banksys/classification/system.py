@@ -54,24 +54,17 @@ class ClassificationSystem:
 
     def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
         logging.debug("Predicting with RF")
-        l1 = self.ml_classifier.predict(df).astype(np.bool)
+        self.l1 = self.ml_classifier.predict(df).astype(np.bool)
         logging.debug("Predicting with statistical classifier")
-        l2 = self.statistical_classifier.predict(df)
+        self.l2 = self.statistical_classifier.predict(df)
         logging.debug("Predicting with rule-based")
-        l3 = self.rule_classifier.predict(df)
-        result = l1 | l2 | l3
+        self.l3 = self.rule_classifier.predict(df)
+        result = self.l1 | self.l2 | self.l3
         if self.use_anomaly:
             logging.debug("Predicting with anomaly detection")
             label = self.anomaly_detection_classifier.predict(df)
-            l4 = label == -1
-            result = result | l4
-
-        self.l1, self.l2, self.l3 = l1, l2, l3
-        if self.use_anomaly:
-            self.l4 = l4
-        else:
-            l4 = np.zeros_like(l1, dtype=np.bool)
-            self.l4 = l4
+            self.l4 = label == -1
+            result = result | self.l4
         return result
 
     def get_details(self):

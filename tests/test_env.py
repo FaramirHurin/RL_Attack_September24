@@ -1,10 +1,9 @@
 from environment import CardSimEnv, Action
-from banksys import Card
+from banksys import Payer
 from datetime import timedelta
+from parameters import EnvParameters
 from copy import deepcopy
 import numpy as np
-
-from runner import Runner
 
 from .mocks import mock_banksys
 
@@ -13,40 +12,43 @@ from .mocks import mock_banksys
 
 def test_spawn_card():
     bs = mock_banksys()
-    env = CardSimEnv(bs, timedelta(days=1))
-    card, _, _ = env.spawn_card()
-    assert len(env.card_registry.expected_expirations) == 1
-    assert isinstance(card, Card)
+    params = EnvParameters(avg_card_block_delay=timedelta(days=1))
+    env = CardSimEnv(bs, params)
+    payer, _, _ = env.spawn_card()
+    assert len(env.payer_registry.expected_expirations) == 1
+    assert isinstance(payer, Payer)
 
 
 def test_observation():
     bs = mock_banksys()
-    env = CardSimEnv(bs, timedelta(days=1))
+    env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
 
-    card, obs, _ = env.spawn_card()
-    card.balance = 1000
+    payer, obs, _ = env.spawn_card()
+    payer.balance = 1000
     # Manually set the actual expiration to the expected one for determinism
-    env.card_registry.actual_expirations[card] = env.card_registry.expected_expirations[card]
-    n_attacks, time_remaining, is_credit, hour_ratio, *_ = obs.data
+    env.payer_registry.actual_expirations[payer] = env.payer_registry.expected_expirations[payer]
+    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = obs.data
     assert n_attacks == 0
     assert time_remaining == 1.0
-    assert bool(is_credit) == card.is_credit
     assert hour_ratio == env.t.hour / 24
+    assert balance_upper_bound == -1.0  # Not blocked yet, so no upper bound
+    assert total_stolen == 0.0
 
-    env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), card)
-    card, step, _ = env.step()
-    assert card.balance == 990
+    env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), payer)
+    payer, step, _ = env.step()
+    assert payer.balance == 990
 
-    n_attacks, time_remaining, is_credit, hour_ratio, *_ = step.obs.data
+    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = step.obs.data
     assert n_attacks == 1
     assert time_remaining == 23 / 24
-    assert bool(is_credit) == card.is_credit
     assert hour_ratio == env.t.hour / 24
+    assert total_stolen == 10.0 / 100.0
+    assert balance_upper_bound == -1.0
 
 
 def test_card_blocked_zero_reward():
     bs = mock_banksys()
-    env = CardSimEnv(bs, timedelta(days=1))
+    env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
     card, _, _ = env.spawn_card()
     card.balance = 5
     env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), card)
@@ -54,18 +56,17 @@ def test_card_blocked_zero_reward():
     assert step.reward.item() == 0.0, "Reward should be zero when card is blocked due to insufficient balance"
     assert not step.done
 
-
-    n_attacks, time_remaining, is_credit, hour_ratio, *_ = step.obs.data
-    assert n_attacks == 1
-    assert time_remaining == 23 / 24
-    assert bool(is_credit) == card.is_credit
+    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = step.obs.data
     assert hour_ratio == env.t.hour / 24
-
+    assert time_remaining == 23 / 24
+    assert total_stolen == 0.0
+    assert n_attacks == 1
+    assert balance_upper_bound == 10.0 / 100.0
 
 
 def test_time_going():
     bs = mock_banksys()
-    env = CardSimEnv(bs, timedelta(days=1))
+    env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
     # Timeline
     # Card 1  Spawn  --- 1h buffer action ----------------------- 3h action --
     # Card 2  Spawn  -------------------------1h30 action --------------------

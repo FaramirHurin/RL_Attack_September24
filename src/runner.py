@@ -1,32 +1,42 @@
 import logging
 import os
+from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal, Optional
+from datetime import datetime
+
+import dotenv
+import numpy as np
+import torch
+from marlenv import Episode, Observation, State, Transition
+from tqdm import tqdm
+
+from banksys import Payer
 from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
-import numpy as np
+from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
 from plots import Experiment, Run
-from marlenv import Episode, Transition, Observation, State
-import torch
-from tqdm import tqdm
-from banksys import Card
-from parameters import Parameters, PPOParameters, CardSimParameters, ClassificationParameters, VAEParameters
-import dotenv
-from multiprocessing.pool import Pool, AsyncResult
+import utils
 
 
 class Runner:
-    def __init__(self, params: Parameters, env: Optional[CardSimEnv] = None, quiet: bool = False, device: Optional[torch.device] = None):
+    def __init__(
+        self,
+        params: Parameters,
+        env: Optional[CardSimEnv] = None,
+        quiet: bool = False,
+        device: Optional[torch.device] = None,
+    ):
         if device is None:
-            device = params.get_device_by_seed()
-        self.params = params
-        self.episodes = dict[Card, Episode]()
-        self.prev_obs = dict[Card, Observation]()
-        self.prev_states = dict[Card, State]()
-        self.hidden_states = dict[Card, Optional[torch.Tensor]]()
+            device = utils.get_device_by_seed(params.seed)
+        self.params = params.env_params
+        self.episodes = dict[Payer, Episode]()
+        self.prev_obs = dict[Payer, Observation]()
+        self.prev_states = dict[Payer, State]()
+        self.hidden_states = dict[Payer, Optional[torch.Tensor]]()
         if env is None:
-            env = params.create_env()
+            env = params.make_env()
         self.env = env
-        self.agent = params.create_agent(self.env, device)
+        self.agent = params.make_agent(self.env, device)
         self.quiet = quiet
         self.n_spawned = 0
 
@@ -44,7 +54,7 @@ class Runner:
         self.hidden_states[new_card] = hx
         self.n_spawned += 1
 
-    def cleanup_card(self, card: Card):
+    def cleanup_card(self, card: Payer):
         del self.episodes[card]
         del self.prev_obs[card]
         del self.prev_states[card]
@@ -115,13 +125,13 @@ class Runner:
 
 
 def run(p: Parameters):
-    logging.info(f"Starting run with seed {p.seed_value}...")
+    logging.info(f"Starting run with seed {p.seed}...")
     try:
         runner = Runner(p, quiet=False)
         episodes = runner.run()
         return Run.create(p, episodes)
     except Exception as e:
-        logging.error(f"Run with seed {p.seed_value}: Error occurred while running experiment: {e}", exc_info=True)
+        logging.error(f"Run with seed {p.seed}: Error occurred while running experiment: {e}", exc_info=True)
 
 
 def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
@@ -129,13 +139,13 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
     with Pool(n_jobs) as pool:
         handles = list[AsyncResult[Run | None]]()
         for p in exp.repeat(n_repetitions):
-            logging.info(f"Submitting run with seed {p.seed_value}...")
+            logging.info(f"Submitting run with seed {p.seed}...")
             handles.append(pool.apply_async(run, (p,)))
         for h in handles:
             r = h.get()
             if r is not None:
                 runs.append(r)
-                logging.info(f"Run with seed {p.seed_value} completed with result {r.total_amount:.2f}")
+                logging.info(f"Run with seed {p.seed} completed with result {r.total_amount:.2f}")
     return runs
 
 
@@ -158,10 +168,10 @@ def main(
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=True),
-        clf_params=ClassificationParameters.paper_params(anomaly),
+        cardsim=CardSimParameters(),
+        clf_params=ClassificationParameters(use_anomaly=anomaly),
         n_episodes=6000,
-        seed_value=initial_seed,
+        seed=initial_seed,
         logdir=None,
         save=True,
         ulb_data=ulb_data,
@@ -181,10 +191,10 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        for algo in ("ppo", "rppo"):
+        for algo in ("ppo", "ppo"):
             for use_anomaly in (True, False):
                 try:
-                    main(algorithm=algo, anomaly=use_anomaly, n_repetitions=20, n_jobs=8)
+                    main(algorithm=algo, anomaly=use_anomaly, n_repetitions=1, n_jobs=1)
                 except Exception:
                     logging.error(f"An error occurred during main execution with algo={algo}, anomaly={use_anomaly}", exc_info=True)
     except Exception as e:

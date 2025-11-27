@@ -27,6 +27,7 @@ dependencies = [
     "ipywidgets>=8.1.7",
     "pyarrow>=20.0.0",
     "pytest>=8.3.5",
+    "pyinstrument>=5.1.1",
 ]
 
 

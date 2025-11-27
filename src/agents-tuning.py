@@ -17,21 +17,21 @@ USE_ANOMALY = True
 
 
 def run(p: Parameters, trial_num: int):
-    logging.info(f"Starting trial {trial_num} with seed {p.seed_value}...")
+    logging.info(f"Starting trial {trial_num} with seed {p.seed}...")
     try:
         if not torch.cuda.is_available():
             device = torch.device("cpu")
         else:
             # We assign the run to the device based on its absolute run number, i.e.
             # trial.number * N_PARALLEL + seed_value.
-            device_num = (trial_num + p.seed_value) % torch.cuda.device_count()
+            device_num = (trial_num + p.seed) % torch.cuda.device_count()
             device = torch.device(f"cuda:{device_num}")
         runner = Runner(p, quiet=True, device=device)
-        logging.info(f"Running trial {trial_num} with seed {p.seed_value}...")
+        logging.info(f"Running trial {trial_num} with seed {p.seed}...")
         episodes = runner.run()
         return Run.create(p, episodes)
     except Exception as e:
-        logging.error(f"Trial {trial_num}: Error occurred while running experiment with seed {p.seed_value}: {e}", exc_info=True)
+        logging.error(f"Trial {trial_num}: Error occurred while running experiment with seed {p.seed}: {e}", exc_info=True)
 
 
 def experiment(trial: optuna.Trial) -> float:
@@ -41,14 +41,14 @@ def experiment(trial: optuna.Trial) -> float:
         cardsim=CardSimParameters.paper_params(with_modification=True),
         save=False,
         n_episodes=4000,
-        seed_value=0,
+        seed=0,
     )
     exp = Experiment.create(params)
     total = 0.0
     with Pool(POOL_SIZE) as pool:
         handles = list[AsyncResult[Run | None]]()
         for p in exp.repeat(N_RUNS):
-            logging.info(f"Submitting trial {trial.number} run with seed {p.seed_value}...")
+            logging.info(f"Submitting trial {trial.number} run with seed {p.seed}...")
             handles.append(pool.apply_async(run, (p, trial.number)))
         for h in handles:
             r = h.get()
@@ -69,11 +69,7 @@ def main():
         cardsim=CardSimParameters.paper_params(with_modification=True),
         save=False,
     )
-    if not p.banksys_is_in_cache():
-        logging.info("Creating banksys...")
-        b = p.create_banksys()
-        b.save(p.banksys_dir)
-
+    p.prepare_run()
     USE_ANOMALY = False
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",

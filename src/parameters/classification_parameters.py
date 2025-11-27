@@ -1,8 +1,8 @@
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass
 from datetime import timedelta
 from optuna import Trial
-from typing import Literal
-import hashlib
+from typing import Literal, Sequence
+import polars as pl
 
 
 @dataclass(eq=True)
@@ -10,24 +10,31 @@ class ClassificationParameters:
     use_anomaly: bool
     n_trees: int
     balance_factor: float
+    """Balance factor for the Balanced Random Forest."""
     contamination: float | Literal["auto"]
     training_duration: timedelta
     quantiles: dict[str, tuple[float, float]]
-    _rules: dict[float, float]
+    aggregation_windows: Sequence[timedelta]
+    _rules: dict[float, int]
+    fp_rate: float
+    fn_rate: float
 
     def __init__(
         self,
         use_anomaly: bool = True,
-        n_trees: int = 50,
+        n_trees: int = 100,
         balance_factor: float = 0.1,
         contamination: float | Literal["auto"] = "auto",
         training_duration: timedelta | float = timedelta(days=30),
         quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
-        rules: dict[timedelta, float] = {
+        rules: dict[timedelta, int] = {
             timedelta(hours=1): 6,
             timedelta(days=1): 16,
             timedelta(weeks=1): 30,
         },
+        aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        fp_rate: float = 0.0,
+        fn_rate: float = 0.0,
     ):
         self.use_anomaly = use_anomaly
         self.n_trees = n_trees
@@ -38,9 +45,16 @@ class ClassificationParameters:
         self.training_duration = training_duration
         self.quantiles = quantiles
         self._rules = {td.total_seconds(): value for td, value in rules.items()}
+        self.fp_rate = fp_rate
+        self.fn_rate = fn_rate
+        self.aggregation_windows = []
+        for window in aggregation_windows:
+            if isinstance(window, (float, int)):
+                window = timedelta(seconds=window)
+            self.aggregation_windows.append(window)
 
     @property
-    def rules(self) -> dict[timedelta, float]:
+    def rules(self) -> dict[timedelta, int]:
         """
         Returns the rules as a dictionary with timedelta keys.
         """
@@ -104,8 +118,21 @@ class ClassificationParameters:
             },
         )
 
-    def sha256(self) -> str:
-        return hashlib.sha256(str(astuple(self)).encode("utf-8")).hexdigest()
+    def make_banksys(
+        self,
+        transactions: pl.DataFrame,
+        payers: pl.DataFrame,
+        terminals: pl.DataFrame,
+        *,
+        silent: bool = False,
+        fit: bool = True,
+    ):
+        from banksys import Banksys
 
-    def __hash__(self):
-        return int(self.sha256(), 16)
+        return Banksys(
+            transactions,
+            payers,
+            terminals,
+            params=self,
+            silent=silent,
+        )

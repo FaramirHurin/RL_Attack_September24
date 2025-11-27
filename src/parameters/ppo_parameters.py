@@ -77,6 +77,12 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
+    @property
+    def name(self):
+        if self.is_recurrent:
+            return "RPPO"
+        return "PPO"
+
     @staticmethod
     def from_json(data: dict[str, Any]):
         """
@@ -180,7 +186,7 @@ class PPOParameters:
                 ),
                 entropy_c2=Schedule.linear(
                     start_value=0.08521542110698155,
-                    end_value=0.08272396424417085, # 0.08272396424417085,
+                    end_value=0.08272396424417085,  # 0.08272396424417085,
                     n_steps=2311,
                 ),
                 n_epochs=73,

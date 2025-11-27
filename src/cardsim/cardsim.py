@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Optional
+import urllib.request
+from io import StringIO
 
 import numpy as np
 import pandas as pd
@@ -15,7 +17,7 @@ import polars as pl
 from scipy.stats import lognorm, triang
 from sklearn.preprocessing import MinMaxScaler
 
-from banksys import Card, Terminal, Transaction
+from banksys import Payer, Terminal, Transaction
 
 
 def measure_duration():
@@ -287,31 +289,54 @@ class Cardsim:
             raise ValueError(f"Invalid collection. Choose one of: {', '.join(valid_collections)}")
 
         if collection == "day":
-            cols = ["id", "date", "diary_day", "ind_weight", "dow_weight"]
+            schema: dict = {
+                "id": pl.Int64,
+                "date": pl.String,
+                "diary_day": pl.Int64,
+                "ind_weight": pl.Float64,
+                "dow_weight": pl.Float64,
+            }
             sort = ["id", "diary_day"]
         elif collection == "tran":
-            cols = ["id", "diary_day", "tran", "pi", "amnt"]
+            schema = {
+                "id": pl.Int64,
+                "diary_day": pl.Int64,
+                "tran": pl.Int64,
+                "pi": pl.Float64,
+                "amnt": pl.Float64,
+            }
             sort = ["id", "diary_day", "tran", "pi"]
         else:
-            cols = ["id", "cc_adopt", "dc_adopt"]
+            schema = {
+                "id": pl.Int64,
+                "cc_adopt": pl.Int64,
+                "dc_adopt": pl.Int64,
+            }
             sort = ["id"]
 
         dfs = list[pl.DataFrame]()
-
-        if folder is not None:
-            # Convert to Path object for OS-agnostic sourcing
-            if hasattr(folder, "_paths"):
-                # For MultiplexedPath (conda) and similar
-                folder_path = Path(folder._paths[0])  # type: ignore
-            else:
-                folder_path = Path(folder)
-
         for year in range(start_year, end_year + 1):
+            # Convert to Path object for OS-agnostic sourcing
+
             if folder is not None:
-                source = folder_path / f"dcpc_{year}_{collection}level_public_xls.csv"  # type: ignore
+                if hasattr(folder, "_paths"):
+                    # For MultiplexedPath (conda) and similar
+                    folder_path = Path(folder._paths[0])  # type: ignore
+                else:
+                    folder_path = Path(folder)
+                source = folder_path / f"dcpc_{year}_{collection}level_public_xls.csv"
             else:
-                source = f"https://www.atlantafed.org/-/media/documents/banking/consumer-payments/survey-diary-consumer-payment-choice/{year}/dcpc_{year}_{collection}level_public_xls.csv"
-            df = pl.read_csv(source, columns=cols).sort(by=sort).with_columns(year=pl.lit(year))
+                # Download the file
+                url = f"https://www.atlantafed.org/-/media/documents/banking/consumer-payments/survey-diary-consumer-payment-choice/{year}/dcpc_{year}_{collection}level_public_xls.csv"
+                logging.info(f"Retrieving DCPC data from FRB Atlanta website: {url}")
+                content = urllib.request.urlopen(url).read()
+                source = StringIO(content.decode("utf-8"))
+            df = (
+                pl.read_csv(source, columns=list(schema.keys()), null_values=["NA"])
+                .with_columns(year=pl.lit(year))
+                .cast(schema)
+                .sort(by=sort)
+            )
             dfs.append(df)
         return pl.concat(dfs)
 
@@ -320,7 +345,6 @@ class Cardsim:
         """
         Source and format the Diary of Consumer Payment Choice (DCPC) data.
         """
-
         # Import data ------------------
         logging.info("Sourcing DCPC data")
         cache_file = os.path.join("cache", f"dcpc_ind-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
@@ -569,7 +593,7 @@ class Cardsim:
                 "payer_id": range(n_payers),
                 "payer_x": np.random.randint(0, self.grid_size, n_payers),
                 "payer_y": np.random.randint(0, self.grid_size, n_payers),
-                "mean_frequency": np.random.choice(atxns_distributions, size=n_payers),  # type: ignore
+                "mean_frequency": np.random.choice(atxns_distributions, size=n_payers),
             }
         )
         sampled_indices = np.random.choice(avalue_distributions.index, size=df.height, replace=True)
@@ -633,6 +657,7 @@ class Cardsim:
         - Ultimately, each entry is distance between payer i and payee j
         - Finally, convert to a long data frame with fields [payer, payee, distance, payee_order]
         """
+        # Possible optimization: only calculate the distances for the required pairs instead of the full matrix
         payer_x = payers["payer_x"].to_numpy()[:, None]  # shape (n, 1)
         payer_y = payers["payer_y"].to_numpy()[:, None]  # shape (n, 1)
         payee_x = payees["payee_x"].to_numpy()  # Shape (m, )
@@ -646,7 +671,7 @@ class Cardsim:
         return (
             pl.DataFrame({"payer_id": payer_ids, "payee_id": payee_ids, "distance": distances})
             .sort(by=["payer_id", "distance"], nulls_last=True)
-            .with_columns(payee_order=pl.col("payer_id").cum_count().over("payer_id"))
+            .with_columns(payee_order=pl.col("payer_id").cum_count().over("payer_id") - 1)
         )
 
     @measure_duration()
@@ -849,8 +874,11 @@ class Cardsim:
 
         # Round indices and ensure within bounds
         # Give the variable the same name as the var that will be merged
-        df = df.with_columns(payee_order=np.clip(np.round(drawn_index).astype(int), min_index, max_index))
-        df = df.join(distances, on=["payer_id", "payee_order"], how="left").drop("payee_order")
+        df = (
+            df.with_columns(payee_order=np.clip(np.round(drawn_index).astype(int), min_index, max_index))
+            .join(distances, on=["payer_id", "payee_order"], how="left")
+            .drop("payee_order")
+        )
 
         # Distance likelihood ratio
         # Scipy expects: x (value), loc (left), scale (right - left), and c,
@@ -1037,7 +1065,7 @@ class Cardsim:
         time_seconds = self.generate_transaction_time(n_samples=df.height, tod_pmf=tod_pmf)
         ms = pl.Series(values=time_seconds * 1000, dtype=pl.Duration("ms"))
         df = df.with_columns(
-            date_time=pl.col("date") + ms,
+            timestamp=pl.col("date").cast(pl.Datetime) + ms,
             hour=time_seconds // 3600,
         )
 
@@ -1070,38 +1098,21 @@ class Cardsim:
             cache_dir, f"transactions-{n_payers}-{n_days}-{start_date}{'-modified' if with_modification else ''}.csv"
         )
         cached_payers = os.path.join(cache_dir, f"payers-{n_payers}.csv")
-        cached_payees = os.path.join(cache_dir, f"payees-{n_payers}.csv")
+        cached_payees = os.path.join(cache_dir, f"payees-{int(n_payers / self.payer_payee_factor)}.csv")
         logging.info(f"Loading transactions from {cached_transactions}...")
         try:
-            trx = pl.read_csv(
-                cached_transactions,
-                schema={
-                    "day_index": pl.Int32,
-                    "date": pl.Date,
-                    "payer_id": pl.Int32,
-                    "credit_card": pl.Int32,
-                    "remote": pl.Int32,
-                    "amount": pl.Float64,
-                    "payee_id": pl.Int32,
-                    "distance": pl.Float32,
-                    "time_seconds": pl.Int32,
-                    "date_time": pl.Datetime,
-                    "hour": pl.Int32,
-                    "fraud": pl.Int32,
-                    "run_id": pl.Utf8,
-                },
-            )
-            cards = pl.read_csv(cached_payers)
-            terminals = pl.read_csv(cached_payees)
+            trx = pl.read_csv(cached_transactions, schema=Transaction.schema(with_predicted_label=False))
+            payers = pl.read_csv(cached_payers, schema=Payer.schema())
+            terminals = pl.read_csv(cached_payees, schema=Terminal.schema())
         except FileNotFoundError:
             logging.info("Cache not found, running simulation...")
-            trx, cards, terminals = self.simulate(n_payers, n_days, start_date, with_modification)
+            trx, payers, terminals = self.simulate(n_payers, n_days, start_date, with_modification)
             logging.info(f"Simulation complete, caching results to {cache_dir}")
             os.makedirs(cache_dir, exist_ok=True)
             trx.write_csv(cached_transactions)
-            cards.write_csv(cached_payers)
+            payers.write_csv(cached_payers)
             terminals.write_csv(cached_payees)
-        return trx, cards, terminals
+        return trx, payers, terminals
 
     def simulate(
         self,
@@ -1110,30 +1121,46 @@ class Cardsim:
         start_date: str,
         with_modification: bool,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        trx, cards, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date, with_modification)
-        # Transactions
-        trx = trx.rename(
-            {
-                "date_time": "timestamp",
-                "payer_id": "card_id",
-                "payee_id": "terminal_id",
-                "remote": "is_online",
-                "fraud": "is_fraud",
-            }
+        trx, payers, terminals = self.make_transactions_dataframe(n_payers, n_days, start_date, with_modification)
+        # Create transactions, cards and terminals dataframes with column names matching class attributes.
+        trx_schema = Transaction.schema(with_predicted_label=False)
+        trx = (
+            trx.rename(
+                {
+                    "payee_id": "terminal_id",
+                    "remote": "is_online",
+                    "fraud": "is_fraud",
+                    "credit_card": "is_credit",
+                }
+            )
+            .select(list(trx_schema.keys()))
+            .cast(trx_schema)
         )
-        to_drop = set(trx.columns) - set(Transaction.field_names())
-        trx = trx.drop(*to_drop)
-
-        # Cards
-        cards = cards.rename({"payer_id": "id", "payer_x": "x", "payer_y": "y"})
-        to_drop = set(cards.columns) - set(Card.field_names())
-        cards = cards.drop(*to_drop)
-
-        # Terminals
-        terminals = terminals.rename({"payee_id": "id", "payee_x": "x", "payee_y": "y"})
-        to_drop = set(terminals.columns) - set(Terminal.field_names())
-        terminals = terminals.drop(*to_drop)
-        return trx, cards, terminals
+        payers_schema = Payer.schema()
+        payers = (
+            payers.rename(
+                {
+                    "payer_id": "id",
+                    "payer_x": "x",
+                    "payer_y": "y",
+                }
+            )
+            .select(list(payers_schema.keys()))
+            .cast(payers_schema)
+        )
+        terminals_schema = Terminal.schema()
+        terminals = (
+            terminals.rename(
+                {
+                    "payee_id": "id",
+                    "payee_x": "x",
+                    "payee_y": "y",
+                }
+            )
+            .select(list(terminals_schema.keys()))
+            .cast(terminals_schema)
+        )
+        return trx, payers, terminals
 
     # Convenience -------------------------------------------------------------
 

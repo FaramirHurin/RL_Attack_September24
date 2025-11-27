@@ -1,7 +1,5 @@
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass
 import polars as pl
-import hashlib
-import os
 
 
 @dataclass(eq=True)
@@ -12,7 +10,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, cache_dir: str | None = os.path.join("cache", "cardsim")):
+    def get_simulation_data(self, directory: str):
         from cardsim import Cardsim
 
         if self.ulb_data:
@@ -44,13 +42,11 @@ class CardSimParameters:
             )
             return transactions, cards, terminals
 
-        if cache_dir is None:
-            return Cardsim().simulate(self.n_payers, self.n_days, self.start_date, self.with_modification)
         return Cardsim().load(
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
-            cache_dir=cache_dir,
+            cache_dir=directory,
             with_modification=self.with_modification,
         )
 
@@ -68,10 +64,3 @@ class CardSimParameters:
             with_modification=with_modification,
             ulb_data=False,
         )
-
-    def sha256(self):
-        return hashlib.sha256(str(astuple(self)).encode("utf-8")).hexdigest()
-
-    def __hash__(self) -> int:
-        h = self.sha256()
-        return int(h, 16)
