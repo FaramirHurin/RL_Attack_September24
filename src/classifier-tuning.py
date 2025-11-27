@@ -17,7 +17,7 @@ TEST_DURATION = timedelta(days=30)
 
 def setup(use_anomaly: bool):
     params = Parameters(cardsim=CARDSIM_PARAMS)
-    banksys = params.banksys
+    banksys = params.load_banksys()
     # Perform the fit by hand
     banksys.fast_forward(banksys.training_start)
     features = banksys.fast_forward(banksys.attack_start)

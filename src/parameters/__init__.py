@@ -3,7 +3,7 @@ from .classification_parameters import ClassificationParameters
 from .ppo_parameters import PPOParameters
 from .vae_parameters import VAEParameters
 from .env_parameters import EnvParameters
-from .parameters import Parameters, serialize_unknown
+from .parameters import Parameters
 
 
 __all__ = [
@@ -12,6 +12,5 @@ __all__ = [
     "PPOParameters",
     "VAEParameters",
     "Parameters",
-    "serialize_unknown",
     "EnvParameters",
 ]

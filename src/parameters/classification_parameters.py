@@ -3,6 +3,10 @@ from datetime import timedelta
 from optuna import Trial
 from typing import Literal, Sequence
 import polars as pl
+import orjson
+from utils import serialize_unknown
+import os
+import hashlib
 
 
 @dataclass(eq=True)
@@ -125,7 +129,6 @@ class ClassificationParameters:
         terminals: pl.DataFrame,
         *,
         silent: bool = False,
-        fit: bool = True,
     ):
         from banksys import Banksys
 
@@ -136,3 +139,18 @@ class ClassificationParameters:
             params=self,
             silent=silent,
         )
+
+    def cache_dir(self, dataset_dir: str):
+        serialized = orjson.dumps(self, default=serialize_unknown)
+        hash_digest = hashlib.sha256(serialized).hexdigest()
+        return os.path.join(dataset_dir, f"banksys-{hash_digest}")
+
+    def banksys_file(self, dataset_dir: str):
+        directory = self.cache_dir(dataset_dir)
+        return os.path.join(directory, "banksys.pkl")
+
+    def save(self, dataset_dir: str):
+        dir_path = self.cache_dir(dataset_dir)
+        os.makedirs(dir_path, exist_ok=True)
+        with open(os.path.join(dir_path, "classification_params.json"), "wb") as f:
+            f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))

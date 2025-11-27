@@ -1,5 +1,9 @@
 from dataclasses import dataclass
+import orjson
 import polars as pl
+from utils import serialize_unknown
+import hashlib
+import os
 
 
 @dataclass(eq=True)
@@ -10,7 +14,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, directory: str):
+    def get_simulation_data(self, cache_root: str = "cache"):
         from cardsim import Cardsim
 
         if self.ulb_data:
@@ -46,9 +50,14 @@ class CardSimParameters:
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
-            cache_dir=directory,
+            cache_dir=self.cache_dir(cache_root),
             with_modification=self.with_modification,
         )
+
+    def cache_dir(self, cache_root: str):
+        serialized = orjson.dumps(self, default=serialize_unknown)
+        hash_digest = hashlib.sha256(serialized).hexdigest()
+        return os.path.join(cache_root, hash_digest)
 
     @staticmethod
     def paper_params(with_modification: bool):
@@ -64,3 +73,9 @@ class CardSimParameters:
             with_modification=with_modification,
             ulb_data=False,
         )
+
+    def save(self, cache_root: str):
+        directory = self.cache_dir(cache_root)
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "simulation_params.json"), "wb") as f:
+            f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))

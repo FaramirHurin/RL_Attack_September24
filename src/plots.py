@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import orjson
-from parameters import Parameters, serialize_unknown
+from parameters import Parameters
+from utils import serialize_unknown
 from marlenv import Episode
 
 from banksys import Transaction

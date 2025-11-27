@@ -69,7 +69,7 @@ def main():
         cardsim=CardSimParameters.paper_params(with_modification=True),
         save=False,
     )
-    p.prepare_run()
+    p.load_banksys()
     USE_ANOMALY = False
     study = optuna.create_study(
         storage="sqlite:///agents-tuning.db",
