@@ -1,4 +1,4 @@
-from plots import Experiment
+from experiment import Experiment
 import os
 import pytest
 

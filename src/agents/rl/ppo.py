@@ -5,7 +5,7 @@ import torch
 import os
 from marlenv import Transition, Episode
 from marlenv.utils import Schedule
-
+from torch.utils.tensorboard import SummaryWriter
 from agents import Agent
 
 
@@ -80,6 +80,7 @@ class PPO(Agent):
         self.max_loss = torch.tensor(0.0, device=self.device)
         self.max_adam_loss = 0.0
         self.min_entropy_loss = torch.tensor(0.0, device=self.device)
+        self.tb = SummaryWriter()
         self.debug_logs = {
             "min_critic_loss": [],
             "max_critic_loss": [],
@@ -138,10 +139,7 @@ class PPO(Agent):
         self.c2.update(episode_num)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
-        critic_losses = []
-        actor_losses = []
-        entropy_losses = []
-
+        critic_losses, actor_losses, entropy_losses, losses = [], [], [], []
         for _ in range(self.n_epochs):
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
@@ -185,166 +183,23 @@ class PPO(Agent):
             critic_losses.append(critic_loss.item())
             actor_losses.append(actor_loss.item())
             entropy_losses.append(entropy_loss.item())
-
-        self.debug_logs["min_log_prob"].append(new_log_probs.min().item())
-        self.debug_logs["max_log_prob"].append(new_log_probs.max().item())
-        self.debug_logs["mean_log_prob"].append(new_log_probs.mean().item())
-        self.debug_logs["min_critic_loss"].append(min(critic_losses))
-        self.debug_logs["max_critic_loss"].append(max(critic_losses))
-        self.debug_logs["mean_critic_loss"].append(np.mean(critic_losses))
-        self.debug_logs["min_actor_loss"].append(min(actor_losses))
-        self.debug_logs["max_actor_loss"].append(max(actor_losses))
-        self.debug_logs["mean_actor_loss"].append(np.mean(actor_losses))
-        self.debug_logs["min_entropy_loss"].append(min(entropy_losses))
-        self.debug_logs["max_entropy_loss"].append(max(entropy_losses))
-        self.debug_logs["mean_entropy_loss"].append(np.mean(entropy_losses))
-
-    def train2(self, batch: Batch, step_num: int, episode_num: int):
-        if self.normalize_rewards:
-            batch.normalize_rewards()
-
-        self.c1.update(episode_num)
-        self.c2.update(episode_num)
-
-        with torch.no_grad():
-            returns, advantages, log_probs = self._compute_training_data(batch)
-
-        for _ in range(self.n_epochs):
-            indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
-            minibatch = batch.get_minibatch(indices)
-            match batch:
-                case TransitionBatch():
-                    mini_log_probs = log_probs[indices]
-                    mini_returns = returns[indices]
-                    mini_advantages = advantages[indices]
-                case EpisodeBatch():
-                    mini_log_probs = log_probs[:, indices]
-                    mini_returns = returns[:, indices]
-                    mini_advantages = advantages[:, indices]
-                case other:
-                    raise ValueError(f"Unknown batch type: {type(other)}")
-
-            # ----- Critic loss -----
-            mini_values, _ = self.actor_critic.value(minibatch.obs)
-            mini_values = mini_values * minibatch.masks
-            td_error = mini_values - mini_returns
-            critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
-
-            # ----- Actor loss -----
-            try:
-                mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-                new_log_probs = mini_policy.log_prob(minibatch.actions)
-            except Exception:
-                # Print some debug info
-                logging.info(f"Critic loss: {critic_loss.item():.6f} at step {step_num}, episode {episode_num}")
-
-                logging.info("Error computing new log probs during PPO training")
-                logging.info(f"minibatch.obs: {minibatch.obs}")
-                logging.info(f"minibatch.actions: {minibatch.actions}")
-                # Print weights stats
-                for name, param in self.actor_critic.named_parameters():
-                    if param.requires_grad:
-                        logging.info(
-                            f"Param: {name}, min: {param.min().item():.6f}, max: {param.max().item():.6f}, mean: {param.mean().item():.6f}"
-                        )
-                mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-                new_log_probs = mini_policy.log_prob(minibatch.actions)
-                raise Exception
-
-            ratios = torch.exp(new_log_probs - mini_log_probs)
-            surrogate1 = mini_advantages * ratios
-            surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
-
-            actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
-
-            # ----- Entropy loss -----
-            entropy = mini_policy.entropy()
-            masked_entropy = entropy * minibatch.masks
-            entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
-
-            # ----- Logging new max loss values -----
-            if critic_loss > self.max_critic_loss:
-                logging.info(
-                    f"New max critic loss: {critic_loss.item():.6f} "
-                    f"(previous: {self.max_critic_loss.item():.6f}) "
-                    f"at step {step_num}, episode {episode_num}"
-                )
-
-            if actor_loss > self.max_actor_loss:
-                logging.info(
-                    f"New max actor loss: {actor_loss.item():.6f} "
-                    f"(previous: {self.max_actor_loss.item():.6f}) "
-                    f"at step {step_num}, episode {episode_num}"
-                )
-
-            if entropy_loss > self.max_entropy_loss:
-                stop = np.random.choice([True] + [False] * 24)
-                if stop:
-                    logging.info(
-                        f"New max entropy loss: {entropy_loss.item():.6f} "
-                        f"(previous: {self.max_entropy_loss.item():.6f}) "
-                        f"at step {step_num}, episode {episode_num}"
-                    )
-                    logging.info("Debugging max entropy loss issue")
-                    grad_info = []
-
-                    for name, p in self.actor_critic.named_parameters():
-                        if ".bias" in name:
-                            continue  # skip bias parameters
-                            # if p.grad is not None:
-                        if p.grad is not None:
-                            grad_info.append((name, p.grad.norm().item()))
-
-                    logging.info(f"grad_info: {grad_info}")
-
-            if entropy_loss < self.min_entropy_loss:
-                logging.info(
-                    f"New min entropy loss: {entropy_loss.item():.6f} "
-                    f"(previous: {self.min_entropy_loss.item():.6f}) "
-                    f"at step {step_num}, episode {episode_num}"
-                )
-
-            self.max_actor_loss = torch.max(self.max_actor_loss, actor_loss)
-            self.max_critic_loss = torch.max(self.max_critic_loss, critic_loss)
-            self.max_entropy_loss = torch.max(self.max_entropy_loss, entropy_loss)
-            self.min_entropy_loss = torch.min(self.min_entropy_loss, entropy_loss)
-
-            # ----- Total objective -----
-            loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
-
-            if loss > self.max_loss:
-                logging.info(
-                    f"New max total loss: {loss.item():.6f} "
-                    f"(previous: {self.max_loss.item():.6f}) "
-                    f"at step {step_num}, episode {episode_num}"
-                )
-
-            self.max_loss = torch.max(self.max_loss, loss)
-
-            # ----- Grad norm clipping -----
-            if self.grad_norm_clipping is not None:
-                torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
-
-            try:
-                # ----- Backprop -----
-                self.optimizer.zero_grad()
-                loss.backward()
-                # ----- Parameter update -----
-                self.optimizer.step()
-            except Exception:
-                print("Anomaly detected during backpropagation")
-                grad_info = []
-
-                for name, p in self.actor_critic.named_parameters():
-                    if ".bias" in name:
-                        continue  # skip bias parameters
-                    if p.grad is not None:
-                        grad_info.append((name, p.grad.norm().item()))
-
-                logging.info(f"grad_info: {grad_info}")
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+            losses.append(loss.item())
+        
+        self.tb.add_scalar("debug/min_log_prob", new_log_probs.min().item(), step_num)
+        self.tb.add_scalar("debug/max_log_prob", new_log_probs.max().item(), step_num)
+        self.tb.add_scalar("debug/mean_log_prob", new_log_probs.mean().item(), step_num)
+        self.tb.add_scalar("debug/min_critic_loss", min(critic_losses), step_num)
+        self.tb.add_scalar("debug/max_critic_loss", max(critic_losses), step_num)
+        self.tb.add_scalar("debug/mean_critic_loss", np.mean(critic_losses), step_num)
+        self.tb.add_scalar("debug/min_actor_loss", min(actor_losses), step_num)
+        self.tb.add_scalar("debug/max_actor_loss", max(actor_losses), step_num)
+        self.tb.add_scalar("debug/mean_actor_loss", np.mean(actor_losses), step_num)
+        self.tb.add_scalar("debug/min_entropy_loss", min(entropy_losses), step_num)
+        self.tb.add_scalar("debug/max_entropy_loss", max(entropy_losses), step_num)
+        self.tb.add_scalar("debug/mean_entropy_loss", np.mean(entropy_losses), step_num)
+        self.tb.add_scalar("debug/min_loss", min(losses), step_num)
+        self.tb.add_scalar("debug/max_loss", max(losses), step_num)
+        self.tb.add_scalar("debug/mean_loss", np.mean(losses), step_num)
 
     def update_transition(self, t: Transition, step: int, episode_num: int):
         if self.memory.update_on_transitions:

@@ -213,7 +213,7 @@ class Banksys:
 
     @cached_property
     def training_set(self):
-        return self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start))
+        return self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start, closed="left"))
 
     @property
     def max_attack_duration(self):

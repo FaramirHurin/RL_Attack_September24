@@ -7,7 +7,7 @@ import optuna
 import torch
 
 from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
-from plots import Experiment, Run
+from experiment import Experiment, Run
 from runner import Runner
 
 N_JOBS = 5

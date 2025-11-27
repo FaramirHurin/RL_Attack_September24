@@ -50,11 +50,10 @@ class Run:
     episodes: Optional[list[Episode]] = None
 
     @staticmethod
-    def create(params: Parameters, episodes: list[Episode]):
+    def create(rundir: str, params: Parameters, episodes: list[Episode]):
         """
         Create a new run and saves it to the disk.
         """
-        rundir = params.logdir
         os.makedirs(rundir, exist_ok=True)
         params_path = os.path.join(rundir, "params.json")
         with open(params_path, "wb") as f:
@@ -204,30 +203,29 @@ class Experiment:
         if initial_seed is None:
             initial_seed = self.params.seed + self.n_runs
         for seed in range(initial_seed, initial_seed + n):
-            # os.makedirs(logdir, exist_ok=True)
-            yield replace(self.params, seed=seed)
+            run = os.path.join(self.logdir, f"run-{seed}")
+            yield replace(self.params, seed=seed), run
 
     @property
     def n_runs(self):
         return len(self.runs)
 
     @staticmethod
-    def create(params: Parameters):
-        params_path = os.path.join(params.logdir, "params.json")
-        os.makedirs(params.logdir, exist_ok=True)
+    def create(params: Parameters, logdir: str | None = None):
+        if logdir is None:
+            logdir = datetime.now().isoformat().replace(":", "-")
+        if not logdir.startswith("logs/"):
+            logdir = os.path.join("logs", logdir)
+        params_path = os.path.join(logdir, "params.json")
+        os.makedirs(logdir, exist_ok=True)
         with open(params_path, "wb") as f:
             f.write(orjson.dumps(params, default=serialize_unknown, option=orjson.OPT_SERIALIZE_NUMPY))
-        return Experiment(params.logdir, params, {})
+        return Experiment(logdir, params, {})
 
     @staticmethod
     def load(directory: str):
         params = Parameters.load(os.path.join(directory, "params.json"))
         return Experiment(directory, params, None)
-
-    def add(self, episodes: list[Episode], seed: int):
-        path = os.path.join(self.logdir, f"seed-{seed}")
-        params = replace(self.params, seed_value=seed, logdir=path)
-        return Run.create(params, episodes)
 
     @cached_property
     def n_transactions_over_time(self):

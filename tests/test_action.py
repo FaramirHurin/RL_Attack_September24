@@ -19,11 +19,11 @@ def test_action_from_numpy():
     numpy_action = np.array([100, 1, 2, 1, 3], dtype=np.float32)  # is_online is represented as 0 (False)
     action = Action.from_numpy(numpy_action)
 
-    assert action.amount == 100
-    assert action.terminal_x == 1
-    assert action.terminal_y == 2
-    assert action.is_online  # True is represented as 1
-    assert action.delay_hours == 3
+    assert action.amount == 100.0
+    assert action.terminal_x == 1.0
+    assert action.terminal_y == 2.0
+    assert action.is_online is True
+    assert action.delay_hours == 3.0
 
 
 def test_action_conversions():

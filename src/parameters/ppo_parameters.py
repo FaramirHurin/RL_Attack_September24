@@ -186,7 +186,7 @@ class PPOParameters:
                 ),
                 entropy_c2=Schedule.linear(
                     start_value=0.08521542110698155,
-                    end_value=0.08272396424417085,  # 0.08272396424417085,
+                    end_value=0.08272396424417085,
                     n_steps=2311,
                 ),
                 n_epochs=73,
@@ -194,6 +194,7 @@ class PPOParameters:
                 lr_critic=0.0004241921268503483,
                 normalize_rewards=True,
                 normalize_advantages=False,
+                use_covariance_matrix=True,
             )
         return PPOParameters(
             is_recurrent=False,
@@ -216,6 +217,7 @@ class PPOParameters:
             lr_critic=0.00020047940328712973,
             normalize_rewards=True,
             normalize_advantages=True,
+            use_covariance_matrix=True,
         )
 
     @staticmethod

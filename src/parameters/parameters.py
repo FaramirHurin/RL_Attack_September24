@@ -2,7 +2,6 @@ import os
 import random
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
 from functools import cached_property
 from typing import Optional
 
@@ -44,10 +43,9 @@ class Parameters:
         ######################################
         # Set the seed before ANYTHING else  #
         ######################################
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
         self.seed = seed
+        self.seed_random()
+
         self.agent = agent
         if cache_root is None:
             cache_root = os.path.join("cache", f"seed-{seed}")
@@ -85,15 +83,6 @@ class Parameters:
             case _:
                 raise ValueError("Unknown agent type")
 
-    @cached_property
-    def logdir(self):
-        timestamp = datetime.now().isoformat().replace(":", "-")
-        if self.clf_params.use_anomaly:
-            anomaly = "anomaly"
-        else:
-            anomaly = "no-anomaly"
-        return os.path.join("logs", anomaly, self.agent_name, timestamp)
-
     @staticmethod
     def load(filename: str):
         with open(filename, "rb") as f:
@@ -116,6 +105,11 @@ class Parameters:
             env_params=env_params,
             **data,
         )
+
+    def seed_random(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
 
     @property
     def agent_name(self) -> str:
