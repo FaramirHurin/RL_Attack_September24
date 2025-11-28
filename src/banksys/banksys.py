@@ -160,7 +160,7 @@ class Banksys:
         """
         # TODO: After 7 days, update the predicted label of all past transactions to
         # be equal to the real label, to simulate delayed fraud detection.
-        df = pl.DataFrame((self.make_transaction_features(trx) for trx in transactions))  # , schema=self.features_columns)
+        df = pl.DataFrame([self.make_transaction_features(trx) for trx in transactions])  # , schema=self.features_columns)
         labels = self.clf.predict(df)
         # Use transactions labels
         # labels = pl.Series([trx.is_fraud for trx in transactions])

@@ -25,3 +25,5 @@ tuning-2/*
 *.svg
 .pytest_cache/
 .devcontainer
+# Tensorboard default directory
+runs/ 

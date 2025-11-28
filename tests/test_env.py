@@ -14,7 +14,7 @@ def test_spawn_card():
     bs = mock_banksys()
     params = EnvParameters(avg_card_block_delay=timedelta(days=1))
     env = CardSimEnv(bs, params)
-    payer, _, _ = env.spawn_card()
+    payer, _, _ = env.spawn_payer()
     assert len(env.payer_registry.expected_expirations) == 1
     assert isinstance(payer, Payer)
 
@@ -23,7 +23,7 @@ def test_obs_size():
     bs = mock_banksys()
     env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
     obs_size = env.observation_size
-    _, obs, *_ = env.spawn_card()
+    _, obs, *_ = env.spawn_payer()
     assert len(obs.data) == obs_size
 
 
@@ -31,7 +31,7 @@ def test_observation():
     bs = mock_banksys()
     env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
 
-    payer, obs, _ = env.spawn_card()
+    payer, obs, _ = env.spawn_payer()
     payer.balance = 1000
     # Manually set the actual expiration to the expected one for determinism
     env.payer_registry.actual_expirations[payer] = env.payer_registry.expected_expirations[payer]
@@ -57,7 +57,7 @@ def test_observation():
 def test_card_blocked_zero_reward():
     bs = mock_banksys()
     env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
-    card, _, _ = env.spawn_card()
+    card, _, _ = env.spawn_payer()
     card.balance = 5
     env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), card)
     card, step, _ = env.step()
@@ -79,8 +79,8 @@ def test_time_going():
     # Card 1  Spawn  --- 1h buffer action ----------------------- 3h action --
     # Card 2  Spawn  -------------------------1h30 action --------------------
 
-    card1 = env.spawn_card()[0]
-    card2 = env.spawn_card()[0]
+    card1 = env.spawn_payer()[0]
+    card2 = env.spawn_payer()[0]
 
     t_0 = deepcopy(env.t)
 

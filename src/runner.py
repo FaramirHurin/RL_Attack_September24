@@ -2,6 +2,7 @@ import logging
 import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal, Optional
+import pyinstrument
 
 import dotenv
 import numpy as np
@@ -39,30 +40,31 @@ class Runner:
         self.quiet = quiet
         self.n_spawned = 0
 
-    def spawn_card_and_buffer_action(self):
+    def spawn_payer_and_buffer_action(self):
         """
-        Spawn a new card and buffers an action for it.
+        Spawn a new payer and buffers an action for it.
         """
-        new_card, obs, state = self.env.spawn_card()
+        new_payer, obs, state = self.env.spawn_payer()
         action, hx = self.agent.choose_action(obs.data, None)
-        self.env.buffer_action(action, new_card)
+        self.env.buffer_action(action, new_payer)
 
-        self.episodes[new_card] = Episode.new(obs, state, {"t_start": self.env.t, "card_id": new_card.id})
-        self.prev_obs[new_card] = obs
-        self.prev_states[new_card] = state
-        self.hidden_states[new_card] = hx
+        self.episodes[new_payer] = Episode.new(obs, state, {"t_start": self.env.t, "payer_id": new_payer.id})
+        self.prev_obs[new_payer] = obs
+        self.prev_states[new_payer] = state
+        self.hidden_states[new_payer] = hx
         self.n_spawned += 1
 
-    def cleanup_card(self, card: Payer):
-        del self.episodes[card]
-        del self.prev_obs[card]
-        del self.prev_states[card]
-        del self.hidden_states[card]
+    def cleanup_payer(self, payer: Payer):
+        del self.episodes[payer]
+        del self.prev_obs[payer]
+        del self.prev_states[payer]
+        del self.hidden_states[payer]
 
+    @pyinstrument.profile()
     def run(self):
         self.env.reset()
-        for _ in range(self.params.card_pool_size):
-            self.spawn_card_and_buffer_action()
+        for _ in range(self.params.pool_size):
+            self.spawn_payer_and_buffer_action()
 
         # Main loop
         episodes = list[Episode]()
@@ -74,16 +76,16 @@ class Runner:
         while episode_num < self.params.n_episodes:
             step_num += 1
             try:
-                card, step, action = self.env.step()
+                payer, step, action = self.env.step()
             except AttackPeriodExpired as e:
                 logging.warning(f"Attack period expired: {e}")
                 return episodes
 
-            transition = Transition.from_step(self.prev_obs[card], self.prev_states[card], action, step)
+            transition = Transition.from_step(self.prev_obs[payer], self.prev_states[payer], action, step)
 
             # Update self.observations, states and actions,
-            self.prev_obs[card] = step.obs
-            self.prev_states[card] = step.state
+            self.prev_obs[payer] = step.obs
+            self.prev_states[payer] = step.state
 
             total += step.reward.item()
             pbar.set_postfix(trx=step_num, refresh=False)
@@ -95,11 +97,11 @@ class Runner:
                 logging.warning(f"Value error during simulation at step={step_num}, episode={episode_num}:\n{e}")
                 return episodes
 
-            current_episode = self.episodes[card]
+            current_episode = self.episodes[payer]
             # current_episode.is_finished = step.done or step.truncated
             current_episode.add(transition)
             if current_episode.is_finished:
-                self.cleanup_card(card)
+                self.cleanup_payer(payer)
                 scores.append(current_episode.score[0])
                 episodes.append(current_episode)
                 avg_score = np.mean(scores[-100:])
@@ -116,10 +118,10 @@ class Runner:
                     return episodes
 
                 if self.n_spawned < self.params.n_episodes:
-                    self.spawn_card_and_buffer_action()
+                    self.spawn_payer_and_buffer_action()
             else:
-                action, self.hidden_states[card] = self.agent.choose_action(step.obs.data, self.hidden_states[card])
-                self.env.buffer_action(action, card)
+                action, self.hidden_states[payer] = self.agent.choose_action(step.obs.data, self.hidden_states[payer])
+                self.env.buffer_action(action, payer)
         return episodes
 
 

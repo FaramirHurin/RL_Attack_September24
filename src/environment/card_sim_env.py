@@ -28,13 +28,13 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.normalize_location = params.normalize_location
         self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
         self.system = system
-        self.payer_registry = PayerRegistry(system.payers, params.avg_card_block_delay)
+        self.payer_registry = PayerRegistry(system.payers, params.avg_block_delay)
         self.customer_location_is_known = params.customer_location_is_known
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
         obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 4
-        high = [1_000, 200, 200, 1, params.avg_card_block_delay.total_seconds() / 3600]
+        high = [1_000, 200, 200, 1, params.avg_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
         if params.can_choose_debit_credit:
             low += [0]
@@ -51,22 +51,22 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.payer_registry.reset()
         self.action_buffer.clear()
 
-    def spawn_card(self):
-        card = self.payer_registry.release_payer(self.t)
-        state = self.compute_state(card)
-        return card, Observation(state, self.available_actions()), State(state)
+    def spawn_payer(self):
+        payer = self.payer_registry.release_payer(self.t)
+        state = self.compute_state(payer)
+        return payer, Observation(state, self.available_actions()), State(state)
 
-    def buffer_action(self, np_action: np.ndarray, card: Payer):
+    def buffer_action(self, np_action: np.ndarray, payer: Payer):
         action = Action.from_numpy(np_action)
         execution_time = self.t + action.timedelta
-        self.action_buffer.push((card, np_action), execution_time)
+        self.action_buffer.push((payer, np_action), execution_time)
 
-    def get_observation(self, card: Payer):
-        state = self.compute_state(card)
+    def get_observation(self, payer: Payer):
+        state = self.compute_state(payer)
         return Observation(state, self.available_actions())
 
-    def get_state(self, card: Payer):
-        state = self.compute_state(card)
+    def get_state(self, payer: Payer):
+        state = self.compute_state(payer)
         return State(state)
 
     @property
