@@ -62,14 +62,14 @@ class Payer:
         fields = list[Field](dict(members)["__dataclass_fields__"].values())
         return fields2schema(fields)
 
-    def compute_features(self, t: datetime):
+    def compute_features(self, t: datetime) -> dict[str, float]:
         """
         Compute the number of transactions and their average amount within each aggregation window.
         """
         self._window.update(t)
         if self._window.is_empty:
             return {
-                **{f: 0.0 for f in self._count_feature_names},
+                **{f: 0 for f in self._count_feature_names},
                 **{f: 0.0 for f in self._avg_feature_names},
             }
         amounts, counts = self._window.compute_avg_amount_and_count_by_window(t)

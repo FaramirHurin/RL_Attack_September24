@@ -1,7 +1,4 @@
-import hashlib
-import logging
 import random
-from dataclasses import astuple
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -9,6 +6,7 @@ from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
 from banksys import Payer, Terminal, Transaction
 from exceptions import AttackPeriodExpired, InsufficientFundsError
+from utils import tb_log
 
 from .action import Action
 from .payer_registry import PayerRegistry
@@ -25,13 +23,13 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         system: "Banksys",
         params: "EnvParameters",
     ):
-        self.normalize_location = params.normalize_location
         self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
         self.system = system
         self.payer_registry = PayerRegistry(system.payers, params.avg_block_delay)
         self.customer_location_is_known = params.customer_location_is_known
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
+        self.scale_amount = params.scale_amount
         obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 4
         high = [1_000, 200, 200, 1, params.avg_block_delay.total_seconds() / 3600]
@@ -84,9 +82,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             one_hot_weekday[self.t.weekday()] = 1.0
             features += one_hot_weekday
         if self.customer_location_is_known:
-            x, y = payer.x, payer.y
-            if self.normalize_location:
-                x, y = x / 200, y / 200
+            x, y = payer.x / 200, payer.y / 200
             features += [x, y]
         return np.array(features, dtype=np.float32)
 
@@ -105,32 +101,33 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def t(self):
         return self.system.current_time
 
+    @property
+    def elapsed_time(self):
+        return self.system.current_time - self.system.attack_start
+
     def step(self):
         """
         Performs the next action in the queue.
         """
         t, (payer, np_action) = self.action_buffer.ppop()
-        action = Action.from_numpy(np_action)
+        action = Action.from_numpy(np_action).denormalized(self.scale_amount)
         if t >= self.system.attack_end:
             raise AttackPeriodExpired(f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached")
+        tb_log("env/action", action.as_dict(), self.elapsed_time)
         info = dict[str, Any](t=t.isoformat())
-        if self.normalize_location:
-            action.terminal_x *= 200
-            action.terminal_y *= 200
         if self.payer_registry.has_expired(payer, t):
             self.payer_registry.clear(payer)
             reward = 0.0
             done = True
             info["expired"] = True
         else:
-            self.system.simulate_until(t)
             trx = Transaction(
                 amount=action.amount,
                 timestamp=t,
-                terminal_id=self.get_closest_terminal(payer.x, payer.y).id,
+                terminal_id=self.get_closest_terminal(action.terminal_x, action.terminal_y).id,
                 payer_id=payer.id,
                 is_online=action.is_online,
-                is_credit=False,  # action.is_credit,
+                is_credit=False,
                 is_fraud=True,
             )
             try:
@@ -148,14 +145,5 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 self.payer_registry.notify_insufficient_funds(trx)
             done = trx.fraud_is_detected
         state = self.compute_state(payer)
+        tb_log("env/reward", reward, self.elapsed_time)
         return payer, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info), np_action
-
-    def seed(self, seed_value: int):
-        random.seed(seed_value)
-
-    def sha256(self):
-        return hashlib.sha256(str(astuple(self)).encode("utf-8")).hexdigest()
-
-    def __hash__(self) -> int:
-        h = self.sha256()
-        return int(h, 16)

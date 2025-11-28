@@ -11,6 +11,7 @@ from .payer import Payer
 from .classification import ClassificationSystem
 from .terminal import Terminal
 from .transaction import Transaction
+from utils import tb_log
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -45,7 +46,7 @@ class Banksys:
         self._transactions_df = (
             transactions_df.sort("timestamp")  # Sort by timestamp
             .with_columns(
-                self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
+                predicted_label=self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
             )  # Add training "predicted_label"
             .with_columns(
                 pl.when(pl.col("timestamp") > self.attack_start)  # Remove 'predicted_label' for the attack set.
@@ -59,7 +60,7 @@ class Banksys:
         self.payers = sorted(Payer.from_df(cards_df, params.aggregation_windows), key=lambda c: c.id)
         self.terminals = sorted(Terminal.from_df(terminals_df, params.aggregation_windows), key=lambda t: t.id)
         self.aggregation_windows = params.aggregation_windows
-        self.fit()
+        self.schema = self.fit()
 
     def fit(self):
         """
@@ -75,7 +76,7 @@ class Banksys:
         train_x = pl.DataFrame(features)
         train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(pl.DataFrame(train_x), train_y)
-        # return train_x.columns
+        return train_x.schema
 
     def fast_forward(self, until: datetime):
         """
@@ -138,7 +139,11 @@ class Banksys:
         assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
         self.simulate_until(trx.timestamp)
         features = self.make_transaction_features(trx)
-        features_df = pl.DataFrame(features)  # , schema=self.features_columns)
+        elapsed = trx.timestamp - self.attack_start
+        tb_log("features", features, elapsed)
+        tb_log("trx/payer-balance", self.payers[trx.payer_id].balance, elapsed)
+        tb_log("trx/terminal-id", trx.terminal_id, elapsed)
+        features_df = pl.DataFrame(features, schema=self.schema)
         trx.predicted_label = self.clf.predict(features_df).item()
         self.payers[trx.payer_id].add(trx, update_balance=True)
         self.terminals[trx.terminal_id].add(trx)
@@ -160,7 +165,7 @@ class Banksys:
         """
         # TODO: After 7 days, update the predicted label of all past transactions to
         # be equal to the real label, to simulate delayed fraud detection.
-        df = pl.DataFrame([self.make_transaction_features(trx) for trx in transactions])  # , schema=self.features_columns)
+        df = pl.DataFrame([self.make_transaction_features(trx) for trx in transactions], schema=self.schema)
         labels = self.clf.predict(df)
         # Use transactions labels
         # labels = pl.Series([trx.is_fraud for trx in transactions])

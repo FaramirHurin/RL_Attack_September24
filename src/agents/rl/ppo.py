@@ -5,8 +5,8 @@ import torch
 import os
 from marlenv import Transition, Episode
 from marlenv.utils import Schedule
-from torch.utils.tensorboard import SummaryWriter
 from agents import Agent
+from utils import tb_log
 
 
 from .batch import Batch, TransitionBatch, EpisodeBatch
@@ -74,28 +74,6 @@ class PPO(Agent):
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
 
-        self.max_actor_loss = torch.tensor(0.0, device=self.device)
-        self.max_critic_loss = torch.tensor(0.0, device=self.device)
-        self.max_entropy_loss = torch.tensor(0.0, device=self.device)
-        self.max_loss = torch.tensor(0.0, device=self.device)
-        self.max_adam_loss = 0.0
-        self.min_entropy_loss = torch.tensor(0.0, device=self.device)
-        self.tb = SummaryWriter()
-        self.debug_logs = {
-            "min_critic_loss": [],
-            "max_critic_loss": [],
-            "mean_critic_loss": [],
-            "min_actor_loss": [],
-            "max_actor_loss": [],
-            "mean_actor_loss": [],
-            "min_entropy_loss": [],
-            "max_entropy_loss": [],
-            "mean_entropy_loss": [],
-            "min_log_prob": [],
-            "max_log_prob": [],
-            "mean_log_prob": [],
-        }
-
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
         all_parameters = list(self.actor_critic.parameters())
         params = [
@@ -139,7 +117,8 @@ class PPO(Agent):
         self.c2.update(episode_num)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
-        critic_losses, actor_losses, entropy_losses, losses = [], [], [], []
+
+        critic_losses, actor_losses, entropy_losses, losses, ratios = [], [], [], [], []
         for _ in range(self.n_epochs):
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
@@ -162,9 +141,9 @@ class PPO(Agent):
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
             new_log_probs = mini_policy.log_prob(minibatch.actions)
 
-            ratios = torch.exp(new_log_probs - mini_log_probs)
-            surrogate1 = mini_advantages * ratios
-            surrogate2 = torch.clamp(ratios, self._ratio_min, self._ratio_max) * mini_advantages
+            ratio = torch.exp(new_log_probs - mini_log_probs)
+            surrogate1 = mini_advantages * ratio
+            surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             # Minus because we want to maximize the objective
             actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
 
@@ -184,22 +163,26 @@ class PPO(Agent):
             actor_losses.append(actor_loss.item())
             entropy_losses.append(entropy_loss.item())
             losses.append(loss.item())
-        
-        self.tb.add_scalar("debug/min_log_prob", new_log_probs.min().item(), step_num)
-        self.tb.add_scalar("debug/max_log_prob", new_log_probs.max().item(), step_num)
-        self.tb.add_scalar("debug/mean_log_prob", new_log_probs.mean().item(), step_num)
-        self.tb.add_scalar("debug/min_critic_loss", min(critic_losses), step_num)
-        self.tb.add_scalar("debug/max_critic_loss", max(critic_losses), step_num)
-        self.tb.add_scalar("debug/mean_critic_loss", np.mean(critic_losses), step_num)
-        self.tb.add_scalar("debug/min_actor_loss", min(actor_losses), step_num)
-        self.tb.add_scalar("debug/max_actor_loss", max(actor_losses), step_num)
-        self.tb.add_scalar("debug/mean_actor_loss", np.mean(actor_losses), step_num)
-        self.tb.add_scalar("debug/min_entropy_loss", min(entropy_losses), step_num)
-        self.tb.add_scalar("debug/max_entropy_loss", max(entropy_losses), step_num)
-        self.tb.add_scalar("debug/mean_entropy_loss", np.mean(entropy_losses), step_num)
-        self.tb.add_scalar("debug/min_loss", min(losses), step_num)
-        self.tb.add_scalar("debug/max_loss", max(losses), step_num)
-        self.tb.add_scalar("debug/mean_loss", np.mean(losses), step_num)
+            ratios.append(ratio.mean().item())
+
+        tb_log("ppo/min_log_prob", new_log_probs.min().item(), step_num)
+        tb_log("ppo/max_log_prob", new_log_probs.max().item(), step_num)
+        tb_log("ppo/mean_log_prob", new_log_probs.mean().item(), step_num)
+        tb_log("ppo/min_critic_loss", min(critic_losses), step_num)
+        tb_log("ppo/max_critic_loss", max(critic_losses), step_num)
+        tb_log("ppo/mean_critic_loss", np.mean(critic_losses), step_num)
+        tb_log("ppo/min_actor_loss", min(actor_losses), step_num)
+        tb_log("ppo/max_actor_loss", max(actor_losses), step_num)
+        tb_log("ppo/mean_actor_loss", np.mean(actor_losses), step_num)
+        tb_log("ppo/min_entropy_loss", min(entropy_losses), step_num)
+        tb_log("ppo/max_entropy_loss", max(entropy_losses), step_num)
+        tb_log("ppo/mean_entropy_loss", np.mean(entropy_losses), step_num)
+        tb_log("ppo/min_loss", min(losses), step_num)
+        tb_log("ppo/max_loss", max(losses), step_num)
+        tb_log("ppo/mean_loss", np.mean(losses), step_num)
+        tb_log("ppo/min_ratio", min(ratios), step_num)
+        tb_log("ppo/max_ratio", max(ratios), step_num)
+        tb_log("ppo/mean_ratio", np.mean(ratios), step_num)
 
     def update_transition(self, t: Transition, step: int, episode_num: int):
         if self.memory.update_on_transitions:

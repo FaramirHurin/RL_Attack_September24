@@ -26,6 +26,13 @@ def test_action_from_numpy():
     assert action.delay_hours == 3.0
 
 
+def test_from_np_deterministic():
+    np_action = np.random.rand(5).astype(np.float32)
+    action1 = Action.from_numpy(np_action)
+    action2 = Action.from_numpy(np_action)
+    assert action1 == action2
+
+
 def test_action_conversions():
     original_action = Action(amount=50, terminal_x=10, terminal_y=20, is_online=False, delay_hours=2.5)
     numpy_action = original_action.to_numpy()

@@ -87,11 +87,9 @@ class ActorCritic(torch.nn.Module, ABC):
             cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
             cov = cov * norm
             cov = cov.reshape(*dims, self.n_actions, self.n_actions)
-            dist = distributions.MultivariateNormal(means, cov)
-        else:
-            cov = torch.diag(torch.ones(self.n_actions, device=self.device)).unsqueeze(dim=0)
-            dist = distributions.MultivariateNormal(means, cov)
-        return dist
+            return distributions.MultivariateNormal(means, cov)
+        cov = torch.diag(torch.ones(self.n_actions, device=self.device)).unsqueeze(dim=0)
+        return distributions.MultivariateNormal(means, cov)
 
 
 class LinearActorCritic(ActorCritic):

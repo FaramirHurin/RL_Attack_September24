@@ -56,19 +56,25 @@ class PayerRegistry:
         self.balance_upper_bound.pop(payer, None)
 
     def get_features(self, payer: Payer, t: datetime):
+        """
+        Returns the list of features for the given payer at time t:
+        - remaining_time_ratio: the ratio of remaining time before expected expiration
+        - time_since_last_fraud: the time delta since the last successful fraud, normalized by expected_lifespan
+        - total_stolen: total amount stolen in previous successful frauds, divided by 100
+        - balance_upper_bound: upper bound on the payer's balance, divided by 100 (or -1 if unknown)
+        """
         successful_frauds = self.previous_frauds.get(payer, [])
         balance_upper_bound = self.balance_upper_bound.get(payer, None)
-        n_attempts = len(successful_frauds)
-        if balance_upper_bound is not None:
-            n_attempts += 1
         if len(successful_frauds) == 0:
             total_stolen = 0.0
+            prev_fraud_time = 0.0
         else:
             total_stolen = sum(trx.amount for trx in successful_frauds)
+            prev_fraud_time = (successful_frauds[-1].timestamp - t).total_seconds() / self.expected_lifespan
         return [
             self._get_remaining_time_ratio(payer, t),
+            prev_fraud_time,
             total_stolen / 100.0,
-            float(n_attempts),
             balance_upper_bound / 100.0 if balance_upper_bound is not None else -1.0,
         ]
 

@@ -3,6 +3,10 @@ import polars as pl
 from datetime import datetime, timedelta
 from dataclasses import Field
 import torch
+from torch.utils.tensorboard import SummaryWriter
+
+
+writer = SummaryWriter()
 
 
 def fields2schema(fields: list[Field]) -> dict:
@@ -39,3 +43,14 @@ def serialize_unknown(data):
         case timedelta():
             return data.total_seconds()
     raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")
+
+
+def tb_log(tag: str, value, step: int | timedelta):
+    if isinstance(step, timedelta):
+        step = int(step.total_seconds())
+    match value:
+        case dict():
+            for k, v in value.items():
+                writer.add_scalar(f"{tag}/{k}", v, step)
+        case _:
+            writer.add_scalar(tag, value, step)

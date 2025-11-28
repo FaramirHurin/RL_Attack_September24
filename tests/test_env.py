@@ -110,3 +110,25 @@ def test_time_going():
     assert env.t == t_0 + timedelta(hours=action1.delay_hours + action3.delay_hours)
     assert step.reward.item() == action3.amount
     assert np.array_equal(np_action, action3.to_numpy())
+
+
+def test_bufferred_action_is_stepped():
+    bs = mock_banksys()
+    env = CardSimEnv(bs, EnvParameters())
+    payer = env.spawn_payer()[0]
+    np_actions = [
+        np.array([5, 30, 30, 1, 0.25], dtype=np.float32),
+        np.array([50, 10, 10, 1, 0.5], dtype=np.float32),
+        np.array([20, 20, 20, 0, 1.0], dtype=np.float32),
+    ]
+    actions = [Action.from_numpy(a) for a in np_actions]
+    # Not added in chronological order
+    env.buffer_action(np_actions[1], payer)
+    env.buffer_action(np_actions[2], payer)
+    env.buffer_action(np_actions[0], payer)
+
+    for action, np_action in zip(actions, np_actions):
+        stepped_payer, _, stepped_np_action = env.step()
+        assert action == Action.from_numpy(stepped_np_action)
+        assert stepped_payer == payer
+        assert np.array_equal(stepped_np_action, np_action)

@@ -1,8 +1,8 @@
-import random
-from dataclasses import astuple, dataclass
+from dataclasses import astuple, dataclass, asdict
 from datetime import timedelta
 
 import numpy as np
+import numpy.typing as npt
 
 
 @dataclass
@@ -28,17 +28,15 @@ class Action:
         self.terminal_y = max(0, min(200, terminal_y))
         self.is_online = is_online
         # self.is_credit = is_credit
-        # Ensure delay_hours is positive and non-zero (at least 5 minutes)
-        if delay_hours <= 0:
-            delay_hours = (5 / 60) * random.random()
-        self.delay_hours = delay_hours
+        # Ensure delay_hours is positive
+        self.delay_hours = abs(delay_hours)
 
     @property
     def timedelta(self):
         return timedelta(hours=self.delay_hours)
 
     @staticmethod
-    def from_numpy(array: np.ndarray):
+    def from_numpy(array: npt.NDArray[np.float32]):
         """Convert a numpy array to an Action object."""
         amount, terminal_x, terminal_y, is_online, delay_hours = array
         is_online = is_online > 0.5
@@ -56,3 +54,16 @@ class Action:
 
     def to_numpy(self):
         return np.array(astuple(self), dtype=np.float32)
+
+    def denormalized(self, scale_amount: float):
+        return Action(
+            amount=self.amount * scale_amount,
+            terminal_x=self.terminal_x * 200.0,
+            terminal_y=self.terminal_y * 200.0,
+            is_online=self.is_online,
+            delay_hours=self.delay_hours,
+            # is_credit=self.is_credit,
+        )
+
+    def as_dict(self):
+        return asdict(self)

@@ -2,7 +2,6 @@ import logging
 import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal, Optional
-import pyinstrument
 
 import dotenv
 import numpy as np
@@ -60,7 +59,6 @@ class Runner:
         del self.prev_states[payer]
         del self.hidden_states[payer]
 
-    @pyinstrument.profile()
     def run(self):
         self.env.reset()
         for _ in range(self.params.pool_size):
@@ -156,6 +154,7 @@ def main(
     anomaly: bool,
     n_repetitions: int = 1,
     ulb_data: bool = False,
+    with_modification: bool = False,
     initial_seed: int = 0,
     n_jobs: int = 1,
 ):
@@ -169,9 +168,9 @@ def main(
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=False, ulb_data=ulb_data),
+        cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
         clf_params=ClassificationParameters(use_anomaly=anomaly),
-        env_params=EnvParameters(),
+        env_params=EnvParameters(pool_size=50),
         seed=initial_seed,
     )
     exp = Experiment.create(params)
@@ -189,7 +188,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=True, n_repetitions=1, n_jobs=1, initial_seed=42)
+        main(algorithm="ppo", anomaly=True, n_repetitions=1, n_jobs=1, with_modification=True)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e
