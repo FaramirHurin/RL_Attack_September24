@@ -22,6 +22,11 @@ class ClassificationParameters:
     _rules: dict[float, int]
     fp_rate: float
     fn_rate: float
+    classify_simulated_trx: bool = False
+    """
+    Whether to classify simulated transactions (i.e. not the attacker's ones). 
+    If False, the classifier uses the ground truth labels corrected by the `fp_rate` and `fn_rate` parameters.
+    """
 
     def __init__(
         self,

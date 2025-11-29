@@ -1,17 +1,20 @@
 import logging
 import os
 import pickle
-from functools import cached_property
 from datetime import datetime
-from typing import TYPE_CHECKING
+from functools import cached_property
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 import polars as pl
 from tqdm import tqdm
-from .payer import Payer
+
+from utils import tb_log
+
 from .classification import ClassificationSystem
+from .payer import Payer
 from .terminal import Terminal
 from .transaction import Transaction
-from utils import tb_log
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -27,34 +30,33 @@ class Banksys:
         cards_df: pl.DataFrame,
         terminals_df: pl.DataFrame,
         params: "ClassificationParameters",
+        *,
         silent: bool = False,
         clf: ClassificationSystem | None = None,
     ):
         max_aggregation_duration = (
             max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
         )
-        self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore
+        self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore[assignment]
+        self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore[assignment]
         self.training_start = self.current_time + max_aggregation_duration
         self.attack_start = self.training_start + params.training_duration
-        self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
         self.silent = silent
+        self.classify_simulated_trx = params.classify_simulated_trx
         if clf is not None:
             self.clf = clf
         else:
             self.clf = ClassificationSystem(params)
-        self._transactions_df = (
-            transactions_df.sort("timestamp")  # Sort by timestamp
-            .with_columns(
-                predicted_label=self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
-            )  # Add training "predicted_label"
-            .with_columns(
-                pl.when(pl.col("timestamp") > self.attack_start)  # Remove 'predicted_label' for the attack set.
-                .then(None)
-                .otherwise(pl.col("predicted_label"))
-                .alias("predicted_label")
-            )
+        self._transactions_df = transactions_df.sort("timestamp").with_columns(
+            predicted_label=self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
         )
+        if params.classify_simulated_trx:
+            # Remove 'predicted_label' for the attack set.
+            self._transactions_df = self._transactions_df.with_columns(
+                predicted_label=pl.when(pl.col("timestamp") > self.attack_start).then(None).otherwise(pl.col("predicted_label"))
+            )
+
         self.trx_iterator = self._transactions_df.iter_rows(named=True)
         self.next_trx = Transaction(**next(self.trx_iterator))
         self.payers = sorted(Payer.from_df(cards_df, params.aggregation_windows), key=lambda c: c.id)
@@ -70,28 +72,33 @@ class Banksys:
         Automatically called from the constructor.
         """
         logging.info("System warmup for training feature aggregation...")
-        self.fast_forward(self.training_start, make_features=False)
-
+        self._fast_forward(self.training_start, show_progress=True)
         logging.info("Building classifier training features...")
-        features = self.fast_forward(self.attack_start, make_features=True)
+        features = self._fast_forward(self.attack_start, show_progress=True, compute_features=True)
         train_x = pl.DataFrame(features, schema=self.schema)
         train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(pl.DataFrame(train_x), train_y)
 
-    def fast_forward(self, until: datetime, make_features: bool):
+    def _fast_forward(self, until: datetime, *, show_progress: bool = False, compute_features: bool = False):
         """
         Fast forward the system to the given date, adding all the transactions to the
         system but without classifying them.
+
+        Instead, the approximated label is used (i.e. the real label with some noise according
+        to the false positive and false negative rate parameters).
         """
         if until > self.attack_end:
             raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
         start = self.next_trx.timestamp
-        n = self._transactions_df.filter(pl.col("timestamp").is_between(start, until)).height
-        pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=self.silent, mininterval=1.0)
-        features = list[dict]()
+        if show_progress:
+            n = self._transactions_df.filter(pl.col("timestamp").is_between(start, until)).height
+        else:
+            n = 0
+        pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=not show_progress)
         date = start.date()
+        features = list[dict[str, Any]]()
         while self.next_trx.timestamp < until:
-            if make_features:
+            if compute_features:
                 features.append(self.make_transaction_features(self.next_trx))
             self.payers[self.next_trx.payer_id].add(self.next_trx, update_balance=False)
             self.terminals[self.next_trx.terminal_id].add(self.next_trx)
@@ -111,14 +118,12 @@ class Banksys:
         """
         if until > self.attack_end:
             raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
-
         cards = set[int]()
         terms = set[int]()
         batch = list[Transaction]()
-        features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.payer_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch))
+                self.process_transactions(batch)
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -127,9 +132,8 @@ class Banksys:
             batch.append(self.next_trx)
             self.next_trx = Transaction(**next(self.trx_iterator))
         if len(batch) > 0:
-            features.append(self.process_transactions(batch))
+            self.process_transactions(batch)
         self.current_time = until
-        return features
 
     def process_transaction(self, trx: Transaction):
         """
@@ -138,7 +142,10 @@ class Banksys:
         """
         assert trx.predicted_label is None, "Transaction has already been processed !"
         assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
-        self.simulate_until(trx.timestamp)
+        if self.classify_simulated_trx:
+            self.simulate_until(trx.timestamp)
+        else:
+            self._fast_forward(trx.timestamp)
         features = self.make_transaction_features(trx)
         elapsed = trx.timestamp - self.attack_start
         tb_log("features", features, elapsed)
@@ -149,27 +156,18 @@ class Banksys:
         self.payers[trx.payer_id].add(trx, update_balance=True)
         self.terminals[trx.terminal_id].add(trx)
         return features
-        to_add = trx.as_df(with_label=True, with_predicted_label=True)
-        inserting_pos = self._transactions_df.filter(pl.col("timestamp") <= trx.timestamp).height
-        self._transactions_df = pl.concat(
-            [
-                self._transactions_df.slice(0, inserting_pos),
-                to_add,
-                self._transactions_df.slice(inserting_pos),
-            ],
-            how="vertical",
-        )
 
     def process_transactions(self, transactions: list[Transaction]):
         """
-        Receives a list of chronological transactions and processes them, assigning a predicted label to each transaction.
+        Receives a list of independent transactions (no terminal nor payer in common) and processes them,
+        assigning a predicted label to each transaction.
         """
-        # TODO: After 7 days, update the predicted label of all past transactions to
-        # be equal to the real label, to simulate delayed fraud detection.
-        df = pl.DataFrame([self.make_transaction_features(trx) for trx in transactions], schema=self.schema)
+        features = list[dict[str, Any]]()
+        for trx in transactions:
+            assert trx.predicted_label is not None, "`process_transactions` is only intented for simulated transactions, not attack ones"
+            features.append(self.make_transaction_features(trx))
+        df = pl.DataFrame(features, schema=self.schema)
         labels = self.clf.predict(df)
-        # Use transactions labels
-        # labels = pl.Series([trx.is_fraud for trx in transactions])
         for trx, label in zip(transactions, labels):
             trx.predicted_label = label
             self.terminals[trx.terminal_id].add(trx)
@@ -188,18 +186,17 @@ class Banksys:
             **self.terminals[trx.terminal_id].compute_features(trx.timestamp),
         }
 
-    def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float = 0.01, fn_rate: float = 0.01):
+    def _approximate_labels(self, trx: pl.DataFrame, fp_rate: float, fn_rate: float):
         assert 0 <= fp_rate <= 1.0 and 0 <= fn_rate <= 1.0, "Rates must be between 0 and 1"
         # Random values for conditional flipping
-        trx = trx.with_columns(pl.Series("rand", np.random.rand(len(trx))))
+        rand = pl.Series("rand", np.random.rand(len(trx)))
         # Flip logic
         trx = trx.with_columns(
-            pl.when((pl.col("is_fraud") == 1) & (pl.col("rand") < fn_rate))
+            predicted_label=pl.when((pl.col("is_fraud") == 1) & (rand < fn_rate))
             .then(0)
-            .when((pl.col("is_fraud") == 0) & (pl.col("rand") < fp_rate))
+            .when((pl.col("is_fraud") == 0) & (rand < fp_rate))
             .then(1)
             .otherwise(pl.col("is_fraud"))
-            .alias("predicted_label")
         )
         return trx["predicted_label"]
 

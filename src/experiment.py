@@ -37,7 +37,7 @@ class LogItem:
             t_start=t_start,
             t_end=t_end,
             n_transactions=d["episode_len"],
-            card_id=d["card_id"],
+            card_id=d["payer_id"],
             amount_stolen=d["score-0"],
         )
 

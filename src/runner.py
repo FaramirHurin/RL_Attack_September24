@@ -3,6 +3,7 @@ import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal, Optional
 
+import pyinstrument
 import dotenv
 import numpy as np
 import torch
@@ -59,6 +60,7 @@ class Runner:
         del self.prev_states[payer]
         del self.hidden_states[payer]
 
+    @pyinstrument.profile()
     def run(self):
         self.env.reset()
         for _ in range(self.params.pool_size):
@@ -105,9 +107,7 @@ class Runner:
                 avg_score = np.mean(scores[-100:])
                 avg_length = np.mean([len(ep) for ep in episodes[-100:]])
                 pbar.update()
-                pbar.set_description(
-                    f"{self.env.t.date().isoformat()} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}"
-                )
+                pbar.set_description(f"{self.env.isodate} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}")
                 episode_num += 1
                 try:
                     self.agent.update_episode(current_episode, step_num, self.n_spawned)
@@ -158,6 +158,7 @@ def main(
     initial_seed: int = 0,
     n_jobs: int = 1,
 ):
+    utils.init_tb_logger()
     if algorithm == "vae":
         agent = VAEParameters.best_vae(anomaly)
     elif algorithm == "rppo":
@@ -169,9 +170,10 @@ def main(
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
-        clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.1, fn_rate=0.01),
-        env_params=EnvParameters(pool_size=50),
+        clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.01, fn_rate=0.01),
+        env_params=EnvParameters(pool_size=50, n_episodes=1000),
         seed=initial_seed,
+        invalidate_banksys_cache=True,
     )
     exp = Experiment.create(params)
     if n_jobs == 1:
@@ -189,7 +191,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=True, n_repetitions=1, n_jobs=1, with_modification=True)
+        main(algorithm="ppo", anomaly=False, n_repetitions=1, n_jobs=1, with_modification=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

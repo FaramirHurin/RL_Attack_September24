@@ -1,4 +1,3 @@
-import copy
 import os
 import random
 import shutil
@@ -7,15 +6,13 @@ from datetime import datetime, timedelta
 import polars as pl
 
 from banksys import Banksys, Payer, Terminal, Transaction
-from banksys.payer import PREFIX_COUNT as PAYER_PREFIX_COUNT
 from banksys.payer import PREFIX_AVG as PAYER_PREFIX_AVG
+from banksys.payer import PREFIX_COUNT as PAYER_PREFIX_COUNT
 from banksys.terminal import PREFIX_N_TRX as TERMINAL_PREFIX_COUNT
 from banksys.terminal import PREFIX_RISK as TERMINAL_PREFIX_RISK
 from parameters import CardSimParameters, ClassificationParameters, Parameters
 
-from .mocks import mock_banksys, MockClassificationSystem
-
-AGG_WINDOWS = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30))
+from .mocks import MockClassificationSystem, mock_banksys
 
 
 def make_trx(
@@ -68,7 +65,7 @@ def test_invalid_dates():
         pass
 
 
-def test_simulate_until():
+def test_fast_forward():
     """
     Test that the system indeed simulated until the given date
     """
@@ -77,11 +74,12 @@ def test_simulate_until():
 
     max_window = max(bs.aggregation_windows)
 
-    bs.simulate_until(bs.attack_start + max_window / 2)
+    bs._fast_forward(bs.attack_start + max_window / 2, compute_features=False)
     assert bs.next_trx.timestamp >= bs.attack_start + max_window / 2
 
 
 def test_balance_and_date():
+    AGG_WINDOWS = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30))
     transactions = [
         # Warmup
         Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 0
@@ -119,6 +117,7 @@ def test_balance_and_date():
 
 
 def test_n_transacations_per_card():
+    AGG_WINDOWS = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30))
     transactions = [
         # Warmup
         Transaction(100, datetime(2023, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=False),  # 0
@@ -160,6 +159,7 @@ def test_n_transacations_per_card():
 
 
 def test_make_features():
+    AGG_WINDOWS = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30))
     cards = pl.DataFrame([Payer(0, 10, 25, 500, AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)])
     terminals = pl.DataFrame([Terminal(0, 75, 95, AGG_WINDOWS), Terminal(1, 17, 56, AGG_WINDOWS)])
     # End of the warmup on the 2023-01-10 + 30 days = 2023-01-31
@@ -261,6 +261,7 @@ def test_save_load():
 
 
 def test_aggregated_features():
+    AGG_WINDOWS = (timedelta(weeks=1),)
     payers = pl.DataFrame([Payer(0, 10, 25, balance=990, agg_windows=AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)])
     terminals = pl.DataFrame([Terminal(index, 75, 95, AGG_WINDOWS) for index in range(20)])
 
@@ -282,28 +283,37 @@ def test_aggregated_features():
         Transaction(190, datetime(2024, 1, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=True),
     ]
     trx_df = pl.DataFrame(transactions)
-    clf = MockClassificationSystem([t.is_fraud for t in transactions])
+    clf = MockClassificationSystem()
     system = Banksys(
         trx_df,
         payers,
         terminals,
-        params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
+        params=ClassificationParameters(
+            training_duration=timedelta(days=30),
+            balance_factor=1,
+            aggregation_windows=AGG_WINDOWS,
+        ),
         clf=clf,
     )
-    trx_0 = Transaction(190, datetime(2023, 8, 1), terminal_id=0, payer_id=0, is_online=False, is_fraud=True)
-    features = system.make_transaction_features(trx_0)
-    aggr_1_day_0 = features.pop(f"{PAYER_PREFIX_COUNT}{timedelta(weeks=1)}")
-    assert aggr_1_day_0 == 0, "There should be no transactions in the last week before processing the first transaction"
-    clf.set_next_predictions(True)
-    system.process_transaction(trx_0)
 
-    for index in range(4):
-        day = index + 1
-        trx_1 = Transaction(200, datetime(2023, 8, 1 + day), terminal_id=index, payer_id=0, is_online=False, is_fraud=True)
-        features_1 = system.make_transaction_features(trx_1)
-        aggr_1_day = features_1.pop(f"{PAYER_PREFIX_COUNT}{timedelta(weeks=1)}")
-        system.process_transaction(trx_1)
-        assert aggr_1_day == aggr_1_day_0 + 1, (
-            "The number of transactions in the last day should be incremented by 1 after processing a new transaction"
+    system.payers[0].balance = 10_000
+    KEY_PAYER = f"{PAYER_PREFIX_COUNT}{timedelta(weeks=1)}"
+    KEY_TERM = f"{TERMINAL_PREFIX_COUNT}{timedelta(weeks=1)}"
+    START_DATE = datetime(2023, 8, 1)
+    for delta_days in range(6):
+        hour = random.randint(0, 23)
+        is_online = random.random() > 0.5
+        features = system.process_transaction(
+            Transaction(
+                10,
+                START_DATE + timedelta(days=delta_days, hours=hour),
+                terminal_id=0,
+                payer_id=0,
+                is_online=is_online,
+                is_fraud=True,
+            )
         )
-        aggr_1_day_0 = copy.copy(aggr_1_day)
+        assert features[KEY_PAYER] == delta_days, "At day N, the number of weekly transactions for the payer should be N"
+        assert features[KEY_TERM] == delta_days, "At day N, the number of weekly transactions for the terminal should be N"
+        assert features["hour"] == hour, "The hour feature should match the transaction hour"
+        assert features["is_online"] == is_online, "The is_online feature should match the transaction is_online value"

@@ -58,7 +58,7 @@ def test_observation():
 
     action = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
     env.buffer_action(action.to_numpy(), payer)
-    bs.simulate_until(env.t + action.timedelta)
+    bs._fast_forward(env.t + action.timedelta, compute_features=False)
     clf.set_next_predictions(True)  # Next transaction will be detected as a fraud
     payer, step, _ = env.step()
     assert payer.balance == 990

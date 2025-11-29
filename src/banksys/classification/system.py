@@ -2,7 +2,6 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
 import numpy.typing as npt
-import pandas as pd
 import polars as pl
 import numpy as np
 from imblearn.ensemble import BalancedRandomForestClassifier

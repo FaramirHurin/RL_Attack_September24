@@ -2,11 +2,18 @@ from typing import Any
 import polars as pl
 from datetime import datetime, timedelta
 from dataclasses import Field
+import logging
+from functools import lru_cache
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 
-writer = SummaryWriter()
+writer = None
+
+
+def init_tb_logger(log_dir: str | None = None):
+    global writer
+    writer = SummaryWriter(log_dir)
 
 
 def fields2schema(fields: list[Field]) -> dict:
@@ -45,7 +52,15 @@ def serialize_unknown(data):
     raise NotImplementedError(f"Unsupported serialization for type: {type(data)}. Value={data}")
 
 
+@lru_cache(None)
+def _warn_once(msg: str):
+    logging.warning(msg)
+
+
 def tb_log(tag: str, value, step: int | timedelta):
+    if writer is None:
+        _warn_once("TensorBoard writer is not initialized.")
+        return
     if isinstance(step, timedelta):
         step = int(step.total_seconds())
     match value:

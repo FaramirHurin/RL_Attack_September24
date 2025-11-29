@@ -7,7 +7,7 @@ params = Parameters(
     PPOParameters(),
     CardSimParameters(),
     ClassificationParameters(),
-    discard_banksys_cache=True,
+    invalidate_banksys_cache=True,
 )
 
 env = params.make_env()

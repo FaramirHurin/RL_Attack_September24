@@ -19,8 +19,8 @@ def setup(use_anomaly: bool):
     params = Parameters(cardsim=CARDSIM_PARAMS)
     banksys = params.load_banksys()
     # Perform the fit by hand
-    banksys.fast_forward(banksys.training_start)
-    features = banksys.fast_forward(banksys.attack_start)
+    banksys._fast_forward(banksys.training_start)
+    features = banksys._fast_forward(banksys.attack_start)
     train_x = pl.DataFrame(features)
     train_y = banksys.training_set["is_fraud"].to_numpy().astype(np.bool)
     banksys.save(f"after-warmup-{use_anomaly}")
