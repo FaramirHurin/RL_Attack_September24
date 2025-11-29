@@ -5,7 +5,7 @@ from parameters import EnvParameters
 from copy import deepcopy
 import numpy as np
 
-from .mocks import mock_banksys
+from .mocks import mock_banksys, MockClassificationSystem
 
 # NOTE: mock_banksys is a fixture that provides a mocked Banksys instance with a mock classification system. It is defined in conftest.py.
 
@@ -29,29 +29,40 @@ def test_obs_size():
 
 def test_observation():
     bs = mock_banksys()
+    clf = clf = MockClassificationSystem()
+    bs.clf = clf
     env = CardSimEnv(bs, EnvParameters(avg_card_block_delay=timedelta(days=1)))
 
     payer, obs, _ = env.spawn_payer()
     payer.balance = 1000
     # Manually set the actual expiration to the expected one for determinism
     env.payer_registry.actual_expirations[payer] = env.payer_registry.expected_expirations[payer]
-    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = obs.data
-    assert n_attacks == 0
+    hour_ratio, time_remaining, prev_fraud_time, total_stolen, balance_upper_bound, *days, x, y = obs.data
+    assert prev_fraud_time == -1.0  # No previous frauds
     assert time_remaining == 1.0
     assert hour_ratio == env.t.hour / 24
     assert balance_upper_bound == -1.0  # Not blocked yet, so no upper bound
     assert total_stolen == 0.0
 
-    env.buffer_action(Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1).to_numpy(), payer)
+    action = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
+    env.buffer_action(action.to_numpy(), payer)
     payer, step, _ = env.step()
     assert payer.balance == 990
 
-    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = step.obs.data
-    assert n_attacks == 1
+    hour_ratio, time_remaining, prev_fraud_time, total_stolen, balance_upper_bound, *days, x, y = step.obs.data
+    assert prev_fraud_time == 1 / 24
     assert time_remaining == 23 / 24
     assert hour_ratio == env.t.hour / 24
     assert total_stolen == 10.0 / 100.0
     assert balance_upper_bound == -1.0
+
+    action = Action(amount=10, terminal_x=0, terminal_y=0, is_online=True, delay_hours=1)
+    env.buffer_action(action.to_numpy(), payer)
+    bs.simulate_until(env.t + action.timedelta)
+    clf.set_next_predictions(True)  # Next transaction will be detected as a fraud
+    payer, step, _ = env.step()
+    assert payer.balance == 990
+    assert step.done
 
 
 def test_card_blocked_zero_reward():
@@ -64,11 +75,11 @@ def test_card_blocked_zero_reward():
     assert step.reward.item() == 0.0, "Reward should be zero when card is blocked due to insufficient balance"
     assert not step.done
 
-    hour_ratio, time_remaining, total_stolen, n_attacks, balance_upper_bound, *days, x, y = step.obs.data
+    hour_ratio, time_remaining, prev_fraud_time, total_stolen, balance_upper_bound, *days, x, y = step.obs.data
     assert hour_ratio == env.t.hour / 24
     assert time_remaining == 23 / 24
+    assert prev_fraud_time == -1.0
     assert total_stolen == 0.0
-    assert n_attacks == 1
     assert balance_upper_bound == 10.0 / 100.0
 
 

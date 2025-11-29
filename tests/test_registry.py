@@ -12,7 +12,7 @@ def test_time_ratio():
         Payer(2, 31, 74, 23, AGG_WINDOWS),
         Payer(3, 87, 65, 18, AGG_WINDOWS),
     ]
-    registry = PayerRegistry(payers, timedelta(days=1))
+    registry = PayerRegistry(payers, timedelta(days=1), datetime(2023, 1, 1))
     t = datetime(2023, 1, 1)
     card = registry.release_payer(t)
     assert registry._get_remaining_time_ratio(card, t) == 1.0

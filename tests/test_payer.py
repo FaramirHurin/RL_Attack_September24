@@ -8,15 +8,15 @@ AGG_WINDOWS = (timedelta(hours=12),)
 
 def test_balance():
     c = Payer(0, 0, 0, 20, AGG_WINDOWS)
-    t = Transaction(20, datetime.now(), 0, 0, False, True)
+    t = Transaction(20, datetime.now(), 0, 0, False, True, predicted_label=False)
     c.add(t, update_balance=False)
 
     assert c.balance == 20
-    t2 = Transaction(10, datetime.now(), 0, 0, False, True)
+    t2 = Transaction(10, datetime.now(), 0, 0, False, True, predicted_label=False)
     c.add(t2, update_balance=True)
     assert c.balance == 10
 
-    t3 = Transaction(15, datetime.now(), 0, 0, False, True)
+    t3 = Transaction(15, datetime.now(), 0, 0, False, True, predicted_label=False)
     try:
         c.add(t3, update_balance=True)
         assert False, "Expected InsufficientFundsError"
@@ -31,7 +31,7 @@ def test_features():
     for k, v in features.items():
         assert v == 0.0, f"Expected 0.0 for {k}, got {v}"
 
-    trx = Transaction(100, datetime(2023, 1, 9), 0, 0, True, False)
+    trx = Transaction(100, datetime(2023, 1, 9), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
     assert features[f"{PREFIX_COUNT}{timedelta(days=1)}"] == 1.0
@@ -39,7 +39,7 @@ def test_features():
     assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 1.0
     assert features[f"{PREFIX_AVG}{timedelta(days=7)}"] == 100.0
 
-    trx = Transaction(120, datetime(2023, 1, 14, hour=17), 0, 0, True, False)
+    trx = Transaction(120, datetime(2023, 1, 14, hour=17), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
     assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 2
@@ -47,7 +47,7 @@ def test_features():
     assert features[f"{PREFIX_COUNT}{timedelta(days=1)}"] == 1
     assert features[f"{PREFIX_AVG}{timedelta(days=1)}"] == 120.0
 
-    trx = Transaction(180, datetime(2023, 1, 18, hour=18), 0, 0, True, False)
+    trx = Transaction(180, datetime(2023, 1, 18, hour=18), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
     assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 2.0

@@ -4,7 +4,7 @@ import random
 
 
 class PayerRegistry:
-    def __init__(self, payers: list[Payer], avg_block_delay: timedelta):
+    def __init__(self, payers: list[Payer], avg_block_delay: timedelta, attack_start: datetime):
         self.all_payers = {payer.id: payer for payer in payers}
         self.payers = payers.copy()
         self.expected_expirations = dict[Payer, datetime]()
@@ -16,6 +16,7 @@ class PayerRegistry:
         self.previous_frauds = dict[Payer, list[Transaction]]()
         self.sufficient_funds = dict[Payer, bool]()
         self.balance_upper_bound = dict[Payer, float]()
+        self.attack_start = attack_start
 
     def release_payer(self, t: datetime):
         """
@@ -67,10 +68,10 @@ class PayerRegistry:
         balance_upper_bound = self.balance_upper_bound.get(payer, None)
         if len(successful_frauds) == 0:
             total_stolen = 0.0
-            prev_fraud_time = 0.0
+            prev_fraud_time = -1.0
         else:
             total_stolen = sum(trx.amount for trx in successful_frauds)
-            prev_fraud_time = (successful_frauds[-1].timestamp - t).total_seconds() / self.expected_lifespan
+            prev_fraud_time = (successful_frauds[-1].timestamp - self.attack_start).total_seconds() / self.expected_lifespan
         return [
             self._get_remaining_time_ratio(payer, t),
             prev_fraud_time,

@@ -28,6 +28,7 @@ class Terminal:
         self._risk_feature_names = [f"{PREFIX_RISK}{window}" for window in self._genuine_window.aggregation_windows]
 
     def add(self, trx: Transaction):
+        assert trx.predicted_label is not None
         if trx.fraud_is_detected:
             self._fraud_window.add(trx)
         else:

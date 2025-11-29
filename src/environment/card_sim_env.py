@@ -25,7 +25,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     ):
         self.attackable_terminals = random.sample(system.terminals, round(len(system.terminals) * params.terminal_fract))
         self.system = system
-        self.payer_registry = PayerRegistry(system.payers, params.avg_block_delay)
+        self.payer_registry = PayerRegistry(system.payers, params.avg_block_delay, system.attack_start)
         self.customer_location_is_known = params.customer_location_is_known
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()

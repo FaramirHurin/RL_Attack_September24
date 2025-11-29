@@ -32,6 +32,7 @@ class Payer:
         self._avg_feature_names = [f"{PREFIX_AVG}{window}" for window in self._window.aggregation_windows]
 
     def add(self, trx: Transaction, update_balance: bool):
+        assert trx.predicted_label is not None
         if trx.fraud_is_detected:
             return
         if update_balance:

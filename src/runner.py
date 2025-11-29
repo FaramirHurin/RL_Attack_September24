@@ -169,7 +169,7 @@ def main(
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
-        clf_params=ClassificationParameters(use_anomaly=anomaly),
+        clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.1, fn_rate=0.01),
         env_params=EnvParameters(pool_size=50),
         seed=initial_seed,
     )
@@ -180,6 +180,7 @@ def main(
 
 
 if __name__ == "__main__":
+    # Le problème c'est que le score de risque augmente jusqu'à atteindre 1.0 dans les terminaux de paiement.
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "info").upper()  # info
     logging.basicConfig(

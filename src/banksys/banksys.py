@@ -3,7 +3,7 @@ import os
 import pickle
 from functools import cached_property
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 from tqdm import tqdm
@@ -60,7 +60,8 @@ class Banksys:
         self.payers = sorted(Payer.from_df(cards_df, params.aggregation_windows), key=lambda c: c.id)
         self.terminals = sorted(Terminal.from_df(terminals_df, params.aggregation_windows), key=lambda t: t.id)
         self.aggregation_windows = params.aggregation_windows
-        self.schema = self.fit()
+        self.schema = pl.DataFrame(self.make_transaction_features(self.next_trx)).schema
+        self.fit()
 
     def fit(self):
         """
@@ -69,16 +70,15 @@ class Banksys:
         Automatically called from the constructor.
         """
         logging.info("System warmup for training feature aggregation...")
-        self.fast_forward(self.training_start)
+        self.fast_forward(self.training_start, make_features=False)
 
         logging.info("Building classifier training features...")
-        features = self.fast_forward(self.attack_start)
-        train_x = pl.DataFrame(features)
+        features = self.fast_forward(self.attack_start, make_features=True)
+        train_x = pl.DataFrame(features, schema=self.schema)
         train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(pl.DataFrame(train_x), train_y)
-        return train_x.schema
 
-    def fast_forward(self, until: datetime):
+    def fast_forward(self, until: datetime, make_features: bool):
         """
         Fast forward the system to the given date, adding all the transactions to the
         system but without classifying them.
@@ -88,10 +88,11 @@ class Banksys:
         start = self.next_trx.timestamp
         n = self._transactions_df.filter(pl.col("timestamp").is_between(start, until)).height
         pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=self.silent, mininterval=1.0)
-        features = list[dict[str, Any]]()
+        features = list[dict]()
         date = start.date()
         while self.next_trx.timestamp < until:
-            features.append(self.make_transaction_features(self.next_trx))
+            if make_features:
+                features.append(self.make_transaction_features(self.next_trx))
             self.payers[self.next_trx.payer_id].add(self.next_trx, update_balance=False)
             self.terminals[self.next_trx.terminal_id].add(self.next_trx)
             if self.next_trx.timestamp.date() != date:

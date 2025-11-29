@@ -37,8 +37,8 @@ class Parameters:
         seed: int = 0,
         cache_root: str | None = None,
         *,
-        regenerate_dataset: bool = False,
-        regenerate_banksys: bool = False,
+        discard_dataset_cache: bool = False,
+        discard_banksys_cache: bool = False,
     ):
         ######################################
         # Set the seed before ANYTHING else  #
@@ -59,10 +59,9 @@ class Parameters:
         if env_params is None:
             env_params = EnvParameters()
         self.env_params = env_params
-        if regenerate_dataset:
+        if discard_dataset_cache:
             shutil.rmtree(self.dataset_dir)
-            regenerate_banksys = True
-        if regenerate_banksys:
+        if discard_banksys_cache:
             try:
                 os.remove(self.banksys_file)
             except OSError:
