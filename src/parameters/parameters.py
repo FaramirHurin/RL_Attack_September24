@@ -2,7 +2,6 @@ import os
 import random
 import shutil
 from dataclasses import dataclass
-from functools import cached_property
 from typing import Optional
 
 import numpy as np
@@ -35,21 +34,14 @@ class Parameters:
         clf_params: Optional[ClassificationParameters] = None,
         env_params: Optional[EnvParameters] = None,
         seed: int = 0,
-        cache_root: str | None = None,
+        cache_root: str = "cache",
         *,
         invalidate_dataset_cache: bool = False,
         invalidate_banksys_cache: bool = False,
     ):
-        ######################################
-        # Set the seed before ANYTHING else  #
-        ######################################
         self.seed = seed
-        self.seed_random()
-
         self.agent = agent
-        if cache_root is None:
-            cache_root = os.path.join("cache", f"seed-{seed}")
-        self.cache_root = cache_root
+        self.cache_root = os.path.join(cache_root, f"seed-{seed}")
         if cardsim is None:
             cardsim = CardSimParameters()
         self.cardsim = cardsim
@@ -73,6 +65,7 @@ class Parameters:
         self.clf_params.save(self.dataset_dir)
 
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
+        self.seed_random()
         match self.agent:
             case None:
                 raise ValueError("Agent is not set. Please provide an agent.")
@@ -111,6 +104,17 @@ class Parameters:
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
 
+    def repeat(self, n: int):
+        for i in range(n):
+            yield Parameters(
+                agent=self.agent,
+                cardsim=self.cardsim,
+                clf_params=self.clf_params,
+                env_params=self.env_params,
+                seed=self.seed + i,
+                cache_root=self.cache_root,
+            )
+
     @property
     def agent_name(self) -> str:
         if self.agent is None:
@@ -118,6 +122,7 @@ class Parameters:
         return self.agent.name
 
     def make_env(self):
+        self.seed_random()
         banksys = self.load_banksys()
         return CardSimEnv(banksys, self.env_params)
 
@@ -125,11 +130,12 @@ class Parameters:
     def banksys_file(self):
         return self.clf_params.banksys_file(self.dataset_dir)
 
-    @cached_property
+    @property
     def dataset_dir(self):
         return self.cardsim.cache_dir(self.cache_root)
 
     def load_banksys(self):
+        self.seed_random()
         transactions, payers, terminals = self.cardsim.get_simulation_data(self.cache_root)
         if os.path.exists(self.banksys_file):
             from banksys import Banksys

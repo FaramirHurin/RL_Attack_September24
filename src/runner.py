@@ -3,7 +3,6 @@ import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal, Optional
 
-import pyinstrument
 import dotenv
 import numpy as np
 import torch
@@ -11,7 +10,6 @@ from marlenv import Episode, Observation, State, Transition
 from tqdm import tqdm
 
 from banksys import Payer
-from environment import CardSimEnv
 from exceptions import AttackPeriodExpired
 from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters, EnvParameters
 from experiment import Experiment, Run
@@ -22,7 +20,6 @@ class Runner:
     def __init__(
         self,
         params: Parameters,
-        env: Optional[CardSimEnv] = None,
         quiet: bool = False,
         device: Optional[torch.device] = None,
     ):
@@ -33,9 +30,7 @@ class Runner:
         self.prev_obs = dict[Payer, Observation]()
         self.prev_states = dict[Payer, State]()
         self.hidden_states = dict[Payer, Optional[torch.Tensor]]()
-        if env is None:
-            env = params.make_env()
-        self.env = env
+        self.env = params.make_env()
         self.agent = params.make_agent(self.env, device)
         self.quiet = quiet
         self.n_spawned = 0
@@ -60,7 +55,6 @@ class Runner:
         del self.prev_states[payer]
         del self.hidden_states[payer]
 
-    @pyinstrument.profile()
     def run(self):
         self.env.reset()
         for _ in range(self.params.pool_size):
@@ -173,7 +167,7 @@ def main(
         clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.01, fn_rate=0.01),
         env_params=EnvParameters(pool_size=50, n_episodes=1000),
         seed=initial_seed,
-        invalidate_banksys_cache=True,
+        invalidate_banksys_cache=False,
     )
     exp = Experiment.create(params)
     if n_jobs == 1:
@@ -191,7 +185,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=False, n_repetitions=1, n_jobs=1, with_modification=False)
+        main(algorithm="ppo", anomaly=False, n_repetitions=1, initial_seed=1, n_jobs=1, with_modification=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

@@ -3,6 +3,7 @@ from datetime import datetime
 from functools import cached_property
 from typing import Any, Optional
 import logging
+from copy import deepcopy
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -196,15 +197,20 @@ class Experiment:
         logging.debug(f"Loaded {len(results)} logs from {self.logdir}")
         return results
 
-    def repeat(self, n: int, initial_seed: Optional[int] = None):
-        """
-        Repeat the experiment n times.
-        """
-        if initial_seed is None:
-            initial_seed = self.params.seed + self.n_runs
-        for seed in range(initial_seed, initial_seed + n):
-            run = os.path.join(self.logdir, f"run-{seed}")
-            yield replace(self.params, seed=seed), run
+    def repeat(self, n: int):
+        for seed in range(self.params.seed, self.params.seed + n):
+            rundir = os.path.join(self.logdir, f"run-{seed}")
+            yield (
+                Parameters(
+                    agent=deepcopy(self.params.agent),
+                    cardsim=deepcopy(self.params.cardsim),
+                    clf_params=deepcopy(self.params.clf_params),
+                    env_params=deepcopy(self.params.env_params),
+                    cache_root=self.params.cache_root,
+                    seed=seed,
+                ),
+                rundir,
+            )
 
     @property
     def n_runs(self):

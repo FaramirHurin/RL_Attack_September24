@@ -1,6 +1,7 @@
 from parameters import Parameters, CardSimParameters, PPOParameters, VAEParameters, ClassificationParameters
 import os
-
+from datetime import datetime
+import shutil
 
 CACHE_ROOT = os.path.join("cache")
 
@@ -41,3 +42,20 @@ def test_cache_dir():
     p3 = Parameters(seed=1)
     assert p1.cache_root != p2.cache_root
     assert p1.cache_root == p3.cache_root
+
+
+def test_parameters_repeated():
+    CACHE_ROOT = f"{datetime.now().timestamp()}"
+    shutil.rmtree(CACHE_ROOT, ignore_errors=True)
+    params = Parameters(cache_root=CACHE_ROOT, cardsim=CardSimParameters(n_days=90, n_payers=20))
+    dataset_dirs = set()
+    banksys_files = set()
+    for p in params.repeat(3):
+        p.seed_random()
+        p.make_env()
+        dataset_dirs.add(p.dataset_dir)
+        banksys_files.add(p.banksys_file)
+
+    assert len(dataset_dirs) == 3
+    assert len(banksys_files) == 3
+    shutil.rmtree(CACHE_ROOT, ignore_errors=True)
