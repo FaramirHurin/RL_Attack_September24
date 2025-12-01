@@ -139,7 +139,7 @@ class Banksys:
             return pl.DataFrame(schema=self.schema)
         return pl.concat(features)
 
-    def process_transaction(self, trx: Transaction):
+    def process_transaction(self, trx: Transaction, *, compute_other_features: bool = False):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
@@ -149,7 +149,7 @@ class Banksys:
         if self.classify_simulated_trx:
             other_features = self._simulate_until(trx.timestamp)
         else:
-            other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=True), schema=self.schema)
+            other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=compute_other_features), schema=self.schema)
         features = self.make_transaction_features(trx)
         elapsed = trx.timestamp - self.attack_start
         tb_log("features", features, elapsed)

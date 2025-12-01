@@ -135,7 +135,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 is_fraud=True,
             )
             try:
-                features, other_features = self.system.process_transaction(trx)
+                features, other_features = self.system.process_transaction(trx, compute_other_features=True)
                 self.fraud_features[self.t] = features
                 self.other_features[self.t] = other_features
                 if trx.fraud_is_detected:

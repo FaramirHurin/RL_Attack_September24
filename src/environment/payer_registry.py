@@ -6,7 +6,6 @@ import random
 class PayerRegistry:
     def __init__(self, payers: list[Payer], avg_block_delay: timedelta, attack_start: datetime):
         self.all_payers = {payer.id: payer for payer in payers}
-        self.payers = payers.copy()
         self.expected_expirations = dict[Payer, datetime]()
         self.actual_expirations = dict[Payer, datetime]()
         self.release_dates = dict[Payer, datetime]()
@@ -22,8 +21,8 @@ class PayerRegistry:
         """
         Release a random (not blocked) payer and set the expiration date according to the current time.
         """
-        index = random.randint(0, len(self.payers) - 1)
-        payer = self.payers.pop(index)
+        payer_id = random.randint(0, len(self.all_payers) - 1)
+        payer = self.all_payers[payer_id]
         expected_expiration = t + self.avg_block_delay
         self.release_dates[payer] = t
         self.expected_expirations[payer] = expected_expiration
@@ -40,7 +39,6 @@ class PayerRegistry:
         return self.expected_expirations[payer] < t
 
     def reset(self):
-        self.payers = list(self.all_payers.values())
         self.expected_expirations.clear()
         self.actual_expirations.clear()
         self.release_dates.clear()
