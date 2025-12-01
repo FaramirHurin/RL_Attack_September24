@@ -56,7 +56,6 @@ class Runner:
         del self.hidden_states[payer]
 
     def run(self):
-        self.env.reset()
         for _ in range(self.params.pool_size):
             self.spawn_payer_and_buffer_action()
 
@@ -65,7 +64,12 @@ class Runner:
         step_num, episode_num = 0, 0
         total, avg_score, avg_length = 0.0, 0.0, 0.0
         scores = list[float]()
-        pbar = tqdm(total=self.params.n_episodes, disable=self.quiet, unit="episode")
+        pbar = tqdm(
+            total=self.params.n_episodes,
+            disable=self.quiet,
+            unit="episode",
+            desc=f"{self.env.isodate} avg score={avg_score:.2f} - len-avg={avg_length:.2f} - total={total:.2f}",
+        )
 
         while episode_num < self.params.n_episodes:
             step_num += 1
@@ -159,6 +163,7 @@ def main(
         agent = PPOParameters.best_rppo(anomaly)
     elif algorithm == "ppo":
         agent = PPOParameters.best_ppo(anomaly)
+        agent.normalize_rewards = False
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
@@ -185,7 +190,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=False, n_repetitions=1, initial_seed=1, n_jobs=1, with_modification=False)
+        main(algorithm="ppo", anomaly=False, initial_seed=4, n_repetitions=1, n_jobs=1, with_modification=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

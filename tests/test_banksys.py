@@ -195,7 +195,7 @@ def test_make_features():
     )
 
     def verify(trx: Transaction):
-        features = system.process_transaction(trx)
+        features, _ = system.process_transaction(trx)
         trx.predicted_label = True
         assert features.pop("amount") == trx.amount
         assert features.pop("is_online") == trx.is_online
@@ -303,7 +303,7 @@ def test_aggregated_features():
     for delta_days in range(6):
         hour = random.randint(0, 23)
         is_online = random.random() > 0.5
-        features = system.process_transaction(
+        features, _ = system.process_transaction(
             Transaction(
                 10,
                 START_DATE + timedelta(days=delta_days, hours=hour),

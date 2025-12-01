@@ -40,8 +40,8 @@ def test_cache_dir():
     p1 = Parameters(seed=1)
     p2 = Parameters(seed=2)
     p3 = Parameters(seed=1)
-    assert p1.cache_root != p2.cache_root
-    assert p1.cache_root == p3.cache_root
+    assert p1.cache_dir != p2.cache_dir
+    assert p1._cache_root == p3._cache_root
 
 
 def test_parameters_repeated():
@@ -58,4 +58,28 @@ def test_parameters_repeated():
 
     assert len(dataset_dirs) == 3
     assert len(banksys_files) == 3
+    shutil.rmtree(CACHE_ROOT, ignore_errors=True)
+
+
+def test_repeat_different_dataset_dir_for_differnet_seeds():
+    CACHE_ROOT = f"{datetime.now().timestamp()}"
+    shutil.rmtree(CACHE_ROOT, ignore_errors=True)
+    params = Parameters(cache_root=CACHE_ROOT)
+    for p in params.repeat(30):
+        if p.seed == params.seed:
+            continue
+        assert p.dataset_dir != params.dataset_dir
+        assert p.banksys_file != params.banksys_file
+        assert p._cache_root == params._cache_root
+    shutil.rmtree(CACHE_ROOT, ignore_errors=True)
+
+
+def test_directories():
+    CACHE_ROOT = f"{datetime.now().timestamp()}"
+    params = Parameters(cache_root=CACHE_ROOT)
+    for p in params.repeat(10):
+        assert p.cache_dir.startswith(p._cache_root)
+        assert p.dataset_dir.startswith(p.cache_dir)
+        assert p.banksys_dir.startswith(p.dataset_dir)
+        assert p.banksys_file.startswith(p.banksys_dir)
     shutil.rmtree(CACHE_ROOT, ignore_errors=True)

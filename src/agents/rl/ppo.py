@@ -117,7 +117,7 @@ class PPO(Agent):
         self.c2.update(episode_num)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
-
+        x = torch.argmin(log_probs)
         critic_losses, actor_losses, entropy_losses, losses, ratios = [], [], [], [], []
         for _ in range(self.n_epochs):
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
@@ -140,6 +140,7 @@ class PPO(Agent):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
             new_log_probs = mini_policy.log_prob(minibatch.actions)
+            y = torch.argmin(new_log_probs)
 
             ratio = torch.exp(new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratio
@@ -201,37 +202,5 @@ class PPO(Agent):
                 self.memory.clear()
 
     @property
-    def networks(self):
-        """Dynamic list of neural networks attributes in the trainer"""
-        return [nn for nn in self.__dict__.values() if isinstance(nn, torch.nn.Module)]
-
-    @property
     def device(self):
         return self._device
-
-    def randomize(self, method: Literal["xavier", "orthogonal"] = "xavier"):
-        """Randomize the state of the trainer."""
-        match method:
-            case "xavier":
-                rinit = torch.nn.init.xavier_uniform_
-            case "orthogonal":
-                rinit = torch.nn.init.orthogonal_
-            case _:
-                raise ValueError(f"Unknown randomization method: {method}")
-        for nn in self.networks:
-            randomize(rinit, nn)
-
-    def to(self, device: torch.device):
-        """Send the networks to the given device."""
-        self._device = device
-        for nn in self.networks:
-            nn.to(device)
-        return self
-
-
-def randomize(init_fn, nn: torch.nn.Module):
-    for param in nn.parameters():
-        if len(param.data.shape) < 2:
-            init_fn(param.data.view(1, -1))
-        else:
-            init_fn(param.data)

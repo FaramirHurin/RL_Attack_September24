@@ -14,7 +14,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, cache_root: str):
+    def get_simulation_data(self, cache_dir: str):
         from cardsim import Cardsim
 
         if self.ulb_data:
@@ -50,14 +50,14 @@ class CardSimParameters:
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
-            cache_dir=self.cache_dir(cache_root),
+            cache_dir=self.cache_dir(cache_dir),
             with_modification=self.with_modification,
         )
 
-    def cache_dir(self, cache_root: str):
+    def cache_dir(self, cache_dir: str):
         serialized = orjson.dumps(self, default=serialize_unknown)
         hash_digest = hashlib.sha256(serialized).hexdigest()
-        return os.path.join(cache_root, hash_digest)
+        return os.path.join(cache_dir, hash_digest)
 
     @staticmethod
     def paper_params(with_modification: bool, ulb_data: bool = False):
@@ -74,8 +74,7 @@ class CardSimParameters:
             ulb_data=ulb_data,
         )
 
-    def save(self, cache_root: str):
-        directory = self.cache_dir(cache_root)
+    def save(self, directory: str):
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, "simulation_params.json"), "wb") as f:
             f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))

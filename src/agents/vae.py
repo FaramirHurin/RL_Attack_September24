@@ -265,16 +265,17 @@ class VaeAgent(Agent):
 
         # Select the closest transaction in time
         trx = small_df.loc[small_df["delay_hours"].idxmin()]
-        as_dict = trx.to_dict()
-        action = Action(
-            amount=as_dict["amount"],
-            terminal_x=as_dict["terminal_x"],
-            terminal_y=as_dict["terminal_y"],
-            is_online=as_dict["is_online"],
-            delay_hours=as_dict["delay_hours"],
-            # is_credit=as_dict["is_credit"],
-        )
-        return action.to_numpy(), None
+        action = trx.to_numpy()
+        # as_dict = trx.to_dict()
+        # action = Action(
+        #    amount=as_dict["amount"],
+        #    terminal_x=as_dict["terminal_x"],
+        #    terminal_y=as_dict["terminal_y"],
+        #    is_online=as_dict["is_online"],
+        #    delay_hours=as_dict["delay_hours"],
+        #    # is_credit=as_dict["is_credit"],
+        # )
+        return action, None
 
     @staticmethod
     def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Payer"]) -> pd.DataFrame:

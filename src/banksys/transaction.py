@@ -59,7 +59,7 @@ class Transaction:
         return pl.DataFrame(data)
 
     @classmethod
-    def field_names(cls, with_predicted_label: bool = True) -> list[str]:
+    def field_names(cls, with_predicted_label: bool = True):
         import inspect
 
         members = inspect.getmembers(cls)

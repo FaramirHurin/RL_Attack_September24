@@ -38,7 +38,7 @@ def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, 
         banksys.clf = ClassificationSystem(params)
         banksys.clf.fit(train_x, train_y)
 
-        dfs = banksys.simulate_until(banksys.attack_start + timedelta(days=30))
+        dfs = banksys._simulate_until(banksys.attack_start + timedelta(days=30))
         test_x = pl.concat(dfs)
         predicted = banksys.clf.predict(test_x)
         details = banksys.clf.get_details().describe()

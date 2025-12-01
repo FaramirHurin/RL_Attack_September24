@@ -198,19 +198,9 @@ class Experiment:
         return results
 
     def repeat(self, n: int):
-        for seed in range(self.params.seed, self.params.seed + n):
-            rundir = os.path.join(self.logdir, f"run-{seed}")
-            yield (
-                Parameters(
-                    agent=deepcopy(self.params.agent),
-                    cardsim=deepcopy(self.params.cardsim),
-                    clf_params=deepcopy(self.params.clf_params),
-                    env_params=deepcopy(self.params.env_params),
-                    cache_root=self.params.cache_root,
-                    seed=seed,
-                ),
-                rundir,
-            )
+        for p in self.params.repeat(n):
+            rundir = os.path.join(self.logdir, f"run-{p.seed}")
+            yield p, rundir
 
     @property
     def n_runs(self):

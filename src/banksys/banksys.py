@@ -111,7 +111,7 @@ class Banksys:
         self.current_time = until
         return features
 
-    def simulate_until(self, until: datetime):
+    def _simulate_until(self, until: datetime):
         """
         Simulate the system until the given date, processing all transactions up to that date (excluded).
         A "predicted label" is assigned to each transaction via the classification system.
@@ -121,9 +121,10 @@ class Banksys:
         cards = set[int]()
         terms = set[int]()
         batch = list[Transaction]()
+        features = list[pl.DataFrame]()
         while self.next_trx.timestamp < until:
             if self.next_trx.payer_id in cards or self.next_trx.terminal_id in terms:
-                self.process_transactions(batch)
+                features.append(self.process_transactions(batch))
                 cards.clear()
                 terms.clear()
                 batch.clear()
@@ -132,8 +133,11 @@ class Banksys:
             batch.append(self.next_trx)
             self.next_trx = Transaction(**next(self.trx_iterator))
         if len(batch) > 0:
-            self.process_transactions(batch)
+            features.append(self.process_transactions(batch))
         self.current_time = until
+        if len(features) > 0:
+            return pl.DataFrame(schema=self.schema)
+        return pl.concat(features)
 
     def process_transaction(self, trx: Transaction):
         """
@@ -143,19 +147,17 @@ class Banksys:
         assert trx.predicted_label is None, "Transaction has already been processed !"
         assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
         if self.classify_simulated_trx:
-            self.simulate_until(trx.timestamp)
+            other_features = self._simulate_until(trx.timestamp)
         else:
-            self._fast_forward(trx.timestamp)
+            other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=True), schema=self.schema)
         features = self.make_transaction_features(trx)
         elapsed = trx.timestamp - self.attack_start
         tb_log("features", features, elapsed)
-        tb_log("trx/payer-balance", self.payers[trx.payer_id].balance, elapsed)
-        tb_log("trx/terminal-id", trx.terminal_id, elapsed)
         features_df = pl.DataFrame(features, schema=self.schema)
         trx.predicted_label = self.clf.predict(features_df).item()
         self.payers[trx.payer_id].add(trx, update_balance=True)
         self.terminals[trx.terminal_id].add(trx)
-        return features
+        return features, other_features
 
     def process_transactions(self, transactions: list[Transaction]):
         """

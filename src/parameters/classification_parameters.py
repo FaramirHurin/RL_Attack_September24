@@ -150,12 +150,7 @@ class ClassificationParameters:
         hash_digest = hashlib.sha256(serialized).hexdigest()
         return os.path.join(dataset_dir, f"banksys-{hash_digest}")
 
-    def banksys_file(self, dataset_dir: str):
-        directory = self.cache_dir(dataset_dir)
-        return os.path.join(directory, "banksys.pkl")
-
-    def save(self, dataset_dir: str):
-        dir_path = self.cache_dir(dataset_dir)
-        os.makedirs(dir_path, exist_ok=True)
-        with open(os.path.join(dir_path, "classification_params.json"), "wb") as f:
+    def save(self, directory: str):
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "classification_params.json"), "wb") as f:
             f.write(orjson.dumps(self, default=serialize_unknown, option=orjson.OPT_INDENT_2))

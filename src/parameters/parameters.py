@@ -25,7 +25,6 @@ class Parameters:
     clf_params: ClassificationParameters
     env_params: EnvParameters
     seed: int
-    cache_root: str
 
     def __init__(
         self,
@@ -41,7 +40,7 @@ class Parameters:
     ):
         self.seed = seed
         self.agent = agent
-        self.cache_root = os.path.join(cache_root, f"seed-{seed}")
+        self._cache_root = cache_root
         if cardsim is None:
             cardsim = CardSimParameters()
         self.cardsim = cardsim
@@ -59,10 +58,8 @@ class Parameters:
                 os.remove(self.banksys_file)
             except OSError:
                 pass
-        if not os.path.exists(self.cache_root):
-            os.makedirs(self.cache_root, exist_ok=True)
-        self.cardsim.save(self.cache_root)
-        self.clf_params.save(self.dataset_dir)
+        self.cardsim.save(self.dataset_dir)
+        self.clf_params.save(self.banksys_dir)
 
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         self.seed_random()
@@ -112,7 +109,7 @@ class Parameters:
                 clf_params=self.clf_params,
                 env_params=self.env_params,
                 seed=self.seed + i,
-                cache_root=self.cache_root,
+                cache_root=self._cache_root,
             )
 
     @property
@@ -128,15 +125,24 @@ class Parameters:
 
     @property
     def banksys_file(self):
-        return self.clf_params.banksys_file(self.dataset_dir)
+        return os.path.join(self.banksys_dir, "banksys.pkl")
+
+    @property
+    def banksys_dir(self):
+        return self.clf_params.cache_dir(self.dataset_dir)
+
+    @property
+    def cache_dir(self):
+        """Cache directory taking the seed into account."""
+        return os.path.join(self._cache_root, f"seed-{self.seed}")
 
     @property
     def dataset_dir(self):
-        return self.cardsim.cache_dir(self.cache_root)
+        return self.cardsim.cache_dir(self.cache_dir)
 
     def load_banksys(self):
         self.seed_random()
-        transactions, payers, terminals = self.cardsim.get_simulation_data(self.cache_root)
+        transactions, payers, terminals = self.cardsim.get_simulation_data(self.cache_dir)
         if os.path.exists(self.banksys_file):
             from banksys import Banksys
 

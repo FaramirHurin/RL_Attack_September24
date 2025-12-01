@@ -1,6 +1,8 @@
 import random
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import polars as pl
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
@@ -30,9 +32,11 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
         self.scale_amount = params.scale_amount
+        self.fraud_features = dict[datetime, dict[str, Any]]()
+        self.other_features = dict[datetime, pl.DataFrame]()
         obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 4
-        high = [1_000, 200, 200, 1, params.avg_block_delay.total_seconds() / 3600]
+        high = [2_000, 200, 200, 1, params.avg_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
         if params.can_choose_debit_credit:
             low += [0]
@@ -131,7 +135,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 is_fraud=True,
             )
             try:
-                self.system.process_transaction(trx)
+                features, other_features = self.system.process_transaction(trx)
+                self.fraud_features[self.t] = features
+                self.other_features[self.t] = other_features
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]
                     reward = 0.0
