@@ -4,6 +4,7 @@ from optuna import Trial
 from typing import Literal, Sequence
 import polars as pl
 import orjson
+from banksys.terminal import Terminal
 from utils import serialize_unknown
 import os
 import hashlib
@@ -80,7 +81,7 @@ class ClassificationParameters:
                 training_duration=timedelta(days=150),
                 quantiles={
                     "amount": (0.0, 0.9999170024954384),
-                    "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999132292246781),
+                    Terminal.colname("risk", timedelta(days=1)): (0.0, 0.9999132292246781),
                 },
                 rules={
                     timedelta(hours=1): 5,
@@ -96,7 +97,7 @@ class ClassificationParameters:
             training_duration=timedelta(days=150),
             quantiles={
                 "amount": (0.0, 0.9999924062983265),
-                "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999996860191219),
+                Terminal.colname("risk", timedelta(days=1)): (0.0, 0.9999996860191219),
             },
             rules={
                 timedelta(hours=1): 7,
@@ -106,18 +107,18 @@ class ClassificationParameters:
         )
 
     @staticmethod
-    def suggest(trial: Trial, training_duration: timedelta, use_anomaly: bool):
+    def suggest(trial: Trial, use_anomaly: bool):
         max_per_hour = trial.suggest_int("max_trx_hour", 2, 10)
         max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 20)
         max_per_week = trial.suggest_int("max_trx_week", max_per_day, 50)
         return ClassificationParameters(
-            training_duration=training_duration,
+            training_duration=timedelta(days=30),
             n_trees=trial.suggest_int("n_trees", 20, 200),
             contamination="auto",
             balance_factor=trial.suggest_float("balance_factor", 0.05, 0.2),
             quantiles={
                 "amount": (0, trial.suggest_float("quantiles_amount_high", 0.995, 1.0)),
-                f"terminal_risk_last_{timedelta(days=1)}": (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
+                Terminal.colname("risk", timedelta(days=1)): (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
             },
             use_anomaly=use_anomaly,
             rules={
@@ -125,6 +126,8 @@ class ClassificationParameters:
                 timedelta(days=1): max_per_day,
                 timedelta(weeks=1): max_per_week,
             },
+            fp_rate=trial.suggest_float("fp_rate", 0.0, 0.02),
+            fn_rate=trial.suggest_float("fn_rate", 0.0, 0.02),
         )
 
     def make_banksys(

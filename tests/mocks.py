@@ -37,7 +37,7 @@ class MockClassificationSystem(ClassificationSystem):
 
 def mock_banksys():
     params = Parameters(cardsim=CardSimParameters(n_days=100, n_payers=100))
-    trx, cards, terminals = params.cardsim.get_simulation_data(params.dataset_dir)
+    trx, cards, terminals = params.cardsim.load_simulation_data(params.dataset_dir)
     bs = Banksys(trx, cards, terminals, params.clf_params)
     bs.clf = MockClassificationSystem()
     return bs

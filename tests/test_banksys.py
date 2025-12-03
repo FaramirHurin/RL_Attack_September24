@@ -48,7 +48,7 @@ def test_invalid_dates():
             aggregation_windows=(timedelta(days=30),),
         ),
     )  # Not enough data for the classification system
-    transactions, cards, terminals = params.cardsim.get_simulation_data(params.dataset_dir)
+    transactions, cards, terminals = params.cardsim.load_simulation_data(params.dataset_dir)
     try:
         Banksys(
             transactions,

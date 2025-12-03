@@ -6,50 +6,46 @@ import os
 from banksys import Banksys
 import polars as pl
 import dotenv
-from banksys import ClassificationSystem
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, confusion_matrix, classification_report
-from parameters import ClassificationParameters, Parameters, CardSimParameters
+from parameters import ClassificationParameters, CardSimParameters
+import random
+
+USE_ANOMALY = False
+WITH_MODIFICATION = False
+N_REPEATS = 10
+CACHE_ROOT = "cache"
 
 
-CARDSIM_PARAMS = CardSimParameters(n_days=150, n_payers=20_000)
-TEST_DURATION = timedelta(days=30)
+def setup():
+    for seed in range(N_REPEATS):
+        random.seed(seed)
+        np.random.seed(seed)
+        cardsim = CardSimParameters.paper_params(with_modification=WITH_MODIFICATION)
+        cardsim.load_simulation_data(os.path.join(CACHE_ROOT, f"seed-{seed}"))
 
 
-def setup(use_anomaly: bool):
-    params = Parameters(cardsim=CARDSIM_PARAMS)
-    banksys = params.load_banksys()
-    # Perform the fit by hand
-    banksys._fast_forward(banksys.training_start)
-    features = banksys._fast_forward(banksys.attack_start)
-    train_x = pl.DataFrame(features)
-    train_y = banksys.training_set["is_fraud"].to_numpy().astype(np.bool)
-    banksys.save(f"after-warmup-{use_anomaly}")
+def experiment(trial: optuna.Trial):
+    total = 0.0
+    for seed in range(N_REPEATS):
+        random.seed(seed)
+        np.random.seed(seed)
+        cardsim = CardSimParameters.paper_params(with_modification=WITH_MODIFICATION)
+        clf_params = ClassificationParameters.suggest(trial, use_anomaly=USE_ANOMALY)
 
-    test_y = banksys._transactions_df.filter(pl.col("timestamp").is_between(banksys.attack_start, banksys.attack_start + TEST_DURATION))[
-        "is_fraud"
-    ]
-    return train_x, train_y, test_y.to_numpy().astype(np.bool)
+        trx, payers, terminals = cardsim.load_simulation_data(os.path.join(CACHE_ROOT, f"seed-{seed}"))
+        banksys = Banksys(trx, payers, terminals, clf_params)
+        t_start = banksys.current_time
+        t_end = t_start + timedelta(days=10)
+        labels = banksys._transactions.filter(pl.col("timestamp").is_between(t_start, t_end))["is_fraud"].to_numpy()
+        features = pl.DataFrame(banksys._fast_forward(t_end, compute_features=True, show_progress=True), schema=banksys.schema)
+        predicted = banksys.clf.predict(features)
 
-
-def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, test_y: np.ndarray, use_anomaly: bool):
-    try:
-        params = ClassificationParameters.suggest(trial, timedelta(days=30), use_anomaly)
-        banksys = Banksys.load(f"after-warmup-{use_anomaly}")
-        banksys.clf = ClassificationSystem(params)
-        banksys.clf.fit(train_x, train_y)
-
-        test_x = banksys._simulate_until(banksys.attack_start + timedelta(days=30))
-        predicted = banksys.clf.predict(test_x)
-        details = banksys.clf.get_details().describe()
-        with pl.Config(tbl_cols=-1):
-            logging.info(details)
-        metrics = {}
-        cm = confusion_matrix(test_y, predicted)
+        cm = confusion_matrix(labels, predicted)
         logging.info(f"{cm}")
-        f1 = f1_score(test_y, predicted)
-        accuracy = accuracy_score(test_y, predicted)
-        precision = precision_score(test_y, predicted)
-        recall = recall_score(test_y, predicted)
+        f1 = f1_score(labels, predicted)
+        accuracy = accuracy_score(labels, predicted)
+        precision = precision_score(labels, predicted)
+        recall = recall_score(labels, predicted)
         metrics = {
             "confusion_matrix": cm.tolist(),
             "f1": float(f1),
@@ -57,24 +53,10 @@ def experiment(trial: optuna.Trial, train_x: pl.DataFrame, train_y: np.ndarray, 
             "precision": float(precision),
             "recall": float(recall),
         }
-        classification_report(test_y, predicted)
+        classification_report(labels, predicted)
         logging.info(f"Trial number: {trial.number} - Metrics: {metrics}")
-        return float(f1)
-    except Exception as e:
-        logging.error(f"Trial number: {trial.number} failed with error: {e}")
-        return 0.0
-
-
-def main():
-    use_anomaly = False
-    train_x, train_y, test_y = setup(use_anomaly)
-    study = optuna.create_study(
-        storage="sqlite:///classifier-tuning.db",
-        study_name=f"clf-tuning-anomaly-{use_anomaly}",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
-    )
-    study.optimize(lambda trial: experiment(trial, train_x, train_y, test_y, use_anomaly=use_anomaly), n_trials=200, n_jobs=5)
+        total += float(f1)
+    return total / N_REPEATS
 
 
 if __name__ == "__main__":
@@ -85,4 +67,11 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    main()
+    setup()
+    study = optuna.create_study(
+        storage="sqlite:///classifier-tuning.db",
+        study_name=f"clf-tuning-anomaly-{USE_ANOMALY}",
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+    study.optimize(experiment, n_trials=200, n_jobs=5)

@@ -14,7 +14,7 @@ class CardSimParameters:
     with_modification: bool = False
     ulb_data: bool = False
 
-    def get_simulation_data(self, cache_dir: str):
+    def load_simulation_data(self, cache_dir: str):
         from cardsim import Cardsim
 
         if self.ulb_data:

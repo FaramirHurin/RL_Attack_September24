@@ -26,9 +26,9 @@ WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 class Banksys:
     def __init__(
         self,
-        transactions_df: pl.DataFrame,
-        cards_df: pl.DataFrame,
-        terminals_df: pl.DataFrame,
+        transactions: pl.DataFrame,
+        payers: pl.DataFrame,
+        terminals: pl.DataFrame,
         params: "ClassificationParameters",
         *,
         silent: bool = False,
@@ -37,8 +37,8 @@ class Banksys:
         max_aggregation_duration = (
             max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
         )
-        self.current_time: datetime = transactions_df["timestamp"].min()  # type: ignore[assignment]
-        self.attack_end: datetime = transactions_df["timestamp"].max()  # type: ignore[assignment]
+        self.current_time: datetime = transactions["timestamp"].min()  # type: ignore[assignment]
+        self.attack_end: datetime = transactions["timestamp"].max()  # type: ignore[assignment]
         self.training_start = self.current_time + max_aggregation_duration
         self.attack_start = self.training_start + params.training_duration
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
@@ -48,19 +48,19 @@ class Banksys:
             self.clf = clf
         else:
             self.clf = ClassificationSystem(params)
-        self._transactions_df = transactions_df.sort("timestamp").with_columns(
-            predicted_label=self._approximate_labels(transactions_df, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
+        self._transactions = transactions.sort("timestamp").with_columns(
+            predicted_label=self._approximate_labels(transactions, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
         )
         if params.classify_simulated_trx:
             # Remove 'predicted_label' for the attack set.
-            self._transactions_df = self._transactions_df.with_columns(
+            self._transactions = self._transactions.with_columns(
                 predicted_label=pl.when(pl.col("timestamp") > self.attack_start).then(None).otherwise(pl.col("predicted_label"))
             )
 
-        self.trx_iterator = self._transactions_df.iter_rows(named=True)
+        self.trx_iterator = self._transactions.iter_rows(named=True)
         self.next_trx = Transaction(**next(self.trx_iterator))
-        self.payers = sorted(Payer.from_df(cards_df, params.aggregation_windows), key=lambda c: c.id)
-        self.terminals = sorted(Terminal.from_df(terminals_df, params.aggregation_windows), key=lambda t: t.id)
+        self.payers = sorted(Payer.from_df(payers, params.aggregation_windows), key=lambda c: c.id)
+        self.terminals = sorted(Terminal.from_df(terminals, params.aggregation_windows), key=lambda t: t.id)
         self.aggregation_windows = params.aggregation_windows
         self.schema = pl.DataFrame(self.make_transaction_features(self.next_trx)).schema
         self.fit()
@@ -91,7 +91,7 @@ class Banksys:
             raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
         start = self.next_trx.timestamp
         if show_progress:
-            n = self._transactions_df.filter(pl.col("timestamp").is_between(start, until)).height
+            n = self._transactions.filter(pl.col("timestamp").is_between(start, until)).height
         else:
             n = 0
         pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=not show_progress)
@@ -218,7 +218,7 @@ class Banksys:
 
     @cached_property
     def training_set(self):
-        return self._transactions_df.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start, closed="left"))
+        return self._transactions.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start, closed="left"))
 
     @property
     def max_attack_duration(self):
@@ -236,7 +236,7 @@ class Banksys:
     def __setstate__(self, state):
         self.__dict__.update(state)
         # Recreate the transactions iterator
-        remaining_trx = self._transactions_df.filter(pl.col("timestamp") > self.next_trx.timestamp)
+        remaining_trx = self._transactions.filter(pl.col("timestamp") > self.next_trx.timestamp)
         self.trx_iterator = remaining_trx.iter_rows(named=True)
 
 

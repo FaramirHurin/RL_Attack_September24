@@ -142,7 +142,7 @@ class Parameters:
 
     def load_banksys(self):
         self.seed_random()
-        transactions, payers, terminals = self.cardsim.get_simulation_data(self.cache_dir)
+        transactions, payers, terminals = self.cardsim.load_simulation_data(self.cache_dir)
         if os.path.exists(self.banksys_file):
             from banksys import Banksys
 
