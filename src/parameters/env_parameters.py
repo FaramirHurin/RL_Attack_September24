@@ -13,7 +13,6 @@ class EnvParameters:
     avg_block_delay: timedelta
     customer_location_is_known: bool
     can_choose_debit_credit: bool
-    scale_amount: float
 
     def __init__(
         self,
@@ -26,14 +25,12 @@ class EnvParameters:
         customer_location_is_known: bool = True,
         aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         can_choose_debit_credit: bool = False,
-        scale_amount: float = 1.0,
     ):
         self.n_episodes = n_episodes
         self.know_client = know_client
         self.terminal_fract = terminal_fract
         self.pool_size = pool_size
         self.include_weekday = include_weekday
-        self.scale_amount = scale_amount
         self.customer_location_is_known = customer_location_is_known
         if isinstance(avg_card_block_delay, int):
             avg_card_block_delay = timedelta(seconds=avg_card_block_delay)

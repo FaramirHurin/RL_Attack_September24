@@ -3,7 +3,6 @@ from datetime import timedelta
 
 import numpy as np
 import numpy.typing as npt
-import torch
 
 
 @dataclass
@@ -22,12 +21,15 @@ class Action:
         is_online: bool,
         delay_hours: float,
     ):
-        self.amount = max(0.01, amount)
-        self.terminal_x = max(0, min(200, terminal_x))
-        self.terminal_y = max(0, min(200, terminal_y))
+        assert amount >= 0.01, f"Amount must be positive but got {amount}"
+        assert 0 <= terminal_x <= 200, f"terminal_x must be in [0, 200] but got {terminal_x}"
+        assert 0 <= terminal_y <= 200, f"terminal_y must be in [0, 200] but got {terminal_y}"
+        assert delay_hours >= 0, f"delay_hours must be non-negative but got {delay_hours}"
+        self.amount = amount
+        self.terminal_x = terminal_x
+        self.terminal_y = terminal_y
         self.is_online = is_online
-        # Ensure delay_hours is positive
-        self.delay_hours = abs(delay_hours)
+        self.delay_hours = delay_hours
 
     @property
     def timedelta(self):
@@ -52,16 +54,6 @@ class Action:
 
     def to_numpy(self):
         return np.array(astuple(self), dtype=np.float32)
-
-    def denormalized(self, scale_amount: float, scale_x: float = 200.0, scale_y: float = 200.0):
-        return Action(
-            amount=self.amount * scale_amount,
-            terminal_x=self.terminal_x * scale_x,
-            terminal_y=self.terminal_y * scale_y,
-            is_online=self.is_online,
-            delay_hours=self.delay_hours,
-            # is_credit=self.is_credit,
-        )
 
     def as_dict(self):
         return asdict(self)

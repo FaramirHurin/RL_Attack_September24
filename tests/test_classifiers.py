@@ -1,6 +1,5 @@
 from banksys.classification import RuleBasedClassifier, StatisticalClassifier
-from banksys import Banksys
-from banksys.payer import PREFIX_COUNT
+from banksys import Banksys, Payer
 from datetime import timedelta
 import polars as pl
 import numpy as np
@@ -12,7 +11,7 @@ from parameters import ClassificationParameters
 
 def test_rules():
     dts = [timedelta(hours=1), timedelta(days=1), timedelta(weeks=1)]
-    df = pl.DataFrame({f"{PREFIX_COUNT}{dt}": list(range(10)) for dt in dts})
+    df = pl.DataFrame({f"{Payer.colname('count', dt)}": list(range(10)) for dt in dts})
 
     for dt in dts:
         max_amount = 2
@@ -29,9 +28,9 @@ def test_rules():
 def test_rules_details():
     df = pl.DataFrame(
         {
-            f"{PREFIX_COUNT}{timedelta(hours=1)}": list(range(10)),
-            f"{PREFIX_COUNT}{timedelta(days=1)}": list(range(10)),
-            f"{PREFIX_COUNT}{timedelta(weeks=1)}": list(range(10)),
+            Payer.colname("count", timedelta(hours=1)): list(range(10)),
+            Payer.colname("count", timedelta(days=1)): list(range(10)),
+            Payer.colname("count", timedelta(weeks=1)): list(range(10)),
         }
     )
     clf = RuleBasedClassifier(
@@ -47,14 +46,14 @@ def test_rules_details():
     assert np.all(labels[6:])  # Last 4 values exceed the daily rule
 
     details = clf.get_details()
-    cause_hourly = details[f"Rule: {PREFIX_COUNT}{timedelta(hours=1)} < 5"]
+    cause_hourly = details[clf.rule_name(timedelta(hours=1))]
     assert not np.all(cause_hourly[:6])  # First 6 values should not be outliers
     assert np.all(cause_hourly[6:])  # Last 4 values should be outliers
 
-    cause_daily = details[f"Rule: {PREFIX_COUNT}{timedelta(days=1)} < 100"]
+    cause_daily = details[clf.rule_name(timedelta(days=1))]
     assert not np.all(cause_daily)  # No rule is violated
 
-    cause_weekly = details[f"Rule: {PREFIX_COUNT}{timedelta(weeks=1)} < 100"]
+    cause_weekly = details[clf.rule_name(timedelta(weeks=1))]
     assert not np.all(cause_weekly)  # No rule is violated
 
 
@@ -86,7 +85,7 @@ def test_statistical_bounds_accepted():
 
 @pytest.mark.skip
 def test_Isolation_Forest():
-    params = ClassificationParameters(
+    _params = ClassificationParameters(
         use_anomaly=True,
         n_trees=139,
         balance_factor=0.06473635736763925,
@@ -107,7 +106,7 @@ def test_Isolation_Forest():
     y = sys.clf.dataset["Labels"]
 
     X_train, X_test = X[:8000], X[8000:]
-    y_train, y_test = y[:8000], y[8000:]
+    _y_train, y_test = y[:8000], y[8000:]
 
     # Fit the Isolation Forest model
     clf = IsolationForest()

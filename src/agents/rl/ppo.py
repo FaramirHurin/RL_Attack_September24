@@ -1,5 +1,5 @@
 import logging
-from typing import Literal, Optional
+from typing import Optional
 import numpy as np
 import torch
 import os
@@ -86,7 +86,8 @@ class PPO(Agent):
         with torch.no_grad():
             obs_data = torch.from_numpy(observation).unsqueeze(0).to(self.device, non_blocking=True)
             distribution, hx = self.actor_critic.policy(obs_data, hx)
-        np_action = distribution.sample().squeeze(0).numpy(force=True)
+        torch_action: torch.Tensor = distribution.sample()  # type: ignore
+        np_action = torch_action.squeeze(0).numpy(force=True)
         return np_action, hx
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -110,15 +111,15 @@ class PPO(Agent):
         with open(path, "rb") as f:
             self.actor_critic.load_state_dict(torch.load(f))
 
-    def train(self, batch: Batch, step_num: int, episode_num: int):
+    def train(self, batch: Batch, step_num: int, episode_num: int, simulation_t: int):
         if self.normalize_rewards:
             batch.normalize_rewards()
         self.c1.update(episode_num)
         self.c2.update(episode_num)
         with torch.no_grad():
             returns, advantages, log_probs = self._compute_training_data(batch)
-        x = torch.argmin(log_probs)
-        critic_losses, actor_losses, entropy_losses, losses, ratios = [], [], [], [], []
+
+        critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
         for _ in range(self.n_epochs):
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
@@ -132,30 +133,27 @@ class PPO(Agent):
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
             mini_values, _ = self.actor_critic.value(minibatch.obs)
-            mini_values = mini_values * minibatch.masks
-            td_error = mini_values - mini_returns
+            td_error = (mini_values - mini_returns) * minibatch.masks
             critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-            new_log_probs = mini_policy.log_prob(minibatch.actions)
-            y = torch.argmin(new_log_probs)
-
+            new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
             ratio = torch.exp(new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
-            # Minus because we want to maximize the objective
-            actor_loss = torch.sum(-torch.min(surrogate1, surrogate2)) / minibatch.masks_sum
+            tmp = torch.min(surrogate1, surrogate2)
+            actor_loss = -torch.sum(tmp) / minibatch.masks_sum  # Minus sign to maximize the objective
 
             # S[\pi_0](s_t) in the paper (equation (9))
-            entropy = mini_policy.entropy()
+            entropy = mini_policy.base_dist.entropy()
             masked_entropy = entropy * minibatch.masks
-            entropy_loss = torch.sum(masked_entropy) / minibatch.masks_sum
+            entropy_loss = -torch.sum(masked_entropy) / minibatch.masks_sum  # Minus sign to maximize the entropy
 
             self.optimizer.zero_grad()
             # Equation (9) in the paper
-            loss = actor_loss + self.c1 * critic_loss - self.c2 * entropy_loss
+            loss = actor_loss + self.c1 * critic_loss + self.c2 * entropy_loss
             loss.backward()
             if self.grad_norm_clipping is not None:
                 torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
@@ -164,41 +162,48 @@ class PPO(Agent):
             actor_losses.append(actor_loss.item())
             entropy_losses.append(entropy_loss.item())
             losses.append(loss.item())
-            ratios.append(ratio.mean().item())
+            ratios.append(ratio.numpy(force=True))
+            entropies.append(entropy.numpy(force=True))
 
-        tb_log("ppo/min_log_prob", new_log_probs.min().item(), step_num)
-        tb_log("ppo/max_log_prob", new_log_probs.max().item(), step_num)
-        tb_log("ppo/mean_log_prob", new_log_probs.mean().item(), step_num)
-        tb_log("ppo/min_critic_loss", min(critic_losses), step_num)
-        tb_log("ppo/max_critic_loss", max(critic_losses), step_num)
-        tb_log("ppo/mean_critic_loss", np.mean(critic_losses), step_num)
-        tb_log("ppo/min_actor_loss", min(actor_losses), step_num)
-        tb_log("ppo/max_actor_loss", max(actor_losses), step_num)
-        tb_log("ppo/mean_actor_loss", np.mean(actor_losses), step_num)
-        tb_log("ppo/min_entropy_loss", min(entropy_losses), step_num)
-        tb_log("ppo/max_entropy_loss", max(entropy_losses), step_num)
-        tb_log("ppo/mean_entropy_loss", np.mean(entropy_losses), step_num)
-        tb_log("ppo/min_loss", min(losses), step_num)
-        tb_log("ppo/max_loss", max(losses), step_num)
-        tb_log("ppo/mean_loss", np.mean(losses), step_num)
-        tb_log("ppo/min_ratio", min(ratios), step_num)
-        tb_log("ppo/max_ratio", max(ratios), step_num)
-        tb_log("ppo/mean_ratio", np.mean(ratios), step_num)
+        tb_log("ppo/mean_log_probs", log_probs.mean().item(), simulation_t)
+        tb_log("ppo/min_log_probs", log_probs.min().item(), simulation_t)
+        tb_log("ppo/max_log_probs", log_probs.max().item(), simulation_t)
+        tb_log("ppo/min_new_log_prob", new_log_probs.min().item(), simulation_t)
+        tb_log("ppo/max_new_log_prob", new_log_probs.max().item(), simulation_t)
+        tb_log("ppo/mean_new_log_prob", new_log_probs.mean().item(), simulation_t)
+        tb_log("ppo/min_critic_loss", min(critic_losses), simulation_t)
+        tb_log("ppo/max_critic_loss", max(critic_losses), simulation_t)
+        tb_log("ppo/mean_critic_loss", np.mean(critic_losses), simulation_t)
+        tb_log("ppo/min_actor_loss", min(actor_losses), simulation_t)
+        tb_log("ppo/max_actor_loss", max(actor_losses), simulation_t)
+        tb_log("ppo/mean_actor_loss", np.mean(actor_losses), simulation_t)
+        tb_log("ppo/min_entropy_loss", min(entropy_losses), simulation_t)
+        tb_log("ppo/max_entropy_loss", max(entropy_losses), simulation_t)
+        tb_log("ppo/mean_entropy_loss", np.mean(entropy_losses), simulation_t)
+        tb_log("ppo/min_loss", min(losses), simulation_t)
+        tb_log("ppo/max_loss", max(losses), simulation_t)
+        tb_log("ppo/mean_loss", np.mean(losses), simulation_t)
+        tb_log("ppo/min_ratio", np.min(ratios), simulation_t)
+        tb_log("ppo/max_ratio", np.max(ratios), simulation_t)
+        tb_log("ppo/mean_ratio", np.mean(ratios), simulation_t)
+        tb_log("ppo/mean_entropy", np.mean(entropies), simulation_t)
+        tb_log("ppo/min_entropy", np.min(entropies), simulation_t)
+        tb_log("ppo/max_entropy", np.max(entropies), simulation_t)
 
-    def update_transition(self, t: Transition, step: int, episode_num: int):
+    def update_transition(self, transition: Transition, step: int, episode_num: int, simulation_t: int):
         if self.memory.update_on_transitions:
-            self.memory.add(t)
+            self.memory.add(transition)
             if self.memory.is_full:
                 batch = self.memory.as_batch(self.device)
-                self.train(batch, step, episode_num)
+                self.train(batch, step, episode_num, simulation_t)
                 self.memory.clear()
 
-    def update_episode(self, episode: Episode, step_num: int, episode_num: int):
+    def update_episode(self, episode: Episode, step_num: int, episode_num: int, simulation_t: int):
         if self.memory.update_on_episodes:
             self.memory.add(episode)
             if self.memory.is_full:
                 batch = self.memory.as_batch(self.device)
-                self.train(batch, step_num, episode_num)
+                self.train(batch, step_num, episode_num, simulation_t)
                 self.memory.clear()
 
     @property

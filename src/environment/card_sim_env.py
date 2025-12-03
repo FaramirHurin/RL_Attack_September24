@@ -31,16 +31,15 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.customer_location_is_known = params.customer_location_is_known
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
-        self.scale_amount = params.scale_amount
         self.fraud_features = dict[datetime, dict[str, Any]]()
         self.other_features = dict[datetime, pl.DataFrame]()
         obs = self.compute_state(system.payers[0])
-        low = [0.01] + [0.0] * 4
-        high = [2_000, 200, 200, 1, params.avg_block_delay.total_seconds() / 3600]
+        low = [0.01] + [0.0] * 3 + [1 / 60]
+        high = [100.0, 200.0, 200.0, 1.0, params.avg_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
         if params.can_choose_debit_credit:
-            low += [0]
-            high += [1]
+            low += [0.0]
+            high += [1.0]
             labels += ["is_credit"]
         super().__init__(
             1,
@@ -109,18 +108,21 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def elapsed_time(self):
         return self.system.current_time - self.system.attack_start
 
+    @property
+    def elapsed_seconds(self):
+        return int(self.elapsed_time.total_seconds())
+
     def step(self):
         """
         Performs the next action in the queue.
         """
         t, (payer, np_action) = self.action_buffer.ppop()
-        action = Action.from_numpy(np_action).denormalized(self.scale_amount)
+        action = Action.from_numpy(np_action)
         if t >= self.system.attack_end:
             raise AttackPeriodExpired(f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached")
-        tb_log("env/action", action.as_dict(), self.elapsed_time)
-        info = dict[str, Any](t=t.isoformat())
+        tb_log("action", action.as_dict(), self.elapsed_time)
+        info = dict[str, Any](t=t.isoformat(), expired=False, insufficient_funds=False)
         if self.payer_registry.has_expired(payer, t):
-            self.payer_registry.clear(payer)
             reward = 0.0
             done = True
             info["expired"] = True
@@ -135,13 +137,12 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 is_fraud=True,
             )
             try:
-                features, other_features = self.system.process_transaction(trx, compute_other_features=True)
+                features, other_features = self.system.process_transaction(trx, compute_other_features=False)
                 self.fraud_features[self.t] = features
                 self.other_features[self.t] = other_features
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]
                     reward = 0.0
-                    self.payer_registry.clear(payer)
                 else:
                     self.payer_registry.notify_transaction_processed(trx)
                     reward = trx.amount
@@ -151,5 +152,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 self.payer_registry.notify_insufficient_funds(trx)
             done = trx.fraud_is_detected
         state = self.compute_state(payer)
+        if done:
+            self.payer_registry.clear(payer)
         tb_log("env/reward", reward, self.elapsed_time)
+        if len(info) > 1:
+            tb_log("env", info, self.elapsed_time)
         return payer, Step(Observation(state, self.available_actions()), State(state), reward, done, info=info), np_action

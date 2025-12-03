@@ -1,15 +1,12 @@
 from dataclasses import Field, dataclass
 from datetime import datetime, timedelta
-from typing import Sequence
+from typing import Literal, Sequence
+from humanize import naturaldelta
 from .trx_window import TransactionWindow
 import polars as pl
 
 from utils import fields2schema
 from .transaction import Transaction
-
-
-PREFIX_N_TRX = "[Terminal] N_TRX "
-PREFIX_RISK = "[Terminal] RISK "
 
 
 @dataclass
@@ -24,8 +21,8 @@ class Terminal:
         self.y = y
         self._genuine_window = TransactionWindow(aggregation_windows)
         self._fraud_window = TransactionWindow(aggregation_windows)
-        self._trx_count_feature_names = [f"{PREFIX_N_TRX}{window}" for window in self._genuine_window.aggregation_windows]
-        self._risk_feature_names = [f"{PREFIX_RISK}{window}" for window in self._genuine_window.aggregation_windows]
+        self._trx_count_feature_names = [self.colname("count", window) for window in self._genuine_window.aggregation_windows]
+        self._risk_feature_names = [self.colname("risk", window) for window in self._genuine_window.aggregation_windows]
 
     def add(self, trx: Transaction):
         assert trx.predicted_label is not None
@@ -72,3 +69,12 @@ class Terminal:
         members = inspect.getmembers(cls)
         fields = list[Field](dict(members)["__dataclass_fields__"].values())
         return fields2schema(fields)
+
+    @staticmethod
+    def colname(feature_type: Literal["count", "risk"], window: timedelta) -> str:
+        match feature_type:
+            case "count":
+                return f"[Terminal] N_TRX {naturaldelta(window)}"
+            case "risk":
+                return f"[Terminal] RISK {naturaldelta(window)}"
+        raise ValueError(f"Unknown feature type: {feature_type}")

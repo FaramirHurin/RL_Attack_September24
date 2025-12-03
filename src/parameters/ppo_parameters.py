@@ -106,9 +106,9 @@ class PPOParameters:
             case _:
                 raise ValueError(f"Unknown value for `train_on`: {self.train_on}")
         if self.is_recurrent:
-            network = RecurrentActorCritic(env.observation_size, env.n_actions, device, self.use_covariance_matrix)
+            network = RecurrentActorCritic(env.observation_size, env.action_space, device, self.use_covariance_matrix)
         else:
-            network = LinearActorCritic(env.observation_size, env.n_actions, device, self.use_covariance_matrix)
+            network = LinearActorCritic(env.observation_size, env.action_space, device, self.use_covariance_matrix)
         self_dict = self.as_dict()
         self_dict.pop("is_recurrent")
         self_dict.pop("train_on")

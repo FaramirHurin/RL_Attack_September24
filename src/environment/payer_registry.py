@@ -21,8 +21,13 @@ class PayerRegistry:
         """
         Release a random (not blocked) payer and set the expiration date according to the current time.
         """
+        if self.n_currently_released == len(self.all_payers):
+            raise RuntimeError("All payers are already released")
         payer_id = random.randint(0, len(self.all_payers) - 1)
         payer = self.all_payers[payer_id]
+        while payer in self.expected_expirations:
+            payer_id = random.randint(0, len(self.all_payers) - 1)
+            payer = self.all_payers[payer_id]
         expected_expiration = t + self.avg_block_delay
         self.release_dates[payer] = t
         self.expected_expirations[payer] = expected_expiration
@@ -30,7 +35,13 @@ class PayerRegistry:
         while expiration_seconds < 0:
             expiration_seconds = random.normalvariate(mu=self.expected_lifespan, sigma=self.sigma)
         self.actual_expirations[payer] = t + timedelta(seconds=expiration_seconds)
+        self.previous_frauds[payer] = []
+        self.sufficient_funds[payer] = True
         return payer
+
+    @property
+    def n_currently_released(self):
+        return len(self.expected_expirations)
 
     def get_expiration(self, payer: Payer):
         return self.actual_expirations[payer]
@@ -47,10 +58,10 @@ class PayerRegistry:
         self.balance_upper_bound.clear()
 
     def clear(self, payer: Payer):
-        self.expected_expirations.pop(payer, None)
-        self.actual_expirations.pop(payer, None)
-        self.release_dates.pop(payer, None)
-        self.previous_frauds.pop(payer, None)
+        self.expected_expirations.pop(payer)
+        self.actual_expirations.pop(payer)
+        self.release_dates.pop(payer)
+        self.previous_frauds.pop(payer)
         self.sufficient_funds.pop(payer, None)
         self.balance_upper_bound.pop(payer, None)
 
@@ -64,6 +75,7 @@ class PayerRegistry:
         """
         successful_frauds = self.previous_frauds.get(payer, [])
         balance_upper_bound = self.balance_upper_bound.get(payer, None)
+        # TODO: add the previous fraud terminal location as features (x and y)
         if len(successful_frauds) == 0:
             total_stolen = 0.0
             prev_fraud_time = -1.0

@@ -6,6 +6,7 @@ import logging
 from functools import lru_cache
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
 
 
 writer = None
@@ -57,15 +58,19 @@ def _warn_once(msg: str):
     logging.warning(msg)
 
 
-def tb_log(tag: str, value, step: int | timedelta):
+def tb_log(tag: str, value: float | dict | np.floating, step: int | timedelta):
     if writer is None:
         _warn_once("TensorBoard writer is not initialized.")
         return
     if isinstance(step, timedelta):
         step = int(step.total_seconds())
     match value:
+        case float() | int() | bool() | np.floating() | np.integer():
+            writer.add_scalar(tag, value, step)
+        case str():
+            writer.add_text(tag, value, step)
         case dict():
             for k, v in value.items():
-                writer.add_scalar(f"{tag}/{k}", v, step)
-        case _:
-            writer.add_scalar(tag, value, step)
+                tb_log(f"{tag}/{k}", v, step)
+        case other:
+            raise ValueError(f"Unsupported type for tb_log: {type(other)}")

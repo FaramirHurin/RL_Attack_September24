@@ -6,10 +6,6 @@ from datetime import datetime, timedelta
 import polars as pl
 
 from banksys import Banksys, Payer, Terminal, Transaction
-from banksys.payer import PREFIX_AVG as PAYER_PREFIX_AVG
-from banksys.payer import PREFIX_COUNT as PAYER_PREFIX_COUNT
-from banksys.terminal import PREFIX_N_TRX as TERMINAL_PREFIX_COUNT
-from banksys.terminal import PREFIX_RISK as TERMINAL_PREFIX_RISK
 from parameters import CardSimParameters, ClassificationParameters, Parameters
 
 from .mocks import MockClassificationSystem, mock_banksys
@@ -217,23 +213,23 @@ def test_make_features():
                     continue
                 if t.timestamp >= trx.timestamp - delta:
                     payer_transactions.append(t)
-            assert features.pop(f"{PAYER_PREFIX_COUNT}{delta}") == len(payer_transactions)
+            assert features.pop(Payer.colname("count", delta)) == len(payer_transactions)
             if len(payer_transactions) == 0:
                 avg_amount = 0.0
             else:
                 avg_amount = sum(t.amount for t in payer_transactions) / len(payer_transactions)
-            assert features.pop(f"{PAYER_PREFIX_AVG}{delta}") == avg_amount
+            assert features.pop(Payer.colname("avg", delta)) == avg_amount
 
             term_transactions = list[Transaction]()
             for t in train_trx:
                 if t.terminal_id == trx.terminal_id and t.timestamp >= trx.timestamp - delta:
                     term_transactions.append(t)
-            assert features.pop(f"{TERMINAL_PREFIX_COUNT}{delta}") == len(term_transactions)
+            assert features.pop(Terminal.colname("count", delta)) == len(term_transactions)
             if len(term_transactions) == 0:
                 risk_score = 0.0
             else:
                 risk_score = sum(t.fraud_is_detected for t in term_transactions) / len(term_transactions)
-            assert features.pop(f"{TERMINAL_PREFIX_RISK}{delta}") == risk_score
+            assert features.pop(Terminal.colname("risk", delta)) == risk_score
 
         assert len(features) == 0, f"All features should be tested but {features.keys()} remain untested"
 
@@ -297,8 +293,8 @@ def test_aggregated_features():
     )
 
     system.payers[0].balance = 10_000
-    KEY_PAYER = f"{PAYER_PREFIX_COUNT}{timedelta(weeks=1)}"
-    KEY_TERM = f"{TERMINAL_PREFIX_COUNT}{timedelta(weeks=1)}"
+    KEY_PAYER = Payer.colname("count", timedelta(weeks=1))
+    KEY_TERM = Terminal.colname("count", timedelta(weeks=1))
     START_DATE = datetime(2023, 8, 1)
     for delta_days in range(6):
         hour = random.randint(0, 23)

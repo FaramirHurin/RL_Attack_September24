@@ -1,16 +1,13 @@
 from dataclasses import Field, dataclass
 from datetime import datetime, timedelta
-from typing import Sequence
+from typing import Literal, Sequence
 import polars as pl
 import inspect
+from humanize import naturaldelta
 from utils import fields2schema
 from exceptions import InsufficientFundsError
 from .transaction import Transaction
 from .trx_window import TransactionWindow
-
-
-PREFIX_COUNT = "[PAYER] TRX COUNT "
-PREFIX_AVG = "[PAYER] TRX AVG "
 
 
 # In case there is an equality in the priority queue, it compares
@@ -28,8 +25,8 @@ class Payer:
         self.y = int(y)
         self.balance = balance
         self._window = TransactionWindow(agg_windows)
-        self._count_feature_names = [f"{PREFIX_COUNT}{window}" for window in self._window.aggregation_windows]
-        self._avg_feature_names = [f"{PREFIX_AVG}{window}" for window in self._window.aggregation_windows]
+        self._count_feature_names = [Payer.colname("count", window) for window in self._window.aggregation_windows]
+        self._avg_feature_names = [Payer.colname("avg", window) for window in self._window.aggregation_windows]
 
     def add(self, trx: Transaction, update_balance: bool):
         assert trx.predicted_label is not None
@@ -79,3 +76,8 @@ class Payer:
             results[self._count_feature_names[i]] = count
             results[self._avg_feature_names[i]] = avg_amount
         return results
+
+    @staticmethod
+    def colname(data: Literal["count", "avg"], window: timedelta) -> str:
+        prefix = "[PAYER] TRX COUNT " if data == "count" else "[PAYER] TRX AVG "
+        return f"{prefix}{naturaldelta(window)}"

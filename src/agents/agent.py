@@ -13,13 +13,13 @@ class Agent(ABC):
         """
 
     @abstractmethod
-    def update_transition(self, t: Transition, step: int, episode_num: int):
+    def update_transition(self, transition: Transition, step: int, episode_num: int, simulation_t: int):
         """
         Update the agent's policy based on the transition.
         """
 
     @abstractmethod
-    def update_episode(self, episode: Episode, step_num: int, episode_num: int):
+    def update_episode(self, episode: Episode, step_num: int, episode_num: int, simulation_t: int):
         """
         Update the agent's policy based on the episode.
         """

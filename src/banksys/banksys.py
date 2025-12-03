@@ -152,7 +152,7 @@ class Banksys:
             other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=compute_other_features), schema=self.schema)
         features = self.make_transaction_features(trx)
         elapsed = trx.timestamp - self.attack_start
-        tb_log("features", features, elapsed)
+        tb_log("features", {k: v for k, v in features.items() if k not in WEEKDAYS}, elapsed)
         features_df = pl.DataFrame(features, schema=self.schema)
         trx.predicted_label = self.clf.predict(features_df).item()
         self.payers[trx.payer_id].add(trx, update_balance=True)

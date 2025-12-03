@@ -20,3 +20,17 @@ def test_time_ratio():
     assert registry._get_remaining_time_ratio(card, t + timedelta(days=1)) == 0.0
     assert registry._get_remaining_time_ratio(card, t + timedelta(days=1, hours=12)) == -0.5
     assert registry._get_remaining_time_ratio(card, t + timedelta(days=2)) == -1
+
+
+def test_no_doubles():
+    payers = [Payer(i, 0, 0, 20, AGG_WINDOWS) for i in range(2)]
+    registry = PayerRegistry(payers, timedelta(days=7), datetime(2023, 1, 1))
+    t1 = datetime(2023, 1, 2)
+    t2 = datetime(2023, 1, 2)
+    for _ in range(1_000):
+        registry.reset()
+        payer1 = registry.release_payer(t1)
+        assert registry.n_currently_released == 1
+        payer2 = registry.release_payer(t2)
+        assert registry.n_currently_released == 2
+        assert payer1 != payer2

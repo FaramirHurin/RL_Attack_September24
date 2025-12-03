@@ -221,7 +221,7 @@ class VaeAgent(Agent):
         if self.know_client:
             customers = self.banksys.payers
             transactions_df = self._trx_and_customers(transactions_df, customers)
-        transactions_df["hour"] = transactions_df["timestamp"].dt.hour
+        transactions_df["hour"] = transactions_df["timestamp"].dt.hour  # type: ignore[union-attr]
         return transactions_df
 
     def choose_action(self, observation: np.ndarray, hx=None):

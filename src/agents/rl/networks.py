@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 from torch import distributions
+from torch.distributions import transforms
+from marlenv import ContinuousSpace
 
 
 class PositiveDefiniteMatrixGenerator(nn.Module):
@@ -32,25 +34,35 @@ class PositiveDefiniteMatrixGenerator(nn.Module):
 
 
 class ActorCritic(torch.nn.Module, ABC):
-    def __init__(self, n_actions: int, use_covariance_matrix: bool, device: torch.device):
+    def __init__(self, action_space: ContinuousSpace, use_covariance_matrix: bool, device: torch.device):
         super().__init__()
-        self.n_actions = n_actions
+        self.action_space = action_space
+        # Transforms to rescale the actions from [0, 1] to [low, high]
+        self.transforms = [
+            transforms.SigmoidTransform(),
+            transforms.AffineTransform(
+                loc=torch.tensor(self.action_space.low, device=device),
+                scale=torch.tensor(self.action_space.high - self.action_space.low, device=device),
+            ),
+        ]
+        self.n_actions = action_space.size
         self.device = device
         self.use_covariance_matrix = use_covariance_matrix
         if use_covariance_matrix:
             # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
             # n_actions for the means
             # n_actions ** 2 for the covariance matrix
-            self.output_size = n_actions + n_actions**2
+            self.output_size = self.n_actions + self.n_actions**2
         else:
-            self.output_size = n_actions
+            # Output both means and variances for each action
+            self.output_size = self.n_actions * 2
 
     @abstractmethod
     def policy(
         self,
         states: torch.Tensor,
         hx: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.distributions.Distribution, Optional[torch.Tensor]]: ...
+    ) -> tuple[distributions.TransformedDistribution, Optional[torch.Tensor]]: ...
 
     @abstractmethod
     def value(
@@ -77,7 +89,6 @@ class ActorCritic(torch.nn.Module, ABC):
         *dims, _ = outputs.shape
         outputs = outputs.view(-1, self.output_size)
         means = outputs[:, : self.n_actions]
-        means = torch.nn.functional.softplus(means)
         means = means.reshape(*dims, self.n_actions)
         if self.use_covariance_matrix:
             cov = outputs[:, self.n_actions :]
@@ -87,15 +98,17 @@ class ActorCritic(torch.nn.Module, ABC):
             cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
             cov = cov * norm
             cov = cov.reshape(*dims, self.n_actions, self.n_actions)
-            return distributions.MultivariateNormal(means, cov)
-        cov = torch.diag(torch.ones(self.n_actions, device=self.device)).unsqueeze(dim=0)
-        return distributions.MultivariateNormal(means, cov)
+            dist = distributions.MultivariateNormal(means, cov)
+        else:
+            stds = outputs[:, self.n_actions :]
+            stds = stds.reshape(*dims, self.n_actions)
+            dist = torch.distributions.Independent(torch.distributions.Normal(means, stds), 1)
+        return distributions.TransformedDistribution(dist, self.transforms)
 
 
 class LinearActorCritic(ActorCritic):
-    def __init__(self, state_size: int, n_actions: int, device: torch.device, use_covariance_matrix: bool):
-        super().__init__(n_actions, use_covariance_matrix, device)
-        self.n_actions = n_actions
+    def __init__(self, state_size: int, action_space: ContinuousSpace, device: torch.device, use_covariance_matrix: bool):
+        super().__init__(action_space, use_covariance_matrix, device)
         self.device = device
         INNER_SIZE_ACTIONS = 64
         INNER_SIZE_SEQUNTIAL = 64
@@ -155,12 +168,11 @@ class RNN(torch.nn.Module):
 
 
 class RecurrentActorCritic(ActorCritic):
-    def __init__(self, state_size: int, n_actions: int, device: torch.device, use_covariance_matrix: bool):
-        super().__init__(n_actions, use_covariance_matrix, device)
+    def __init__(self, state_size: int, action_space: ContinuousSpace, device: torch.device, use_covariance_matrix: bool):
+        super().__init__(action_space, use_covariance_matrix, device)
         self.hidden_states_actor = None
         self.hidden_states_critic = None
         self.saved_hidden_states = None, None
-        self.n_actions = n_actions
         self.device = device
         # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
         # self.n_action_outputs = n_actions + n_actions**2

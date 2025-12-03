@@ -1,5 +1,4 @@
 from banksys import Payer, Transaction
-from banksys.payer import PREFIX_COUNT, PREFIX_AVG
 from datetime import datetime, timedelta
 from exceptions import InsufficientFundsError
 
@@ -34,21 +33,21 @@ def test_features():
     trx = Transaction(100, datetime(2023, 1, 9), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
-    assert features[f"{PREFIX_COUNT}{timedelta(days=1)}"] == 1.0
-    assert features[f"{PREFIX_AVG}{timedelta(days=1)}"] == 100.0
-    assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 1.0
-    assert features[f"{PREFIX_AVG}{timedelta(days=7)}"] == 100.0
+    assert features[Payer.colname("count", timedelta(days=1))] == 1.0
+    assert features[Payer.colname("avg", timedelta(days=1))] == 100.0
+    assert features[Payer.colname("count", timedelta(days=7))] == 1.0
+    assert features[Payer.colname("avg", timedelta(days=7))] == 100.0
 
     trx = Transaction(120, datetime(2023, 1, 14, hour=17), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
-    assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 2
-    assert features[f"{PREFIX_AVG}{timedelta(days=7)}"] == 110.0
-    assert features[f"{PREFIX_COUNT}{timedelta(days=1)}"] == 1
-    assert features[f"{PREFIX_AVG}{timedelta(days=1)}"] == 120.0
+    assert features[Payer.colname("count", timedelta(days=7))] == 2
+    assert features[Payer.colname("avg", timedelta(days=7))] == 110.0
+    assert features[Payer.colname("count", timedelta(days=1))] == 1
+    assert features[Payer.colname("avg", timedelta(days=1))] == 120.0
 
     trx = Transaction(180, datetime(2023, 1, 18, hour=18), 0, 0, True, False, predicted_label=False)
     payer.add(trx, update_balance=False)
     features = payer.compute_features(trx.timestamp)
-    assert features[f"{PREFIX_COUNT}{timedelta(days=7)}"] == 2.0
-    assert features[f"{PREFIX_AVG}{timedelta(days=7)}"] == 150.0
+    assert features[Payer.colname("count", timedelta(days=7))] == 2.0
+    assert features[Payer.colname("avg", timedelta(days=7))] == 150.0
