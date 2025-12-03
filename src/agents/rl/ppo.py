@@ -93,7 +93,7 @@ class PPO(Agent):
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         policy, _ = self.actor_critic.policy(batch.obs)
-        log_probs = policy.log_prob(batch.actions) * batch.masks
+        log_probs = policy.log_prob(batch.actions)
         all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
@@ -140,7 +140,7 @@ class PPO(Agent):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
             new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
-            ratio = torch.exp(new_log_probs - mini_log_probs)
+            ratio = torch.exp(new_log_probs - mini_log_probs) * minibatch.masks
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             tmp = torch.min(surrogate1, surrogate2)

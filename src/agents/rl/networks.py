@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch import distributions
 from torch.distributions import transforms
 from marlenv import ContinuousSpace
+from utils import tb_log
 
 
 class PositiveDefiniteMatrixGenerator(nn.Module):
@@ -91,16 +92,19 @@ class ActorCritic(torch.nn.Module, ABC):
         means = outputs[:, : self.n_actions]
         means = means.reshape(*dims, self.n_actions)
         if self.use_covariance_matrix:
-            cov = outputs[:, self.n_actions :]
-            cov = cov.reshape(-1, self.n_actions, self.n_actions)
-            norm = torch.norm(cov, p="fro", dim=(1, 2), keepdim=True)
-            cov = cov / (norm + 1e-8)
-            cov = cov @ cov.transpose(1, 2) + torch.eye(self.n_actions, device=outputs.device)
-            cov = cov * norm
-            cov = cov.reshape(*dims, self.n_actions, self.n_actions)
+            # Generate a Positive Definite covariance matrix
+            # https://stackoverflow.com/questions/58176501/how-do-you-generate-positive-definite-matrix-in-pytorch
+            raw = outputs[:, self.n_actions :]
+            raw = raw.reshape(-1, self.n_actions, self.n_actions)
+            positive_semi_definite = raw @ raw.transpose(1, 2)
+            positive_definite = positive_semi_definite + torch.eye(self.n_actions, device=outputs.device)
+            cov = positive_definite.reshape(*dims, self.n_actions, self.n_actions)
             dist = distributions.MultivariateNormal(means, cov)
+            tb_log("distribution/cov_min", cov.min().item())
+            tb_log("distribution/means_min", means.min().item())
         else:
             stds = outputs[:, self.n_actions :]
+            stds = torch.nn.functional.softplus(stds)
             stds = stds.reshape(*dims, self.n_actions)
             dist = torch.distributions.Independent(torch.distributions.Normal(means, stds), 1)
         return distributions.TransformedDistribution(dist, self.transforms)

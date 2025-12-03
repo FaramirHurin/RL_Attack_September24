@@ -10,6 +10,7 @@ import numpy as np
 
 
 writer = None
+prev_t = 0
 
 
 def init_tb_logger(log_dir: str | None = None):
@@ -58,12 +59,16 @@ def _warn_once(msg: str):
     logging.warning(msg)
 
 
-def tb_log(tag: str, value: float | dict | np.floating, step: int | timedelta):
+def tb_log(tag: str, value: float | dict | np.floating, step: int | timedelta | None = None):
     if writer is None:
         _warn_once("TensorBoard writer is not initialized.")
         return
+    global prev_t
     if isinstance(step, timedelta):
         step = int(step.total_seconds())
+    elif step is None:
+        step = prev_t
+    prev_t = step
     match value:
         case float() | int() | bool() | np.floating() | np.integer():
             writer.add_scalar(tag, value, step)

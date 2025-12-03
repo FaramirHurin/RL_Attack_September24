@@ -4,7 +4,6 @@ from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal
 
 import dotenv
-from marlenv.utils import Schedule
 
 import utils
 from experiment import Experiment, Run
@@ -13,6 +12,7 @@ from runner import Runner
 
 
 def run(p: Parameters, rundir: str):
+    utils.init_tb_logger()
     logging.info(f"Starting run with seed {p.seed}...")
     p.seed_random()
     try:
@@ -52,24 +52,18 @@ def main(
     elif algorithm == "rppo":
         agent = PPOParameters.best_rppo(anomaly)
     elif algorithm == "ppo":
-        agent = PPOParameters.best_ppo(anomaly)
-        c2 = Schedule.constant(0.0)
-        agent.entropy_c2 = c2
-        agent.normalize_rewards = False
-        agent.normalize_advantages = True
-        # utils.init_tb_logger(f"runs/entropy-c2={c2.value}")
-        utils.init_tb_logger()
+        agent = PPOParameters(normalize_rewards=True)
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
         clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.01, fn_rate=0.01),
-        env_params=EnvParameters(pool_size=50, n_episodes=6000),
+        env_params=EnvParameters(pool_size=50, n_episodes=1000),
         seed=initial_seed,
         invalidate_banksys_cache=False,
     )
-    exp = Experiment.create(params)
+    exp = Experiment.create(params, "logs/test")
     if n_jobs == 1:
         return [run(p, rundir) for p, rundir in exp.repeat(n_repetitions)]
     return run_parallel(exp, n_jobs=n_jobs, n_repetitions=n_repetitions)
@@ -85,7 +79,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=True, initial_seed=7, with_modification=False)
+        main(algorithm="ppo", anomaly=True, initial_seed=20, n_repetitions=20, with_modification=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

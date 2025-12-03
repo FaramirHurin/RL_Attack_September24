@@ -12,6 +12,7 @@ class StatisticalClassifier:
         self.quantiles = col_quantiles
         self.quantiles_values = dict[str, tuple[float, float]]()  # Dictionary to hold quantiles for each considered
         self._last_predictions = dict[str, npt.NDArray[np.bool]]()  # Store last predictions for each column
+        self._details_cols = {col: f"{col} > {high:.2f} or < {low:.2f}" for col, (low, high) in col_quantiles.items()}
 
     def fit(self, df: pl.DataFrame):
         # Compute the quantiles lower and upper bounds for each column
@@ -37,6 +38,6 @@ class StatisticalClassifier:
         """
         res = {}
         for col, preds in self._last_predictions.items():
-            low, high = self.quantiles_values[col]
-            res[f"{col} > {high} or < {low}"] = preds
+            detail_col = self._details_cols[col]
+            res[detail_col] = preds
         return res
