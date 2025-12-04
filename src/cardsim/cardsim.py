@@ -358,6 +358,7 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
+            os.makedirs("cache", exist_ok=True)
             indivs.write_csv(cache_file)
 
         cache_file = os.path.join("cache", f"dcpc_day-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
@@ -371,6 +372,7 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
+            os.makedirs("cache", exist_ok=True)
             daily.write_csv(cache_file)
 
         cache_file = os.path.join("cache", f"dcpc_trx-{self.dcpc_start_year}-{self.dcpc_end_year}.csv")
@@ -384,6 +386,7 @@ class Cardsim:
                 end_year=self.dcpc_end_year,
                 folder=self.dcpc_folder,
             )
+            os.makedirs("cache", exist_ok=True)
             transactions.write_csv(cache_file)
         logging.info("Sourcing successful; formatting data")
 

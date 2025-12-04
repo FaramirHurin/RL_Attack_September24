@@ -1,14 +1,10 @@
-import torch
-import torch.distributions.transforms as transforms
+from parameters import Parameters, CardSimParameters
 
-dist = torch.distributions.Uniform(-1, 1)
-dt = torch.distributions.TransformedDistribution(dist, [transforms.AffineTransform(0, 5)])
 
-x = dt.sample((10,))
-print(x)
-log_prob = dt.log_prob(x)
-print("log prob", log_prob)
-print("prob", torch.exp(log_prob))
-
-p = dist.log_prob(torch.tensor([-1, 1, 0]).unsqueeze(-1))
-print("uniform log prob", p)
+for seed in range(100):
+    for modification in (True, False):
+        params = Parameters(
+            cardsim=CardSimParameters.paper_params(with_modification=modification),
+            seed=seed,
+        )
+        params.make_env()

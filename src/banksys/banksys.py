@@ -72,9 +72,9 @@ class Banksys:
         Automatically called from the constructor.
         """
         logging.info("System warmup for training feature aggregation...")
-        self._fast_forward(self.training_start, show_progress=True)
+        self._fast_forward(self.training_start, show_progress=not self.silent)
         logging.info("Building classifier training features...")
-        features = self._fast_forward(self.attack_start, show_progress=True, compute_features=True)
+        features = self._fast_forward(self.attack_start, show_progress=not self.silent, compute_features=True)
         train_x = pl.DataFrame(features, schema=self.schema)
         train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
         self.clf.fit(pl.DataFrame(train_x), train_y)
