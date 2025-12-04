@@ -75,6 +75,10 @@ class EpisodeBatch(Batch):
     def _initialize_gae(self):
         return torch.zeros(self.size, dtype=torch.float32).to(device=self.device), self._max_episode_len
 
+    @property
+    def n_steps(self):
+        return self._max_episode_len
+
     @cached_property
     def dt(self):
         """

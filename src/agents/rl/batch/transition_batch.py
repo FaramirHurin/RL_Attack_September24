@@ -68,6 +68,10 @@ class TransitionBatch(Batch):
             indices = indices_or_size
         return TransitionBatch([self.transitions[i] for i in indices], self.device)
 
+    @property
+    def n_steps(self):
+        return self.size
+
     @cached_property
     def obs(self):
         return torch.from_numpy(np.array([t.obs.data for t in self.transitions], dtype=np.float32)).to(self.device)

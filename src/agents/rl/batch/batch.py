@@ -36,11 +36,11 @@ class Batch(ABC):
     def _normalize(self, tensor: torch.Tensor):
         """Normalize the tensor such that it has a mean of 0 and a std of 1."""
         # Take into account the masks
-        mean = torch.sum(tensor * self.masks) / self.masks_sum
         data = tensor.flatten()
         masks = self.masks.flatten()
         filtered_data = data[masks == 1]
         std = torch.std(filtered_data)
+        mean = torch.mean(filtered_data)
         return (tensor - mean) / (std + 1e-8)
 
     @abstractmethod  # type: ignore
@@ -57,13 +57,13 @@ class Batch(ABC):
         """
         Compute the returns using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.
         """
-        # dt = self.dt
         if isinstance(next_value, (float, int)):
-            next_value = torch.tensor(next_value, dtype=torch.float32)
+            next_value = torch.full_like(self.rewards[0], next_value)
+            # next_value = torch.tensor(next_value, dtype=torch.float32)
         returns = torch.empty_like(self.rewards, dtype=torch.float32)
-        for t in range(self.size - 1, -1, -1):
-            next_value = self.rewards[t] + gamma * next_value * self.not_dones[t]
-            # next_value = self.rewards[t] + gamma ** dt[t] * next_value * self.not_dones[t]
+        for t in range(self.n_steps - 1, -1, -1):
+            # next_value = self.rewards[t] + gamma * next_value * self.not_dones[t]
+            next_value = self.rewards[t] + gamma ** self.dt[t] * next_value * self.not_dones[t]
             returns[t] = next_value
         if normalize:
             returns = self._normalize(returns)
@@ -143,13 +143,12 @@ class Batch(ABC):
             Advantage estimates (batch_size,).
         """
         deltas = self.rewards + gamma * next_values - values
-        gae, t_max = self._initialize_gae()
+        gae, _ = self._initialize_gae()
         advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
         # Note: we want to discount the reward by the actual time between two observations
-        dt = self.dt
-        for t in range(t_max - 1, -1, -1):
+        for t in range(self.n_steps - 1, -1, -1):
             not_done = self.not_dones[t]
-            gae = deltas[t] + not_done * gamma ** dt[t] * trace_decay * gae
+            gae = deltas[t] + not_done * gamma ** self.dt[t] * trace_decay * gae
             advantages[t] = gae
         if normalize:
             advantages = self._normalize(advantages)
@@ -183,6 +182,14 @@ class Batch(ABC):
 
     @abstractmethod
     def get_minibatch(self, arg, /) -> "Batch": ...
+
+    @property
+    @abstractmethod
+    def n_steps(self) -> int:
+        """
+        The number of steps in the batch.
+        For a TransitionBatch, the batch size. For an EpisodeBatch, the maximal episode length.
+        """
 
     @cached_property
     def n_actions(self) -> int:

@@ -8,32 +8,6 @@ from marlenv import ContinuousSpace
 from utils import tb_log
 
 
-class PositiveDefiniteMatrixGenerator(nn.Module):
-    def __init__(self, input_size, matrix_size):
-        super().__init__()
-        # Output size is for the lower triangular part of the matrix
-        self.fc = nn.Linear(input_size, matrix_size * (matrix_size + 1) // 2)
-
-    def forward(self, x):
-        # Get the output from the linear layer
-        chol_params = self.fc(x)  # Cholesky parameters
-        # Initialize a lower triangular matrix
-        L = torch.zeros((x.size(0), chol_params.size(1), chol_params.size(1)), device=x.device)
-        # Fill the lower triangular part
-        idx = 0
-        for i in range(L.size(1)):
-            for j in range(i + 1):
-                if i == j:
-                    # Diagonal entries should be positive
-                    L[:, i, j] = torch.relu(chol_params[:, idx])  # Use ReLU to ensure positivity
-                else:
-                    L[:, i, j] = chol_params[:, idx]
-                idx += 1
-        # Generate the positive definite matrix
-        positive_definite_matrix = torch.bmm(L, L.transpose(1, 2))  # L * L^T
-        return positive_definite_matrix
-
-
 class ActorCritic(torch.nn.Module, ABC):
     def __init__(self, action_space: ContinuousSpace, use_covariance_matrix: bool, device: torch.device):
         super().__init__()
@@ -101,7 +75,11 @@ class ActorCritic(torch.nn.Module, ABC):
             cov = positive_definite.reshape(*dims, self.n_actions, self.n_actions)
             dist = distributions.MultivariateNormal(means, cov)
             tb_log("distribution/cov_min", cov.min().item())
+            tb_log("distribution/cov_max", cov.max().item())
+            tb_log("distribution/cov_mean", cov.mean().item())
             tb_log("distribution/means_min", means.min().item())
+            tb_log("distribution/means_max", means.max().item())
+            tb_log("distribution/means_mean", means.mean().item())
         else:
             stds = outputs[:, self.n_actions :]
             stds = torch.nn.functional.softplus(stds)
@@ -195,7 +173,6 @@ class RecurrentActorCritic(ActorCritic):
 
     def policy(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
         outputs, hx = self.actor.forward(states, hx)
-        # dist, hx = self._action_distribution(state, hx)
         dist = self.make_distribution(outputs)
         return dist, hx
 

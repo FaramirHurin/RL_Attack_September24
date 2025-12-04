@@ -2,7 +2,7 @@ import logging
 import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal
-
+from datetime import datetime
 import dotenv
 
 import utils
@@ -12,7 +12,7 @@ from runner import Runner
 
 
 def run(p: Parameters, rundir: str):
-    utils.init_tb_logger()
+    utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
     logging.info(f"Starting run with seed {p.seed}...")
     p.seed_random()
     try:
@@ -42,7 +42,6 @@ def main(
     algorithm: Literal["vae", "ppo", "rppo"],
     anomaly: bool,
     n_repetitions: int = 1,
-    ulb_data: bool = False,
     with_modification: bool = False,
     initial_seed: int = 0,
     n_jobs: int = 1,
@@ -51,14 +50,15 @@ def main(
         agent = VAEParameters.best_vae(anomaly)
     elif algorithm == "rppo":
         agent = PPOParameters.best_rppo(anomaly)
+        # agent = PPOParameters(is_recurrent=True)
     elif algorithm == "ppo":
-        agent = PPOParameters(normalize_rewards=True)
+        agent = PPOParameters(normalize_rewards=False, normalize_advantages=True)
     else:
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
-        clf_params=ClassificationParameters(use_anomaly=anomaly, fp_rate=0.01, fn_rate=0.01),
+        cardsim=CardSimParameters.paper_params(with_modification=with_modification),
+        clf_params=ClassificationParameters.paper_params(False, False),
         env_params=EnvParameters(pool_size=50, n_episodes=1000),
         seed=initial_seed,
         invalidate_banksys_cache=False,
@@ -71,7 +71,7 @@ def main(
 
 if __name__ == "__main__":
     # Le problème c'est que le score de risque augmente jusqu'à atteindre 1.0 dans les terminaux de paiement.
-    dotenv.load_dotenv()  # Load the "private" .env file
+    dotenv.load_dotenv()  # Load the local .env file
     log_level = os.getenv("LOG_LEVEL", "info").upper()  # info
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        main(algorithm="ppo", anomaly=True, initial_seed=20, n_repetitions=20, with_modification=False)
+        main(algorithm="rppo", anomaly=False, with_modification=False)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

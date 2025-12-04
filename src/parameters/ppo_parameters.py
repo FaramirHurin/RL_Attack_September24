@@ -226,7 +226,7 @@ class PPOParameters:
         minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
         enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
         if enable_clipping:
-            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.5, 10)
+            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.01, 10, log=True)
         else:
             grad_norm_clipping = None
         return PPOParameters(

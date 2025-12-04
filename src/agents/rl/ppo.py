@@ -64,7 +64,7 @@ class PPO(Agent):
         self.normalize_rewards = normalize_rewards
         self.normalize_advantages = normalize_advantages
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
-        self.optimizer = torch.optim.Adam(param_groups)
+        self.optimizer = torch.optim.Adam(param_groups, eps=1e-5)
         if isinstance(critic_c1, (float, int)):
             critic_c1 = Schedule.constant(critic_c1)
         self.c1 = critic_c1
@@ -92,13 +92,16 @@ class PPO(Agent):
 
     def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
+        # NOTE: Mask the log probs to prevent numerical instability when passed in torch.exp. If the value
+        # present without masking is large enough (e.g. >=10^3), torch.exp yields +inf which causes issues
+        # in the optimization process because it can not be masked properly (0 x inf = NaN).
         policy, _ = self.actor_critic.policy(batch.obs)
-        log_probs = policy.log_prob(batch.actions)
+        log_probs = policy.log_prob(batch.actions) * batch.masks
         all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
-        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=self.normalize_advantages)
-        returns = advantages + values
+        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=False)
+        returns = batch.compute_mc_returns(self.gamma, normalize=False) * batch.masks
         return returns, advantages, log_probs
 
     def save(self, path: str):
@@ -121,9 +124,11 @@ class PPO(Agent):
 
         critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
         for _ in range(self.n_epochs):
+            if step_num >= 242:
+                debug = True
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
-            match batch:
+            match minibatch:
                 case TransitionBatch():
                     mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
                 case EpisodeBatch():
@@ -139,12 +144,13 @@ class PPO(Agent):
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-            new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
-            ratio = torch.exp(new_log_probs - mini_log_probs) * minibatch.masks
+            # NOTE: Mask the log probs such that the ratio cannot be +inf
+            new_log_probs = mini_policy.log_prob(minibatch.actions) * minibatch.masks
+            ratio = torch.exp(new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
-            tmp = torch.min(surrogate1, surrogate2)
-            actor_loss = -torch.sum(tmp) / minibatch.masks_sum  # Minus sign to maximize the objective
+            surr_min = torch.min(surrogate1, surrogate2)
+            actor_loss = -torch.sum(surr_min) / minibatch.masks_sum  # Minus sign to maximize the objective
 
             # S[\pi_0](s_t) in the paper (equation (9))
             entropy = mini_policy.base_dist.entropy()
