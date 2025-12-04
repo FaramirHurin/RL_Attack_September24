@@ -71,40 +71,34 @@ class ClassificationParameters:
         return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
     @staticmethod
-    def paper_params(anomaly: bool):
-        if anomaly:
-            return ClassificationParameters(
-                use_anomaly=True,
-                n_trees=98,
-                balance_factor=0.06268092204600313,
-                contamination="auto",
-                training_duration=timedelta(days=150),
-                quantiles={
-                    "amount": (0.0, 0.9999170024954384),
-                    Terminal.colname("risk", timedelta(days=1)): (0.0, 0.9999132292246781),
-                },
-                rules={
-                    timedelta(hours=1): 5,
-                    timedelta(days=1): 19,
-                    timedelta(weeks=1): 27,
-                },
-            )
-        return ClassificationParameters(
-            use_anomaly=False,
-            n_trees=127,
-            balance_factor=0.05594667336369366,
-            contamination=0.005,
-            training_duration=timedelta(days=150),
-            quantiles={
-                "amount": (0.0, 0.9999924062983265),
-                Terminal.colname("risk", timedelta(days=1)): (0.0, 0.9999996860191219),
-            },
-            rules={
-                timedelta(hours=1): 7,
-                timedelta(days=1): 8,
-                timedelta(weeks=1): 37,
-            },
-        )
+    def paper_params(with_anomaly: bool, with_modification: bool):
+        match (with_modification, with_anomaly):
+            case (False, False):
+                # [max_trx_hour: 7, max_trx_day: 10, max_trx_week: 45, n_trees: 200, balance_factor: 0.05010330218871149, quantiles_amount_high: 0.9999906444487933, quantiles_risk_high: 0.9998050395914746, fp_rate: 0.008757552666375281, fn_rate: 0.01853373993723769]
+                return ClassificationParameters(
+                    training_duration=timedelta(days=30),
+                    n_trees=200,
+                    contamination="auto",
+                    balance_factor=0.05010330218871149,
+                    quantiles={
+                        "amount": (0, 0.9999906444487933),
+                        Terminal.colname("risk", timedelta(days=1)): (0, 0.9998050395914746),
+                    },
+                    use_anomaly=False,
+                    rules={
+                        timedelta(hours=1): 7,
+                        timedelta(days=1): 10,
+                        timedelta(weeks=1): 45,
+                    },
+                    fp_rate=0.008757552666375281,
+                    fn_rate=0.01853373993723769,
+                )
+            case (False, True):
+                raise NotImplementedError()
+            case (True, False):
+                raise NotImplementedError()
+            case (True, True):
+                raise NotImplementedError()
 
     @staticmethod
     def suggest(trial: Trial, use_anomaly: bool):
