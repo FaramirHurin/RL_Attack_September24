@@ -1,7 +1,5 @@
-from copy import deepcopy
 from datetime import timedelta
 import logging
-import time
 import optuna
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
@@ -20,10 +18,10 @@ POOL_SIZE = 20
 CACHE_ROOT = "cache"
 
 
-def e2(clf: ClassificationParameters, seed: int):
+def compute_f1(clf: ClassificationParameters, seed: int):
     cardsim = CardSimParameters.paper_params(with_modification=WITH_MODIFICATION)
     trx, payers, terminals = cardsim.load_simulation_data(os.path.join(CACHE_ROOT, f"seed-{seed}"))
-    banksys = Banksys(trx, payers, terminals, clf, silent=False)
+    banksys = Banksys(trx, payers, terminals, clf, silent=True)
     t_start = banksys.current_time
     t_end = t_start + timedelta(days=30)
     labels = banksys._transactions.filter(pl.col("timestamp").is_between(t_start, t_end))["is_fraud"].to_numpy()
@@ -33,15 +31,11 @@ def e2(clf: ClassificationParameters, seed: int):
     return float(f1)
 
 
-def e1(clf: ClassificationParameters) -> float:
-    with Pool(POOL_SIZE) as pool:
-        results = pool.starmap(e2, [(deepcopy(clf), seed) for seed in range(N_REPEATS)])
-    return sum(results) / len(results)
-
-
 def objective(trial: optuna.Trial):
-    clf_params = ClassificationParameters.suggest(trial, use_anomaly=USE_ANOMALY)
-    return e1(clf_params)
+    clf = ClassificationParameters.suggest(trial, use_anomaly=USE_ANOMALY)
+    with Pool(POOL_SIZE) as pool:
+        results = pool.starmap(compute_f1, [(clf, seed) for seed in range(N_REPEATS)])
+    return sum(results) / len(results)
 
 
 if __name__ == "__main__":
@@ -53,9 +47,9 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     study = optuna.create_study(
-        storage=JournalStorage(JournalFileBackend(file_path="journal.log")),
-        study_name=f"clf-tuning-anomaly-{USE_ANOMALY}",
+        storage=JournalStorage(JournalFileBackend(file_path="clf-tuning.journal")),
+        study_name=f"anomaly-{USE_ANOMALY}-modification-{WITH_MODIFICATION}",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=10, n_jobs=1)
+    study.optimize(objective, n_trials=200, n_jobs=3)
