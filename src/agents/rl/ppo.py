@@ -98,7 +98,7 @@ class PPO(Agent):
         policy, _ = self.actor_critic.policy(batch.obs)
         log_probs = policy.log_prob(batch.actions)
         log_probs[batch.masked_indices] = 0.0
-        all_values, _ = self.actor_critic.value(batch.all_obs)
+        all_values = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
         advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=False)
@@ -127,8 +127,6 @@ class PPO(Agent):
 
         critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
         for e in range(self.n_epochs):
-            if step_num >= 242:
-                debug = True
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
             if isinstance(minibatch, EpisodeBatch):
@@ -137,7 +135,7 @@ class PPO(Agent):
 
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
-            mini_values, _ = self.actor_critic.value(minibatch.obs)
+            mini_values = self.actor_critic.value(minibatch.obs)
             td_error = mini_values - mini_returns
             td_error[minibatch.masked_indices] = 0.0
             critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
@@ -148,6 +146,8 @@ class PPO(Agent):
             mini_new_log_probs = mini_policy.log_prob(minibatch.actions)
             mini_new_log_probs[minibatch.masked_indices] = 0.0
             ratio = torch.exp(mini_new_log_probs - mini_log_probs)
+            if e == 0 and torch.any(ratio != 1):
+                debug = True
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             surr_min = torch.min(surrogate1, surrogate2)

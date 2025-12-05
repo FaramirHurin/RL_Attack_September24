@@ -1,7 +1,6 @@
 from typing import Optional
 from abc import ABC, abstractmethod
 import torch
-import torch.nn as nn
 from torch import distributions
 from torch.distributions import transforms
 from marlenv import ContinuousSpace
@@ -40,11 +39,13 @@ class ActorCritic(torch.nn.Module, ABC):
     ) -> tuple[distributions.TransformedDistribution, Optional[torch.Tensor]]: ...
 
     @abstractmethod
-    def value(
-        self,
-        states: torch.Tensor,
-        hx: Optional[torch.Tensor] = None,
-    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]: ...
+    def value(self, states: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the value of a batch of states.
+
+        Note: since this is only used during training, there is no possible hidden states to
+        maintain, as only full episodes are fed to this function.
+        """
 
     @abstractmethod
     def actor_parameters(self) -> list[torch.nn.Parameter]: ...
@@ -123,9 +124,9 @@ class LinearActorCritic(ActorCritic):
         dist = self.make_distribution(outputs)
         return dist, None
 
-    def value(self, state: torch.Tensor, *args, **kwargs):
+    def value(self, state: torch.Tensor):
         value = self.critic.forward(state)
-        return torch.squeeze(value, -1), None
+        return torch.squeeze(value, -1)
 
     def to(self, device: torch.device, *args, **kwargs):
         self.device = device
@@ -152,33 +153,18 @@ class RNN(torch.nn.Module):
 class RecurrentActorCritic(ActorCritic):
     def __init__(self, state_size: int, action_space: ContinuousSpace, device: torch.device, use_covariance_matrix: bool):
         super().__init__(action_space, use_covariance_matrix, device)
-        self.hidden_states_actor = None
-        self.hidden_states_critic = None
-        self.saved_hidden_states = None, None
         self.device = device
-        # Because we output one mean per action and a covariance matrix, we have an output of size n_actions + n_actions**2
-        # self.n_action_outputs = n_actions + n_actions**2
         self.actor = RNN(n_inputs=state_size, n_outputs=self.output_size, n_hidden=64).to(self.device)
         self.critic = RNN(n_inputs=state_size, n_outputs=1, n_hidden=64).to(self.device)
-
-    def save_hidden_states(self):
-        self.saved_hidden_states = self.hidden_states_actor, self.hidden_states_critic
-
-    def restore_hidden_states(self):
-        self.hidden_states_actor, self.hidden_states_critic = self.saved_hidden_states
-
-    def reset(self):
-        self.hidden_states_actor = None
-        self.hidden_states_critic = None
 
     def policy(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
         outputs, hx = self.actor.forward(states, hx)
         dist = self.make_distribution(outputs)
         return dist, hx
 
-    def value(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
-        value, hx = self.critic.forward(states, hx)
-        return value.squeeze(-1), hx
+    def value(self, states: torch.Tensor):
+        value, _ = self.critic.forward(states, None)
+        return value.squeeze(-1)
 
     def to(self, device: torch.device, *args, **kwargs):
         self.device = device
