@@ -96,12 +96,15 @@ class PPO(Agent):
         # present without masking is large enough (e.g. >=10^3), torch.exp yields +inf which causes issues
         # in the optimization process because it can not be masked properly (0 x inf = NaN).
         policy, _ = self.actor_critic.policy(batch.obs)
-        log_probs = policy.log_prob(batch.actions) * batch.masks
+        log_probs = policy.log_prob(batch.actions)
+        log_probs[batch.masked_indices] = 0.0
         all_values, _ = self.actor_critic.value(batch.all_obs)
         values = all_values[:-1] * batch.masks
         next_values = all_values[1:] * batch.not_dones
         advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=False)
-        returns = batch.compute_mc_returns(self.gamma, normalize=False) * batch.masks
+        returns = batch.compute_mc_returns(self.gamma, normalize=False)
+        assert torch.all(advantages[batch.masked_indices] == 0)
+        assert torch.all(returns[batch.masked_indices] == 0)
         return returns, advantages, log_probs
 
     def save(self, path: str):
@@ -123,30 +126,28 @@ class PPO(Agent):
             returns, advantages, log_probs = self._compute_training_data(batch)
 
         critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
-        for _ in range(self.n_epochs):
+        for e in range(self.n_epochs):
             if step_num >= 242:
                 debug = True
             indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
             minibatch = batch.get_minibatch(indices)
-            match minibatch:
-                case TransitionBatch():
-                    mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
-                case EpisodeBatch():
-                    mini_log_probs, mini_returns, mini_advantages = log_probs[:, indices], returns[:, indices], advantages[:, indices]
-                case other:
-                    raise ValueError(f"Unknown batch type: {type(other)}")
+            if isinstance(minibatch, EpisodeBatch):
+                indices = (..., indices)  # The episode dimension come second in episode batches: (time, episode, ...)
+            mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
+
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
             mini_values, _ = self.actor_critic.value(minibatch.obs)
-            td_error = (mini_values - mini_returns) * minibatch.masks
+            td_error = mini_values - mini_returns
+            td_error[minibatch.masked_indices] = 0.0
             critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-            # NOTE: Mask the log probs such that the ratio cannot be +inf
-            new_log_probs = mini_policy.log_prob(minibatch.actions) * minibatch.masks
-            ratio = torch.exp(new_log_probs - mini_log_probs)
+            mini_new_log_probs = mini_policy.log_prob(minibatch.actions)
+            mini_new_log_probs[minibatch.masked_indices] = 0.0
+            ratio = torch.exp(mini_new_log_probs - mini_log_probs)
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             surr_min = torch.min(surrogate1, surrogate2)
@@ -174,9 +175,9 @@ class PPO(Agent):
         tb_log("ppo/mean_log_probs", log_probs.mean().item(), simulation_t)
         tb_log("ppo/min_log_probs", log_probs.min().item(), simulation_t)
         tb_log("ppo/max_log_probs", log_probs.max().item(), simulation_t)
-        tb_log("ppo/min_new_log_prob", new_log_probs.min().item(), simulation_t)
-        tb_log("ppo/max_new_log_prob", new_log_probs.max().item(), simulation_t)
-        tb_log("ppo/mean_new_log_prob", new_log_probs.mean().item(), simulation_t)
+        tb_log("ppo/min_new_log_prob", mini_new_log_probs.min().item(), simulation_t)
+        tb_log("ppo/max_new_log_prob", mini_new_log_probs.max().item(), simulation_t)
+        tb_log("ppo/mean_new_log_prob", mini_new_log_probs.mean().item(), simulation_t)
         tb_log("ppo/min_critic_loss", min(critic_losses), simulation_t)
         tb_log("ppo/max_critic_loss", max(critic_losses), simulation_t)
         tb_log("ppo/mean_critic_loss", np.mean(critic_losses), simulation_t)

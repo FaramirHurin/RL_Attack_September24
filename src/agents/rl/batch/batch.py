@@ -320,6 +320,11 @@ class Batch(ABC):
         """Masks (for padded episodes)"""
 
     @cached_property
+    def masked_indices(self) -> torch.BoolTensor:
+        """Boolean masks for padded episodes. True at indices that are masked."""
+        return self.masks == 0  # type: ignore[return-type]
+
+    @cached_property
     def masks_sum(self):
         """Sum of the masks"""
         return self.masks.sum()
