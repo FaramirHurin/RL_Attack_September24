@@ -90,7 +90,7 @@ class PPO(Agent):
         np_action = torch_action.squeeze(0).numpy(force=True)
         return np_action, hx
 
-    def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         # NOTE: Mask the log probs to prevent numerical instability when passed in torch.exp. If the value
         # present without masking is large enough (e.g. >=10^3), torch.exp yields +inf which causes issues
@@ -105,7 +105,7 @@ class PPO(Agent):
         returns = batch.compute_mc_returns(self.gamma, normalize=False)
         assert torch.all(advantages[batch.masked_indices] == 0)
         assert torch.all(returns[batch.masked_indices] == 0)
-        return returns, advantages, log_probs
+        return returns, advantages, log_probs, values
 
     def save(self, path: str):
         directory = os.path.dirname(path)
@@ -123,7 +123,7 @@ class PPO(Agent):
         self.c1.update(episode_num)
         self.c2.update(episode_num)
         with torch.no_grad():
-            returns, advantages, log_probs = self._compute_training_data(batch)
+            returns, advantages, log_probs, values = self._compute_training_data(batch)
 
         critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
         for e in range(self.n_epochs):

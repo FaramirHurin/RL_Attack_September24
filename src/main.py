@@ -45,6 +45,7 @@ def main(
     with_modification: bool = False,
     initial_seed: int = 0,
     n_jobs: int = 1,
+    ulb_data: bool = False,
 ):
     if algorithm == "vae":
         agent = VAEParameters.best_vae(anomaly)
@@ -57,9 +58,9 @@ def main(
         raise ValueError(f"Unknown algorithm: {algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=with_modification),
-        clf_params=ClassificationParameters.paper_params(False, False),
-        env_params=EnvParameters(pool_size=50, n_episodes=1000),
+        cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
+        clf_params=ClassificationParameters.paper_params(with_anomaly=anomaly, with_modification=with_modification),
+        env_params=EnvParameters(pool_size=50, n_episodes=2000),
         seed=initial_seed,
         invalidate_banksys_cache=False,
     )

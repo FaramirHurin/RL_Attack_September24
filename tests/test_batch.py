@@ -75,3 +75,19 @@ def test_episode_batch_creation():
         assert torch.all(batch.dones[MIN_EP_LENGTH + t - 1 :, t])
         assert torch.all(batch.rewards[: MIN_EP_LENGTH + t, t] == 0.5)
         assert torch.all(batch.rewards[MIN_EP_LENGTH + t :, t] == 0.0)
+
+
+def test_episode_minibatch_actions():
+    length = 10
+    episodes = [_make_episode(length, 5, 0.5) for _ in range(10)]
+    for i, e in enumerate(episodes):
+        e.actions = [np.full((length,), i)]
+
+    batch = EpisodeBatch(episodes)
+    for _ in range(10):
+        sampled_indices = np.random.choice(range(length), size=3, replace=False)
+        minibatch = batch.get_minibatch(sampled_indices)
+        for i, sampled_index in enumerate(sampled_indices):
+            expected_action = torch.tensor([sampled_index] * length)
+            assert torch.all(minibatch.actions[:length, i] == expected_action)
+            assert torch.all(minibatch.actions[length:, i] == 0.0)

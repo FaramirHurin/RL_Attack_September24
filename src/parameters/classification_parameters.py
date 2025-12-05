@@ -94,11 +94,65 @@ class ClassificationParameters:
                     fn_rate=0.01853373993723769,
                 )
             case (False, True):
-                raise NotImplementedError()
+                # [max_trx_hour: 7, max_trx_day: 19, max_trx_week: 35, n_trees: 163, balance_factor: 0.12817163708045945, quantiles_amount_high: 0.9995238540405597, quantiles_risk_high: 0.9990276449433015, fp_rate: 0.019241410257713323, fn_rate: 0.004683490375549398]
+                return ClassificationParameters(
+                    training_duration=timedelta(days=30),
+                    n_trees=163,
+                    contamination="auto",
+                    balance_factor=0.12817163708045945,
+                    quantiles={
+                        "amount": (0, 0.9995238540405597),
+                        Terminal.colname("risk", timedelta(days=1)): (0, 0.9990276449433015),
+                    },
+                    use_anomaly=True,
+                    rules={
+                        timedelta(hours=1): 7,
+                        timedelta(days=1): 19,
+                        timedelta(weeks=1): 35,
+                    },
+                    fp_rate=0.019241410257713323,
+                    fn_rate=0.004683490375549398,
+                )
             case (True, False):
-                raise NotImplementedError()
+                #  [max_trx_hour: 5, max_trx_day: 8, max_trx_week: 35, n_trees: 165, balance_factor: 0.05720386427396055, quantiles_amount_high: 0.9998653727810304, quantiles_risk_high: 0.9996872427746293, fp_rate: 0.0023521979812597383, fn_rate: 0.01342192652282362]
+                return ClassificationParameters(
+                    training_duration=timedelta(days=30),
+                    n_trees=165,
+                    contamination="auto",
+                    balance_factor=0.05720386427396055,
+                    quantiles={
+                        "amount": (0, 0.9998653727810304),
+                        Terminal.colname("risk", timedelta(days=1)): (0, 0.9996872427746293),
+                    },
+                    use_anomaly=False,
+                    rules={
+                        timedelta(hours=1): 5,
+                        timedelta(days=1): 8,
+                        timedelta(weeks=1): 35,
+                    },
+                    fp_rate=0.0023521979812597383,
+                    fn_rate=0.01342192652282362,
+                )
             case (True, True):
-                raise NotImplementedError()
+                # [max_trx_hour: 5, max_trx_day: 5, max_trx_week: 24, n_trees: 169, balance_factor: 0.14187681622345746, quantiles_amount_high: 0.998725033037342, quantiles_risk_high: 0.9993087542222269, fp_rate: 0.016083989915547495, fn_rate: 0.014686295327843348]
+                return ClassificationParameters(
+                    training_duration=timedelta(days=30),
+                    n_trees=169,
+                    contamination="auto",
+                    balance_factor=0.14187681622345746,
+                    quantiles={
+                        "amount": (0, 0.998725033037342),
+                        Terminal.colname("risk", timedelta(days=1)): (0, 0.9993087542222269),
+                    },
+                    use_anomaly=True,
+                    rules={
+                        timedelta(hours=1): 5,
+                        timedelta(days=1): 5,
+                        timedelta(weeks=1): 24,
+                    },
+                    fp_rate=0.016083989915547495,
+                    fn_rate=0.014686295327843348,
+                )
 
     @staticmethod
     def suggest(trial: Trial, use_anomaly: bool):

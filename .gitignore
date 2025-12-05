@@ -18,7 +18,6 @@ logs-1/*
 .env
 .venv
 logs.txt
-tuning/*
 *.db
 tuning-2/*
 *.weights

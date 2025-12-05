@@ -59,8 +59,6 @@ class ActorCritic(torch.nn.Module, ABC):
         Ensures that the covariance matrix is a valid one:
          - A @ A^T is symmetric by construction
          - Adding the identity matrix ensures positive definiteness
-
-        The covariance matrix is scaled by the Frobenius norm to ensure consistent behaviour regardless of the raw NN outputs, i.e. for numerical stability.
         """
         *dims, _ = outputs.shape
         outputs = outputs.view(-1, self.output_size)
