@@ -138,14 +138,21 @@ class RNN(torch.nn.Module):
         super().__init__()
         self.n_outputs = n_outputs
         self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, n_hidden), torch.nn.ReLU())
-        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=True)
+        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=False)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
     def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor]) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        *dims, n_features = obs.shape
+        if obs.dim() == 2:
+            obs = obs.unsqueeze(1)  # Add a batch dimension
+        else:
+            debug = True
+        seq_length, batch_size, n_features = obs.shape
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
+        assert hidden_states.shape == (1, batch_size, 64)
         x = self.fc2.forward(x)
-        return x, hidden_states
+        return x.view(*dims, -1), hidden_states
 
 
 class RecurrentActorCritic(ActorCritic):
