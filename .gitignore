@@ -26,3 +26,5 @@ tuning-2/*
 .devcontainer
 # Tensorboard default directory
 runs/ 
+# Copilot agent instructions
+.github/copilot-instructions.md

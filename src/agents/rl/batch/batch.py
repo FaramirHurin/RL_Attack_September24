@@ -59,11 +59,9 @@ class Batch(ABC):
         """
         if isinstance(next_value, (float, int)):
             next_value = torch.full_like(self.rewards[0], next_value)
-            # next_value = torch.tensor(next_value, dtype=torch.float32)
         returns = torch.empty_like(self.rewards, dtype=torch.float32)
         for t in range(self.n_steps - 1, -1, -1):
-            # next_value = self.rewards[t] + gamma * next_value * self.not_dones[t]
-            next_value = self.rewards[t] + gamma ** self.dt[t] * next_value * self.not_dones[t]
+            next_value = self.masked_rewards[t] + gamma ** self.dt[t] * next_value * self.not_dones[t]
             returns[t] = next_value
         if normalize:
             returns = self._normalize(returns)
@@ -142,7 +140,7 @@ class Batch(ABC):
         Returns:
             Advantage estimates (batch_size,).
         """
-        deltas = self.rewards + gamma * next_values - values
+        deltas = self.masked_rewards + gamma * next_values - values
         gae, _ = self._initialize_gae()
         advantages = torch.empty_like(self.rewards, dtype=torch.float32).to(device=self.device)
         # Note: we want to discount the reward by the actual time between two observations
@@ -303,6 +301,11 @@ class Batch(ABC):
     @cached_property
     def rewards(self) -> torch.Tensor:
         """Rewards"""
+
+    @cached_property
+    def masked_rewards(self):
+        """Rewards masked by the masks"""
+        return self.rewards * self.masks
 
     @abstractmethod  # type: ignore
     @cached_property

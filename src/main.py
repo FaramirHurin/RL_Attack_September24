@@ -5,10 +5,29 @@ from typing import Literal
 from datetime import datetime
 import dotenv
 
+# import typed_argparse as tap
+from tap import Tap
 import utils
 from experiment import Experiment, Run
 from parameters import CardSimParameters, ClassificationParameters, EnvParameters, Parameters, PPOParameters, VAEParameters
 from runner import Runner
+
+
+class Arguments(Tap):
+    algorithm: Literal["vae", "ppo", "rppo"]
+    "Algorithm to use for the agent"
+    anomaly: bool = False
+    "Whether to use anomaly detection"
+    n_repetitions: int = 1
+    "Number of repetitions for the experiment"
+    with_modification: bool = False
+    "Whether to use modification in the environment"
+    initial_seed: int = 0
+    "Initial random seed"
+    n_jobs: int = 1
+    "Number of parallel jobs to run"
+    ulb_data: bool = False
+    "Whether to use ULB data"
 
 
 def run(p: Parameters, rundir: str):
@@ -38,36 +57,27 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
     return runs
 
 
-def main(
-    algorithm: Literal["vae", "ppo", "rppo"],
-    anomaly: bool,
-    n_repetitions: int = 1,
-    with_modification: bool = False,
-    initial_seed: int = 0,
-    n_jobs: int = 1,
-    ulb_data: bool = False,
-):
-    if algorithm == "vae":
-        agent = VAEParameters.best_vae(anomaly)
-    elif algorithm == "rppo":
-        agent = PPOParameters.best_rppo(anomaly)
-        # agent = PPOParameters(is_recurrent=True)
-    elif algorithm == "ppo":
-        agent = PPOParameters(normalize_rewards=False, normalize_advantages=True)
+def main(args: Arguments):
+    if args.algorithm == "vae":
+        agent = VAEParameters.best_vae(args.anomaly)
+    elif args.algorithm == "rppo":
+        agent = PPOParameters.best_rppo(args.anomaly)
+    elif args.algorithm == "ppo":
+        agent = PPOParameters(normalize_rewards=False, normalize_advantages=True, train_on="episode", train_interval=10, minibatch_size=10)
     else:
-        raise ValueError(f"Unknown algorithm: {algorithm}")
+        raise ValueError(f"Unknown algorithm: {args.algorithm}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=with_modification, ulb_data=ulb_data),
-        clf_params=ClassificationParameters.paper_params(with_anomaly=anomaly, with_modification=with_modification),
+        cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
+        clf_params=ClassificationParameters.paper_params(with_anomaly=args.anomaly, with_modification=args.with_modification),
         env_params=EnvParameters(pool_size=50, n_episodes=2000),
-        seed=initial_seed,
+        seed=args.initial_seed,
         invalidate_banksys_cache=False,
     )
     exp = Experiment.create(params, "logs/test")
-    if n_jobs == 1:
-        return [run(p, rundir) for p, rundir in exp.repeat(n_repetitions)]
-    return run_parallel(exp, n_jobs=n_jobs, n_repetitions=n_repetitions)
+    if args.n_jobs == 1:
+        return [run(p, rundir) for p, rundir in exp.repeat(args.n_repetitions)]
+    return run_parallel(exp, n_jobs=args.n_jobs, n_repetitions=args.n_repetitions)
 
 
 if __name__ == "__main__":
@@ -79,8 +89,10 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
+
     try:
-        main(algorithm="rppo", anomaly=False, with_modification=False)
+        args = Arguments().parse_args()
+        main(args)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

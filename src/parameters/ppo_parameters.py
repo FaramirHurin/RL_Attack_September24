@@ -36,7 +36,7 @@ class PPOParameters:
         lr_actor: float = 5e-4,
         lr_critic: float = 1e-3,
         n_epochs: int = 20,
-        eps_clip: float = 0.5,
+        eps_clip: float = 0.2,
         critic_c1: Schedule | float = 0.5,
         entropy_c2: Schedule | float = 0.01,
         train_interval: int = 64,
@@ -47,6 +47,16 @@ class PPOParameters:
         normalize_advantages: bool = True,
         use_covariance_matrix: bool = True,
     ):
+        assert train_interval > 0, "`train_interval` must be positive."
+        assert train_interval >= minibatch_size, "`train_interval` must be greater than or equal to `minibatch_size`."
+        assert 0.0 < gamma <= 1.0, "`gamma` must be in (0.0, 1.0]."
+        assert 0.0 <= gae_lambda <= 1.0, "`gae_lambda ` must be in [0.0, 1.0]."
+        assert 0.0 <= eps_clip < 1.0, "`eps_clip` must be in [0.0, 1.0)."
+        assert n_epochs > 0, "`n_epochs` must be positive."
+        assert lr_actor > 0.0, "`lr_actor` must be positive."
+        assert lr_critic > 0.0, "`lr_critic` must be positive."
+        assert grad_norm_clipping is None or grad_norm_clipping > 0.0, "`grad_norm_clipping` must be positive or None."
+
         self.is_recurrent = is_recurrent
         if self.is_recurrent and not train_on == "episode":
             logging.warning("Recurrent PPO is only supported for episode training. Switching to episode training.")

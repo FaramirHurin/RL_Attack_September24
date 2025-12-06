@@ -9,7 +9,7 @@ from agents import Agent
 from utils import tb_log
 
 
-from .batch import Batch, TransitionBatch, EpisodeBatch
+from .batch import Batch, EpisodeBatch
 from .replay_memory import ReplayMemory
 from .networks import ActorCritic
 
@@ -90,22 +90,30 @@ class PPO(Agent):
         np_action = torch_action.squeeze(0).numpy(force=True)
         return np_action, hx
 
-    def _compute_training_data(self, batch: Batch) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _compute_training_data(
+        self, batch: Batch
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.distributions.TransformedDistribution]:
         """Compute the returns, advantages and action log_probs according to the current policy"""
         # NOTE: Mask the log probs to prevent numerical instability when passed in torch.exp. If the value
         # present without masking is large enough (e.g. >=10^3), torch.exp yields +inf which causes issues
         # in the optimization process because it can not be masked properly (0 x inf = NaN).
-        policy, _ = self.actor_critic.policy(batch.obs)
+        policy = self.actor_critic.policy(batch.obs)[0]
         log_probs = policy.log_prob(batch.actions)
-        log_probs[batch.masked_indices] = 0.0
-        all_values = self.actor_critic.value(batch.all_obs)
-        values = all_values[:-1] * batch.masks
-        next_values = all_values[1:] * batch.not_dones
+        policy2 = self.actor_critic.policy(batch.obs)[0]
+        log_probs2 = policy2.log_prob(batch.actions)
+        assert torch.equal(log_probs, log_probs2)
+        values = self.actor_critic.value(batch.obs)
+        next_values = self.actor_critic.value(batch.next_obs)
+        values[batch.masked_indices] = 0.0
+        next_values[batch.dones == 1] = 0.0
+        assert torch.all(next_values[batch.masked_indices] == 0.0)
         advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=False)
         returns = batch.compute_mc_returns(self.gamma, normalize=False)
+        log_probs[batch.masked_indices] = 0.0
         assert torch.all(advantages[batch.masked_indices] == 0)
-        assert torch.all(returns[batch.masked_indices] == 0)
-        return returns, advantages, log_probs, values
+        assert torch.all(returns[batch.dones == 1] == 0.0)
+        assert torch.all(returns[batch.masked_indices] == 0.0)
+        return returns, advantages, log_probs, values, policy
 
     def save(self, path: str):
         directory = os.path.dirname(path)
@@ -123,35 +131,53 @@ class PPO(Agent):
         self.c1.update(episode_num)
         self.c2.update(episode_num)
         with torch.no_grad():
-            returns, advantages, log_probs, values = self._compute_training_data(batch)
+            returns, advantages, log_probs, values, policy = self._compute_training_data(batch)
+
+        base_policy = policy.base_dist
+        assert isinstance(base_policy, torch.distributions.MultivariateNormal)
+        means, cov = base_policy.mean, base_policy.covariance_matrix
 
         critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
         for e in range(self.n_epochs):
-            indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
-            minibatch = batch.get_minibatch(indices)
+            if self.minibatch_size == batch.size:
+                minibatch = batch
+                indices = slice(None)
+            else:
+                indices = np.random.choice(batch.size, self.minibatch_size, replace=False)
+                minibatch = batch.get_minibatch(indices)
             if isinstance(minibatch, EpisodeBatch):
-                indices = (..., indices)  # The episode dimension come second in episode batches: (time, episode, ...)
+                indices = (slice(None), indices)  # The episode dimension come second in episode batches: (time, episode, ...)
             mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
 
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
             mini_values = self.actor_critic.value(minibatch.obs)
+            mini_values[minibatch.masked_indices] = 0.0
             td_error = mini_values - mini_returns
-            td_error[minibatch.masked_indices] = 0.0
             critic_loss = torch.sum(td_error**2) / minibatch.masks_sum
 
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
-            mini_policy, _ = self.actor_critic.policy(minibatch.obs)
-            mini_new_log_probs = mini_policy.log_prob(minibatch.actions)
+            mini_policy = self.actor_critic.policy(minibatch.obs)[0]
+            mini_base_policy = mini_policy.base_dist
+            mini_new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
             mini_new_log_probs[minibatch.masked_indices] = 0.0
             ratio = torch.exp(mini_new_log_probs - mini_log_probs)
-            if e == 0 and torch.any(ratio != 1):
-                debug = True
+
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             surr_min = torch.min(surrogate1, surrogate2)
             actor_loss = -torch.sum(surr_min) / minibatch.masks_sum  # Minus sign to maximize the objective
+
+            if e == 0:
+                assert isinstance(mini_base_policy, torch.distributions.MultivariateNormal)
+                mini_means, mini_cov = mini_base_policy.mean, mini_base_policy.covariance_matrix
+                assert torch.allclose(means[indices], mini_means, rtol=1e-5, atol=1e-7)
+                assert torch.allclose(cov[indices], mini_cov, rtol=1e-5, atol=1e-7), f"Diff = {(cov[indices] - mini_cov).abs().max()}"
+                assert torch.allclose(mini_new_log_probs, log_probs[indices], rtol=1e-5, atol=1e-7)
+                # Ratio should be close to 1 at epoch 0 (within numerical tolerance)
+                assert torch.allclose(ratio, torch.ones_like(ratio), rtol=1e-5, atol=1e-7)
+                assert torch.allclose(mini_values, values[indices], rtol=1e-4, atol=1e-5)
 
             # S[\pi_0](s_t) in the paper (equation (9))
             entropy = mini_policy.base_dist.entropy()
