@@ -35,7 +35,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.other_features = dict[datetime, pl.DataFrame]()
         obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 3 + [1 / 60]
-        high = [100.0, 200.0, 200.0, 1.0, params.avg_block_delay.total_seconds() / 3600]
+        high = [200.0, 200.0, 200.0, 1.0, params.avg_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
         if params.can_choose_debit_credit:
             low += [0.0]

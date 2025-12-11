@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import polars as pl
-from environment import Action
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -272,10 +271,9 @@ class VaeAgent(Agent):
 
         # Select the closest transaction in time
         trx = small_df.loc[small_df["delay_hours"].idxmin()]
-        trx = trx[['amount', 'terminal_x', 'terminal_y', 'is_online', 'delay_hours']]
+        trx = trx[["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]]
         action = trx.to_numpy()
         # AMOUNT_INDEX, TERMINAL_X_INDEX, TERMINAL_Y_INDEX, IS_ONLINE_INDEX, DELAY_HOURS_INDEX
-
 
         return action, None
 
@@ -292,7 +290,6 @@ class VaeAgent(Agent):
         card_df = card_df[["id", "x", "y"]]
         # rename id to payer_id
         card_df = card_df.rename(columns={"id": "payer_id"})
-
 
         # Join transactionsDF and card_df on payer_id
         transactionsDF = pd.merge(transactionsDF, card_df, on="payer_id", how="left")

@@ -67,8 +67,7 @@ class ActorCritic(torch.nn.Module, ABC):
         if self.use_covariance_matrix:
             # Generate a Positive Definite covariance matrix
             # https://stackoverflow.com/questions/58176501/how-do-you-generate-positive-definite-matrix-in-pytorch
-            raw = outputs[:, self.n_actions :]
-            raw = raw.reshape(-1, self.n_actions, self.n_actions)
+            raw = outputs[:, self.n_actions :].reshape(-1, self.n_actions, self.n_actions)
             positive_semi_definite = raw @ raw.transpose(1, 2)
             positive_definite = positive_semi_definite + torch.eye(self.n_actions, device=outputs.device)
             cov = positive_definite.reshape(*dims, self.n_actions, self.n_actions)
@@ -157,6 +156,7 @@ class RecurrentActorCritic(ActorCritic):
 
     def policy(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
         outputs, hx = self.actor.forward(states, hx)
+        outputs = torch.nn.functional.sigmoid(outputs)
         dist = self.make_distribution(outputs)
         return dist, hx
 

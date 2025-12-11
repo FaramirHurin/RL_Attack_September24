@@ -24,7 +24,6 @@ class PPOParameters:
     grad_norm_clipping: Optional[float]
     train_on: Literal["transition", "episode"]
     is_recurrent: bool
-    normalize_rewards: bool
     normalize_advantages: bool
     use_covariance_matrix: bool = True
 
@@ -43,7 +42,6 @@ class PPOParameters:
         minibatch_size: int = 32,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
-        normalize_rewards: bool = True,
         normalize_advantages: bool = True,
         use_covariance_matrix: bool = True,
     ):
@@ -78,7 +76,6 @@ class PPOParameters:
         self.minibatch_size = minibatch_size
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
-        self.normalize_rewards = normalize_rewards
         self.normalize_advantages = normalize_advantages
 
     def as_dict(self):
@@ -128,7 +125,7 @@ class PPOParameters:
     @staticmethod
     def best_rppo(use_anomaly: bool):
         if use_anomaly:
-            # [train_interval: 22, minibatch_size: 19, enable_clipping: False, critic_c1_start: 0.9701562934412689, critic_c1_end: 0.4306998581855381, critic_c1_steps: 3236, entropy_c2_start: 0.1874643823290062, entropy_c2_end: 0.06233195672785177, entropy_c2_steps: 1490, n_epochs: 99, lr_actor: 0.007574187431079166, lr_critic: 0.00022409294538605477, normalize_rewards: True, normalize_advantages: False]
+            # [train_interval: 22, minibatch_size: 19, enable_clipping: False, critic_c1_start: 0.9701562934412689, critic_c1_end: 0.4306998581855381, critic_c1_steps: 3236, entropy_c2_start: 0.1874643823290062, entropy_c2_end: 0.06233195672785177, entropy_c2_steps: 1490, n_epochs: 99, lr_actor: 0.007574187431079166, lr_critic: 0.00022409294538605477, normalize_advantages: False]
             return PPOParameters(
                 is_recurrent=True,
                 train_on="episode",
@@ -149,10 +146,9 @@ class PPOParameters:
                 n_epochs=99,
                 lr_actor=0.007574187431079166,
                 lr_critic=0.00022409294538605477,
-                normalize_rewards=True,
                 normalize_advantages=False,
             )
-        # [train_interval: 6, minibatch_size: 4, enable_clipping: False, critic_c1_start: 0.6197368580425953, critic_c1_end: 0.28357737275967154, critic_c1_steps: 3568, entropy_c2_start: 0.12680308057421288, entropy_c2_end: 0.05239959343497925, entropy_c2_steps: 1811, n_epochs: 69, lr_actor: 0.005174911984331964, lr_critic: 0.0011333727632600946, normalize_rewards: False, normalize_advantages: True]
+        # [train_interval: 6, minibatch_size: 4, enable_clipping: False, critic_c1_start: 0.6197368580425953, critic_c1_end: 0.28357737275967154, critic_c1_steps: 3568, entropy_c2_start: 0.12680308057421288, entropy_c2_end: 0.05239959343497925, entropy_c2_steps: 1811, n_epochs: 69, lr_actor: 0.005174911984331964, lr_critic: 0.0011333727632600946, normalize_advantages: True]
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
@@ -173,7 +169,6 @@ class PPOParameters:
             n_epochs=69,
             lr_actor=0.005174911984331964,
             lr_critic=0.0011333727632600946,
-            normalize_rewards=False,
             normalize_advantages=True,
         )
 
@@ -202,7 +197,6 @@ class PPOParameters:
                 n_epochs=73,
                 lr_actor=0.0005459901195471092,
                 lr_critic=0.0004241921268503483,
-                normalize_rewards=True,
                 normalize_advantages=False,
                 use_covariance_matrix=True,
             )
@@ -225,20 +219,15 @@ class PPOParameters:
             n_epochs=15,
             lr_actor=0.009869271609124462,
             lr_critic=0.00020047940328712973,
-            normalize_rewards=True,
             normalize_advantages=True,
             use_covariance_matrix=True,
         )
 
     @staticmethod
     def suggest_rppo(trial: Trial):
-        train_interval = trial.suggest_int("train_interval", 4, 64)
+        train_interval = trial.suggest_int("train_interval", 4, 256)
         minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
-        enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
-        if enable_clipping:
-            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.01, 10, log=True)
-        else:
-            grad_norm_clipping = None
+        grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.01, 50, log=True)
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
@@ -258,7 +247,6 @@ class PPOParameters:
             lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01, log=True),
             lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01, log=True),
             grad_norm_clipping=grad_norm_clipping,
-            normalize_rewards=trial.suggest_categorical("normalize_rewards", [True, False]),
             normalize_advantages=trial.suggest_categorical("normalize_advantages", [True, False]),
         )
 

@@ -23,7 +23,8 @@ class ClassificationParameters:
     _rules: dict[float, int]
     fp_rate: float
     fn_rate: float
-    classify_simulated_trx: bool = False
+    classify_simulated_trx: bool
+    retrain_interval: timedelta | None
     """
     Whether to classify simulated transactions (i.e. not the attacker's ones). 
     If False, the classifier uses the ground truth labels corrected by the `fp_rate` and `fn_rate` parameters.
@@ -43,8 +44,10 @@ class ClassificationParameters:
             timedelta(weeks=1): 30,
         },
         aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
+        retrain_interval: timedelta | None = None,
         fp_rate: float = 0.0,
         fn_rate: float = 0.0,
+        classify_simulated_trx: bool = False,
     ):
         self.use_anomaly = use_anomaly
         self.n_trees = n_trees
@@ -62,6 +65,8 @@ class ClassificationParameters:
             if isinstance(window, (float, int)):
                 window = timedelta(seconds=window)
             self.aggregation_windows.append(window)
+        self.classify_simulated_trx = classify_simulated_trx
+        self.retrain_interval = retrain_interval
 
     @property
     def rules(self) -> dict[timedelta, int]:

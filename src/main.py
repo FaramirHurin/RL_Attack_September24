@@ -5,7 +5,6 @@ from typing import Literal
 from datetime import datetime
 import dotenv
 
-import typed_argparse as tap
 from tap import Tap
 import utils
 from experiment import Experiment, Run
@@ -14,7 +13,7 @@ from runner import Runner
 
 
 class Arguments(Tap):
-    algorithm: Literal["vae", "ppo", "rppo"] = "vae"
+    agent: Literal["vae", "ppo", "rppo"] = "ppo"
     "Algorithm to use for the agent"
     anomaly: bool = False
     "Whether to use anomaly detection"
@@ -31,7 +30,7 @@ class Arguments(Tap):
 
 
 def run(p: Parameters, rundir: str):
-    utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
+    # utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
     logging.info(f"Starting run with seed {p.seed}...")
     p.seed_random()
     try:
@@ -58,21 +57,26 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
 
 
 def main(args: Arguments):
-    if args.algorithm == "vae":
+    if args.agent == "vae":
         agent = VAEParameters.best_vae(args.anomaly)
-    elif args.algorithm == "rppo":
-        agent = PPOParameters.best_rppo(args.anomaly)
-    elif args.algorithm == "ppo":
-        agent = PPOParameters(normalize_rewards=False, normalize_advantages=True, train_on="episode", train_interval=10, minibatch_size=10)
+    elif args.agent == "rppo":
+        agent = PPOParameters(
+            train_on="episode",
+            is_recurrent=True,
+            normalize_advantages=True,
+            grad_norm_clipping=20,
+            critic_c1=0.1,
+        )
+    elif args.agent == "ppo":
+        agent = PPOParameters(normalize_advantages=True, train_on="episode", train_interval=20, minibatch_size=10)
     else:
-        raise ValueError(f"Unknown algorithm: {args.algorithm}")
+        raise ValueError(f"Unknown algorithm: {args.agent}")
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
         clf_params=ClassificationParameters.paper_params(with_anomaly=args.anomaly, with_modification=args.with_modification),
         env_params=EnvParameters(pool_size=50, n_episodes=2000),
         seed=args.initial_seed,
-        invalidate_banksys_cache=False,
     )
     exp = Experiment.create(params, "logs/test")
     if args.n_jobs == 1:
@@ -81,9 +85,8 @@ def main(args: Arguments):
 
 
 if __name__ == "__main__":
-    # Le problème c'est que le score de risque augmente jusqu'à atteindre 1.0 dans les terminaux de paiement.
     dotenv.load_dotenv()  # Load the local .env file
-    log_level = os.getenv("LOG_LEVEL", "info").upper()  # info
+    log_level = os.getenv("LOG_LEVEL", "info").upper()
     logging.basicConfig(
         handlers=[logging.FileHandler("logs.txt", mode="a"), logging.StreamHandler()],
         level=log_level,
