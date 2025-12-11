@@ -147,6 +147,8 @@ def generate_dataset(n_customers=10000, n_terminals=1000000, nb_days=90, start_d
         .apply(lambda x: generate_transactions_table(x.iloc[0], nb_days=nb_days))
         .reset_index(drop=True)
     )
+
+
     # With Pandarallel
     transactions_df=customer_profiles_table.groupby('CUSTOMER_ID').parallel_apply(lambda x : generate_transactions_table(x.iloc[0], nb_days=nb_days)).reset_index(drop=True)
     print("Time to generate transactions: {0:.2}s".format(time.time() - start_time))

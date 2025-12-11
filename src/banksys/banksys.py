@@ -69,6 +69,9 @@ class Banksys:
             self._transactions = self._transactions.with_columns(
                 predicted_label=pl.when(pl.col("timestamp") > self.attack_start).then(None).otherwise(pl.col("predicted_label"))
             )
+        # Rename column card_id to payer_id for consistency
+        self._transactions = self._transactions.rename({"card_id": "payer_id"})
+
 
         self.trx_iterator = self._transactions.iter_rows(named=True)
         self.next_trx = Transaction(**next(self.trx_iterator))

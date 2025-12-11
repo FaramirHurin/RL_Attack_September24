@@ -3,7 +3,10 @@ import orjson
 import polars as pl
 from utils import serialize_unknown
 import hashlib
+
+import sys
 import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 @dataclass(eq=True)
@@ -23,20 +26,12 @@ class CardSimParameters:
                 cards = pl.read_csv("src/mlgsim/customer_profiles.csv")
                 terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")
             except FileNotFoundError:
-                from mlgsim.generare_dataset import main as generate_dataset
-                import subprocess
+                import mlgsim.generare_dataset as generate_dataset
+                import mlgsim.prepare_dataset as prepare_dataset
 
-                generate_dataset()
-                # with open(FILENAME) as f:
-                #     nb = nbformat.read(f, nbformat.NO_CONVERT)
-                # ep = ExecutePreprocessor(timeout=600)
-                # output = ep.preprocess(nb)
-                # --- Run the Python script to create the dataset---
-                # subprocess.run(["python", "src/mlgsim/generate_datasets.py"], check=True)
-                # --- Run the Jupyter notebook ---
-                subprocess.run(
-                    ["jupyter", "nbconvert", "--to", "notebook", "--execute", "--inplace", "src/mlgsim/prepare_datasets.ipynb"], check=True
-                )
+                generate_dataset.main()
+                prepare_dataset.preprocess()
+
                 transactions = pl.read_csv("src/mlgsim/transactions.csv")
                 cards = pl.read_csv("src/mlgsim/customer_profiles.csv")
                 terminals = pl.read_csv("src/mlgsim/terminal_profiles.csv")

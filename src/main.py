@@ -14,9 +14,9 @@ from runner import Runner
 
 
 class Arguments(Tap):
-    algorithm: Literal["vae", "ppo", "rppo"] = "vae"
+    algorithm: Literal["vae", "ppo", "rppo"] = "ppo"
     "Algorithm to use for the agent"
-    anomaly: bool = False
+    anomaly: bool = True
     "Whether to use anomaly detection"
     n_repetitions: int = 1
     "Number of repetitions for the experiment"
@@ -26,7 +26,7 @@ class Arguments(Tap):
     "Initial random seed"
     n_jobs: int = 1
     "Number of parallel jobs to run"
-    ulb_data: bool = False
+    ulb_data: bool = True
     "Whether to use ULB data"
 
 
