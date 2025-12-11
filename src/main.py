@@ -5,7 +5,7 @@ from typing import Literal
 from datetime import datetime
 import dotenv
 
-# import typed_argparse as tap
+import typed_argparse as tap
 from tap import Tap
 import utils
 from experiment import Experiment, Run
@@ -14,7 +14,7 @@ from runner import Runner
 
 
 class Arguments(Tap):
-    algorithm: Literal["vae", "ppo", "rppo"]
+    algorithm: Literal["vae", "ppo", "rppo"] = "vae"
     "Algorithm to use for the agent"
     anomaly: bool = False
     "Whether to use anomaly detection"
@@ -89,7 +89,6 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-
     try:
         args = Arguments().parse_args()
         main(args)

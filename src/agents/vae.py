@@ -13,6 +13,7 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
+
 if TYPE_CHECKING:
     from banksys import Payer, Banksys
 
@@ -243,8 +244,8 @@ class VaeAgent(Agent):
         batch["amount"] = batch["amount"].round(2)
         if self.know_client:
             # TODO How to pass observation[payer_x]. Possibly -2, -1
-            batch["temrinal_x"] = observation[-2] + batch["delta_x"]
-            batch["temrinal_y"] = observation[-1] + batch["delta_y"]
+            batch["terminal_x"] = observation[-2] + batch["delta_x"]
+            batch["terminal_y"] = observation[-1] + batch["delta_y"]
         else:
             batch["terminal_x"] = batch["terminal_x"].astype(int)
             batch["terminal_y"] = batch["terminal_y"].astype(int)
@@ -253,6 +254,12 @@ class VaeAgent(Agent):
 
         # Filter the highest amounts based on the quantile
         batch = batch[batch["amount"] >= batch["amount"].quantile(self.quantile)]
+
+        # Push batch["terminal_x"] to be between 0 and 200
+
+        batch["terminal_x"] = batch["terminal_x"].clip(lower=0, upper=200).astype(int)
+        batch["terminal_y"] = batch["terminal_y"].clip(lower=0, upper=200).astype(int)
+        batch["amount"] = batch["amount"].clip(lower=0.01)
 
         # Compute delay hours and delay days for all transactions
         small_df = batch.copy()
@@ -265,16 +272,11 @@ class VaeAgent(Agent):
 
         # Select the closest transaction in time
         trx = small_df.loc[small_df["delay_hours"].idxmin()]
+        trx = trx[['amount', 'terminal_x', 'terminal_y', 'is_online', 'delay_hours']]
         action = trx.to_numpy()
-        # as_dict = trx.to_dict()
-        # action = Action(
-        #    amount=as_dict["amount"],
-        #    terminal_x=as_dict["terminal_x"],
-        #    terminal_y=as_dict["terminal_y"],
-        #    is_online=as_dict["is_online"],
-        #    delay_hours=as_dict["delay_hours"],
-        #    # is_credit=as_dict["is_credit"],
-        # )
+        # AMOUNT_INDEX, TERMINAL_X_INDEX, TERMINAL_Y_INDEX, IS_ONLINE_INDEX, DELAY_HOURS_INDEX
+
+
         return action, None
 
     @staticmethod
@@ -287,16 +289,17 @@ class VaeAgent(Agent):
         """
         # Create a DataFrame with the customers and their coordinates
         card_df = pd.DataFrame([card.__dict__ for card in customers])
-        card_df = card_df[["id", "customer_x", "customer_y"]]
-        # rename id to card_id
-        card_df = card_df.rename(columns={"id": "card_id"})
+        card_df = card_df[["id", "x", "y"]]
+        # rename id to payer_id
+        card_df = card_df.rename(columns={"id": "payer_id"})
 
-        # Join transactionsDF and card_df on card_id
-        transactionsDF = pd.merge(transactionsDF, card_df, on="card_id", how="left")
+
+        # Join transactionsDF and card_df on payer_id
+        transactionsDF = pd.merge(transactionsDF, card_df, on="payer_id", how="left")
         transactionsDF = transactionsDF.rename(columns={"x": "customer_x", "y": "customer_y"})
 
-        transactionsDF["delta_x"] = transactionsDF["payee_x"] - transactionsDF["customer_x"]
-        transactionsDF["delta_y"] = transactionsDF["payee_y"] - transactionsDF["customer_y"]
+        transactionsDF["delta_x"] = transactionsDF["terminal_x"] - transactionsDF["customer_x"]
+        transactionsDF["delta_y"] = transactionsDF["terminal_y"] - transactionsDF["customer_y"]
 
         return transactionsDF
 

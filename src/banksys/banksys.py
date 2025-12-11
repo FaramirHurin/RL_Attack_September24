@@ -1,6 +1,7 @@
 import logging
 import os
 import pickle
+import time
 from datetime import datetime
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -15,6 +16,8 @@ from .classification import ClassificationSystem
 from .payer import Payer
 from .terminal import Terminal
 from .transaction import Transaction
+from datetime import timedelta
+
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -37,10 +40,20 @@ class Banksys:
         max_aggregation_duration = (
             max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
         )
+
+
+
         self.current_time: datetime = transactions["timestamp"].min()  # type: ignore[assignment]
         self.attack_end: datetime = transactions["timestamp"].max()  # type: ignore[assignment]
         self.training_start = self.current_time + max_aggregation_duration
         self.attack_start = self.training_start + params.training_duration
+
+        self.last_training = self.training_start
+        self.will_retrain = True
+        self.retrain_every = timedelta(days=60)
+        self.training_features = []
+        self.training_labels = []
+
         assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
         self.silent = silent
         self.classify_simulated_trx = params.classify_simulated_trx
@@ -63,33 +76,39 @@ class Banksys:
         self.terminals = sorted(Terminal.from_df(terminals, params.aggregation_windows), key=lambda t: t.id)
         self.aggregation_windows = params.aggregation_windows
         self.schema = pl.DataFrame(self.make_transaction_features(self.next_trx)).schema
+        self.setup_training()
         self.fit()
+
+    def setup_training(self):
+        logging.info("System warmup for training feature aggregation...")
+        self._fast_forward(self.training_start, show_progress=not self.silent)
+        logging.info("Building classifier training features...")
+        self._fast_forward(self.attack_start, show_progress=not self.silent, compute_features=True)
 
     def fit(self):
         """
         Fit the classification system and process the training transactions.
 
-        Automatically called from the constructor.
+        Called for training
         """
-        logging.info("System warmup for training feature aggregation...")
-        self._fast_forward(self.training_start, show_progress=not self.silent)
-        logging.info("Building classifier training features...")
-        features = self._fast_forward(self.attack_start, show_progress=not self.silent, compute_features=True)
-        train_x = pl.DataFrame(features, schema=self.schema)
-        train_y = self.training_set["is_fraud"].to_numpy().astype(np.bool)
+        train_x = pl.DataFrame(self.training_features, schema=self.schema)
+        train_y = np.array(self.training_labels)  #self.training_set["is_fraud"].to_numpy().astype(np.bool)
+        self.last_training = self.current_time
         self.clf.fit(pl.DataFrame(train_x), train_y)
+        # We clean the training set after training to implement sliding window logic 
+        self.training_features.clear()
+        self.training_labels.clear()
 
-    def _fast_forward(self, until: datetime, *, show_progress: bool = False, compute_features: bool = False):
+
+    def _fast_forward(self, until: datetime, *, show_progress: bool = False, compute_features: bool = False, start: datetime = None):
         """
         Fast forward the system to the given date, adding all the transactions to the
         system but without classifying them.
-
-        Instead, the approximated label is used (i.e. the real label with some noise according
-        to the false positive and false negative rate parameters).
         """
         if until > self.attack_end:
             raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
-        start = self.next_trx.timestamp
+        if start is None:
+            start = self.next_trx.timestamp
         if show_progress:
             n = self._transactions.filter(pl.col("timestamp").is_between(start, until)).height
         else:
@@ -98,63 +117,59 @@ class Banksys:
         date = start.date()
         features = list[dict[str, Any]]()
         while self.next_trx.timestamp < until:
-            if compute_features:
-                features.append(self.make_transaction_features(self.next_trx))
+            if compute_features or self.will_retrain: # Retraining needed to add the transactions for retraining
+                feature = self.make_transaction_features(self.next_trx)
+                features.append(feature)
+                self.training_features.append(feature)
+                self.training_labels.append(self.next_trx.is_fraud)
+
             self.payers[self.next_trx.payer_id].add(self.next_trx, update_balance=False)
             self.terminals[self.next_trx.terminal_id].add(self.next_trx)
             if self.next_trx.timestamp.date() != date:
                 date = self.next_trx.timestamp.date()
                 pbar.set_description(f"{date.isoformat()}")
+            if self.next_trx.timestamp - self.last_training > self.retrain_every:
+                self.fit()
             pbar.update()
             self.next_trx = Transaction(**next(self.trx_iterator))
+
         pbar.close()
         self.current_time = until
+
         return features
 
-    def _simulate_until(self, until: datetime):
-        """
-        Simulate the system until the given date, processing all transactions up to that date (excluded).
-        A "predicted label" is assigned to each transaction via the classification system.
-        """
-        if until > self.attack_end:
-            raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
-        cards = set[int]()
-        terms = set[int]()
-        batch = list[Transaction]()
-        features = list[pl.DataFrame]()
-        while self.next_trx.timestamp < until:
-            if self.next_trx.payer_id in cards or self.next_trx.terminal_id in terms:
-                features.append(self.process_transactions(batch))
-                cards.clear()
-                terms.clear()
-                batch.clear()
-            cards.add(self.next_trx.payer_id)
-            terms.add(self.next_trx.terminal_id)
-            batch.append(self.next_trx)
-            self.next_trx = Transaction(**next(self.trx_iterator))
-        if len(batch) > 0:
-            features.append(self.process_transactions(batch))
-        self.current_time = until
-        if len(features) > 0:
-            return pl.DataFrame(schema=self.schema)
-        return pl.concat(features)
 
     def process_transaction(self, trx: Transaction, *, compute_other_features: bool = False):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
         """
+        self.will_retrain = True
+        try:
+            self.real_last_training
+            self.retrain_every
+        except:
+            self.real_last_training = trx.timestamp
+            self.retrain_every = timedelta(days=30)
+            print('It won\'t happen again')
+
         assert trx.predicted_label is None, "Transaction has already been processed !"
         assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
-        if self.classify_simulated_trx:
-            other_features = self._simulate_until(trx.timestamp)
-        else:
-            other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=compute_other_features), schema=self.schema)
+        other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=compute_other_features), schema=self.schema)
         features = self.make_transaction_features(trx)
+        self.training_features.append(features)
+        self.training_labels.append(trx.is_fraud)
         elapsed = trx.timestamp - self.attack_start
         tb_log("features", {k: v for k, v in features.items() if k not in WEEKDAYS}, elapsed)
         features_df = pl.DataFrame(features, schema=self.schema)
         trx.predicted_label = self.clf.predict(features_df).item()
+
+
+
+
+
+
+
         self.payers[trx.payer_id].add(trx, update_balance=True)
         self.terminals[trx.terminal_id].add(trx)
         return features, other_features
@@ -250,3 +265,5 @@ def extract_trx_features(df: pl.DataFrame):
         *[pl.Series(name=day, values=(weekday == (i + 1)).cast(pl.Float32)) for i, day in enumerate("Mon Tue Wed Thu Fri Sat Sun".split())],
     )
     return trx_df.drop("timestamp")
+
+

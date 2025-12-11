@@ -23,6 +23,7 @@ class ClassificationSystem:
     training_duration: timedelta
     dataset: dict
     retrain_every: timedelta
+    will_retrain: bool
 
     def __init__(self, params: "ClassificationParameters"):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=-1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
@@ -37,6 +38,8 @@ class ClassificationSystem:
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
         # assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
         self.dataset = {}
+
+        self.will_retrain = True
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -53,6 +56,9 @@ class ClassificationSystem:
         self.add_transactions(transactions, is_fraud)
 
     def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
+
+
+        logging.debug("Predicting with RF")
         self.l1 = self.ml_classifier.predict(df).astype(np.bool)
         self.l2 = self.statistical_classifier.predict(df)
         self.l3 = self.rule_classifier.predict(df)
