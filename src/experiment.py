@@ -61,7 +61,7 @@ class Run:
             f.write(orjson.dumps(params, default=serialize_unknown))
         episodes_path = os.path.join(rundir, "episodes.json")
         with open(episodes_path, "wb") as f:
-            f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
+            f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY, default=serialize_unknown))
         metrics_path = os.path.join(rundir, "metrics.json")
         with open(metrics_path, "wb") as f:
             metrics = [e.metrics for e in episodes]
@@ -104,6 +104,10 @@ class Run:
                 )
         items = [LogItem.from_dict(m) for m in metrics_dict]
         return Run(rundir, params, items)
+
+    @property
+    def n_episodes(self) -> int:
+        return len(self.items)
 
     @cached_property
     def total_amount(self) -> float:

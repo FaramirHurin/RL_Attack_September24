@@ -43,14 +43,13 @@ class Action:
         terminal_y = array[TERMINAL_Y_INDEX]
         is_online = array[IS_ONLINE_INDEX] > 0.5
         delay_hours = array[DELAY_HOURS_INDEX]
-        to_return = Action(
+        return Action(
             amount=round(float(amount), 2),
             terminal_x=float(terminal_x),
             terminal_y=float(terminal_y),
             is_online=bool(is_online),
             delay_hours=float(delay_hours),
         )
-        return to_return
 
     def to_numpy(self):
         return np.array(astuple(self), dtype=np.float32)

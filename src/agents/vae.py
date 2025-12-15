@@ -239,7 +239,7 @@ class VaeAgent(Agent):
             batch = self.scaler.inverse_transform(batch)
         # Sort batch by second column (amount)
         batch = pd.DataFrame(batch, columns=self.columns)
-        batch["is_online"] = batch["is_online"] > 0.5
+        # batch["is_online"] = batch["is_online"] > 0.5
         batch["amount"] = batch["amount"].round(2)
         if self.know_client:
             # TODO How to pass observation[payer_x]. Possibly -2, -1
@@ -258,7 +258,7 @@ class VaeAgent(Agent):
 
         batch["terminal_x"] = batch["terminal_x"].clip(lower=0, upper=200).astype(int)
         batch["terminal_y"] = batch["terminal_y"].clip(lower=0, upper=200).astype(int)
-        batch["amount"] = batch["amount"].clip(lower=0.01)
+        batch.loc[:, "amount"] = batch["amount"].clip(lower=0.01)
 
         # Compute delay hours and delay days for all transactions
         small_df = batch.copy()
@@ -272,9 +272,7 @@ class VaeAgent(Agent):
         # Select the closest transaction in time
         trx = small_df.loc[small_df["delay_hours"].idxmin()]
         trx = trx[["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]]
-        action = trx.to_numpy()
-        # AMOUNT_INDEX, TERMINAL_X_INDEX, TERMINAL_Y_INDEX, IS_ONLINE_INDEX, DELAY_HOURS_INDEX
-
+        action = trx.to_numpy(dtype=np.float32)
         return action, None
 
     @staticmethod

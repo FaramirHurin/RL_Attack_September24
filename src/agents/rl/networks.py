@@ -93,7 +93,6 @@ class LinearActorCritic(ActorCritic):
         INNER_SIZE_ACTIONS = 64
         INNER_SIZE_SEQUNTIAL = 64
         self.actor = torch.nn.Sequential(
-            # torch.nn.BatchNorm1d(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
@@ -102,7 +101,6 @@ class LinearActorCritic(ActorCritic):
         ).to(self.device)
 
         self.critic = torch.nn.Sequential(
-            # torch.nn.LayerNorm(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
@@ -137,10 +135,11 @@ class RNN(torch.nn.Module):
         super().__init__()
         self.n_outputs = n_outputs
         self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, n_hidden), torch.nn.ReLU())
-        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=False)
+        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, num_layers=2, batch_first=False)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
     def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor]) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self.gru.flatten_parameters()
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)
@@ -156,7 +155,6 @@ class RecurrentActorCritic(ActorCritic):
 
     def policy(self, states: torch.Tensor, hx: Optional[torch.Tensor] = None):
         outputs, hx = self.actor.forward(states, hx)
-        outputs = torch.nn.functional.sigmoid(outputs)
         dist = self.make_distribution(outputs)
         return dist, hx
 

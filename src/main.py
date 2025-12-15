@@ -29,12 +29,12 @@ class Arguments(Tap):
     "Whether to use ULB data"
 
 
-def run(p: Parameters, rundir: str):
+def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
     # utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
     logging.info(f"Starting run with seed {p.seed}...")
     p.seed_random()
     try:
-        runner = Runner(p, quiet=False)
+        runner = Runner(p, quiet=quiet)
         episodes = runner.run()
         return Run.create(rundir, p, episodes)
     except Exception as e:
@@ -47,7 +47,7 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
         handles = list[AsyncResult[Run | None]]()
         for p, rundir in exp.repeat(n_repetitions):
             logging.info(f"Submitting run with seed {p.seed}...")
-            handles.append(pool.apply_async(run, (p, rundir)))
+            handles.append(pool.apply_async(run, (p, rundir, True)))
         for h in handles:
             r = h.get()
             if r is not None:

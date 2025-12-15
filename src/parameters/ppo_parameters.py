@@ -234,14 +234,14 @@ class PPOParameters:
             critic_c1=Schedule.linear(
                 trial.suggest_float("critic_c1_start", 0.1, 1.0),
                 trial.suggest_float("critic_c1_end", 0.001, 0.5),
-                trial.suggest_int("critic_c1_steps", 1000, 4000),
+                trial.suggest_int("critic_c1_steps", 1, 4000),
             ),
             entropy_c2=Schedule.linear(
                 trial.suggest_float("entropy_c2_start", 0.001, 0.2),
                 trial.suggest_float("entropy_c2_end", 0.0001, 0.1),
-                trial.suggest_int("entropy_c2_steps", 1000, 4000),
+                trial.suggest_int("entropy_c2_steps", 1, 4000),
             ),
-            n_epochs=trial.suggest_int("n_epochs", 10, 100),
+            n_epochs=trial.suggest_int("n_epochs", 5, 40),
             minibatch_size=minibatch_size,
             train_interval=train_interval,
             lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01, log=True),
