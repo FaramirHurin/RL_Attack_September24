@@ -49,7 +49,55 @@ class VAEParameters:
         return "VAE"
 
     @staticmethod
-    def best_vae(anomaly: bool):
+    def best_vae(anomaly: bool, modification: bool):
+        match (anomaly, modification):
+            case (False, False):
+                # Optuna trial 80
+                # Params = [latent_dim: 90, hidden_dim: 76, lr: 1.4983950667384355e-05, batch_size: 8, num_epochs: 6288, quantile: 0.9933303450751483, generated_size: 525, beta: 0.5686349293691934, n_infiltrated_terminals: 96]
+                return VAEParameters(
+                    latent_dim=90,
+                    hidden_dim=76,
+                    lr=1.4983950667384355e-05,
+                    batch_size=8,
+                    num_epochs=6288,
+                    quantile=0.9933303450751483,
+                    supervised=False,
+                    generated_size=525,
+                    n_infiltrated_terminals=96,
+                    beta=0.5686349293691934,
+                )
+            case (False, True):
+                # Optuna trial 17
+                # Params = [latent_dim: 36, hidden_dim: 143, lr: 0.0002833361052823374, batch_size: 39, num_epochs: 7779, quantile: 0.9981315336722992, generated_size: 993, beta: 0.5362266193781453, n_infiltrated_terminals: 46]
+                return VAEParameters(
+                    latent_dim=36,
+                    hidden_dim=143,
+                    lr=0.0002833361052823374,
+                    batch_size=39,
+                    num_epochs=7779,
+                    quantile=0.9981315336722992,
+                    supervised=False,
+                    generated_size=993,
+                    n_infiltrated_terminals=46,
+                    beta=0.5362266193781453,
+                )
+            case (True, False):
+                # Optuna trial 73
+                # Params = [latent_dim: 88, hidden_dim: 146, lr: 1.5072646114347918e-05, batch_size: 58, num_epochs: 1670, quantile: 0.997564842075417, generated_size: 449, beta: 0.15944396195830168, n_infiltrated_terminals: 63]
+                return VAEParameters(
+                    latent_dim=88,
+                    hidden_dim=146,
+                    lr=1.5072646114347918e-05,
+                    batch_size=58,
+                    num_epochs=1670,
+                    quantile=0.997564842075417,
+                    supervised=False,
+                    generated_size=449,
+                    n_infiltrated_terminals=63,
+                    beta=0.15944396195830168,
+                )
+            case (True, True):
+                raise NotImplementedError("No best VAE parameters for anomaly modification yet.")
         if anomaly:
             return VAEParameters(
                 latent_dim=70,
@@ -79,13 +127,16 @@ class VAEParameters:
         )
 
     @staticmethod
-    def suggest(trial: Trial):
-        logging.info("Suggesting VAE parameters")
+    def suggest(trial: Trial, anomaly: bool):
+        if anomaly:
+            n_trees = trial.suggest_int("n_trees", 1, 200)
+        else:
+            n_trees = 0
         return VAEParameters(
             latent_dim=trial.suggest_int("latent_dim", 2, 92),
             hidden_dim=trial.suggest_int("hidden_dim", 16, 192),
             lr=trial.suggest_float("lr", 1e-5, 1e-3),
-            trees=1,  # Not used in VAE because IsolationForest has been removed
+            trees=n_trees,
             batch_size=trial.suggest_int("batch_size", 8, 64),
             num_epochs=trial.suggest_int("num_epochs", 1000, 10_000),
             quantile=trial.suggest_float("quantile", 0.9, 1.0),

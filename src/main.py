@@ -2,13 +2,19 @@ import logging
 import os
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal
-from datetime import datetime
-import dotenv
 
+import dotenv
 from tap import Tap
-import utils
+
 from experiment import Experiment, Run
-from parameters import CardSimParameters, ClassificationParameters, EnvParameters, Parameters, PPOParameters, VAEParameters
+from parameters import (
+    CardSimParameters,
+    ClassificationParameters,
+    EnvParameters,
+    Parameters,
+    PPOParameters,
+    VAEParameters,
+)
 from runner import Runner
 
 
@@ -38,7 +44,10 @@ def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
         episodes = runner.run()
         return Run.create(rundir, p, episodes)
     except Exception as e:
-        logging.error(f"Run with seed {p.seed}: Error occurred while running experiment: {e}", exc_info=True)
+        logging.error(
+            f"Run with seed {p.seed}: Error occurred while running experiment: {e}",
+            exc_info=True,
+        )
 
 
 def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
@@ -52,7 +61,9 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
             r = h.get()
             if r is not None:
                 runs.append(r)
-                logging.info(f"Run with seed {r.params.seed} completed with result {r.total_amount:.2f}")
+                logging.info(
+                    f"Run with seed {r.params.seed} completed with result {r.total_amount:.2f}"
+                )
     return runs
 
 
@@ -68,13 +79,22 @@ def main(args: Arguments):
             critic_c1=0.1,
         )
     elif args.agent == "ppo":
-        agent = PPOParameters(normalize_advantages=True, train_on="episode", train_interval=20, minibatch_size=10)
+        agent = PPOParameters(
+            normalize_advantages=True,
+            train_on="episode",
+            train_interval=20,
+            minibatch_size=10,
+        )
     else:
         raise ValueError(f"Unknown algorithm: {args.agent}")
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
-        clf_params=ClassificationParameters.paper_params(with_anomaly=args.anomaly, with_modification=args.with_modification),
+        cardsim=CardSimParameters.paper_params(
+            with_modification=args.with_modification, ulb_data=args.ulb_data
+        ),
+        clf_params=ClassificationParameters.paper_params(
+            with_anomaly=args.anomaly, with_modification=args.with_modification
+        ),
         env_params=EnvParameters(pool_size=50, n_episodes=2000),
         seed=args.initial_seed,
     )

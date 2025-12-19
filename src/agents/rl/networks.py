@@ -1,9 +1,11 @@
-from typing import Optional
 from abc import ABC, abstractmethod
+from typing import Optional
+
 import torch
+from marlenv import ContinuousSpace
 from torch import distributions
 from torch.distributions import transforms
-from marlenv import ContinuousSpace
+
 from utils import tb_log
 
 
@@ -119,8 +121,8 @@ class LinearActorCritic(ActorCritic):
         dist = self.make_distribution(outputs)
         return dist, None
 
-    def value(self, state: torch.Tensor):
-        value = self.critic.forward(state)
+    def value(self, states: torch.Tensor):
+        value = self.critic.forward(states)
         return torch.squeeze(value, -1)
 
     def to(self, device: torch.device, *args, **kwargs):

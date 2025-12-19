@@ -1,10 +1,5 @@
-from parameters import Parameters, CardSimParameters
+d = {"a": 10, "b": 5}
 
-
-for seed in range(100):
-    for modification in (True, False):
-        params = Parameters(
-            cardsim=CardSimParameters.paper_params(with_modification=modification),
-            seed=seed,
-        )
-        params.make_env()
+match d:
+    case {"b": 5, **rest}:
+        print("b=5 in ", d, rest)
