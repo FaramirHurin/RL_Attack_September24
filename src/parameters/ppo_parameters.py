@@ -1,4 +1,3 @@
-import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Optional
 
@@ -25,7 +24,8 @@ class PPOParameters:
     train_on: Literal["transition", "episode"]
     is_recurrent: bool
     normalize_advantages: bool
-    use_covariance_matrix: bool = True
+    use_covariance_matrix: bool
+    name: Literal["ppo", "rppo"]
 
     def __init__(
         self,
@@ -54,11 +54,9 @@ class PPOParameters:
         assert lr_actor > 0.0, "`lr_actor` must be positive."
         assert lr_critic > 0.0, "`lr_critic` must be positive."
         assert grad_norm_clipping is None or grad_norm_clipping > 0.0, "`grad_norm_clipping` must be positive or None."
-
+        assert not is_recurrent or train_on == "episode", "Recurrent PPO only supports episode training."
+        self.name = "rppo" if is_recurrent else "ppo"
         self.is_recurrent = is_recurrent
-        if self.is_recurrent and not train_on == "episode":
-            logging.warning("Recurrent PPO is only supported for episode training. Switching to episode training.")
-            train_on = "episode"
         self.train_on = train_on
         self.gamma = gamma
         self.lr_actor = lr_actor
@@ -84,12 +82,6 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
-    @property
-    def name(self):
-        if self.is_recurrent:
-            return "RPPO"
-        return "PPO"
-
     @staticmethod
     def from_json(data: dict[str, Any]):
         """
@@ -100,7 +92,6 @@ class PPOParameters:
         return PPOParameters(**data)
 
     def get_agent(self, env: CardSimEnv, device: torch.device):
-        # from agents import RPPO
         from agents.rl.networks import LinearActorCritic, RecurrentActorCritic
         from agents.rl.ppo import PPO
         from agents.rl.replay_memory import EpisodeMemory, TransitionMemory
@@ -130,6 +121,7 @@ class PPOParameters:
         self_dict.pop("is_recurrent")
         self_dict.pop("train_on")
         self_dict.pop("use_covariance_matrix")
+        self_dict.pop("name")
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
@@ -208,7 +200,29 @@ class PPOParameters:
                     normalize_advantages=False,
                 )
             case (True, True):
-                raise NotImplementedError("Fine tuning is still running for this setting")
+                # Optuna trial 58
+                # Params = [train_interval: 15, minibatch_size: 6, grad_norm_clipping: 4.300306541157133, critic_c1_start: 0.10312961820069343, critic_c1_end: 0.4813358684576971, critic_c1_steps: 701, entropy_c2_start: 0.1708107295846123, entropy_c2_end: 0.029362965791121597, entropy_c2_steps: 1253, n_epochs: 23, lr_actor: 0.00016481198970555, lr_critic: 0.008264238504481972, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=True,
+                    train_on="episode",
+                    train_interval=15,
+                    minibatch_size=6,
+                    grad_norm_clipping=4.300306541157133,
+                    critic_c1=Schedule.linear(
+                        start_value=0.10312961820069343,
+                        end_value=0.4813358684576971,
+                        n_steps=701,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.1708107295846123,
+                        end_value=0.029362965791121597,
+                        n_steps=1253,
+                    ),
+                    n_epochs=23,
+                    lr_actor=0.00016481198970555,
+                    lr_critic=0.008264238504481972,
+                    normalize_advantages=False,
+                )
 
     @staticmethod
     def best_ppo(anomaly: bool, modification: bool):

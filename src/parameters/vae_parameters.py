@@ -20,6 +20,7 @@ class VAEParameters:
     generated_size: int = 3000
     n_infiltrated_terminals: int = 100
     beta: float = 0.2
+    name: str = "vae"
 
     def get_agent(self, env: CardSimEnv, device: torch.device, know_client: bool, quantile: float):
         from agents import VaeAgent
@@ -42,10 +43,6 @@ class VAEParameters:
             generated_size=self.generated_size,
             beta=self.beta,
         )
-
-    @property
-    def name(self):
-        return "VAE"
 
     @staticmethod
     def best_vae(anomaly: bool, modification: bool):
