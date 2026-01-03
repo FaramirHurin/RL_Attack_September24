@@ -3,7 +3,7 @@ name = "rl-transaction-attack"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11,<4"
+requires-python = ">=3.12,<4"
 dependencies = [
     "deprecated>=1.2.18",
     "imblearn>=0.0",
@@ -41,3 +41,7 @@ line-length = 140
 
 [dependency-groups]
 dev = ["pytest>=9.0.2"]
+
+
+[tool.basedpyright]
+include = ["src"]

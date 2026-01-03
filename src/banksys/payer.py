@@ -1,11 +1,14 @@
+import inspect
 from dataclasses import Field, dataclass
 from datetime import datetime, timedelta
 from typing import Literal, Sequence
+
 import polars as pl
-import inspect
 from humanize import naturaldelta
-from utils import fields2schema
+
 from exceptions import InsufficientFundsError
+from utils import fields2schema
+
 from .transaction import Transaction
 from .trx_window import TransactionWindow
 
@@ -47,12 +50,6 @@ class Payer:
     @staticmethod
     def from_df(df: pl.DataFrame, agg_windows: Sequence[timedelta]):
         return [Payer(agg_windows=agg_windows, **kwargs) for kwargs in df.iter_rows(named=True)]
-
-    @classmethod
-    def field_names(cls):
-        members = inspect.getmembers(cls)
-        fields = list[Field](dict(members)["__dataclass_fields__"].values())
-        return [field.name for field in fields]
 
     @classmethod
     def schema(cls) -> dict:

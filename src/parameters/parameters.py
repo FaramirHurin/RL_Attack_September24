@@ -1,8 +1,9 @@
+import logging
 import os
 import random
 import shutil
 from dataclasses import dataclass
-from typing import Optional
+from typing import final
 
 import numpy as np
 import orjson
@@ -18,6 +19,7 @@ from .ppo_parameters import PPOParameters
 from .vae_parameters import VAEParameters
 
 
+@final
 @dataclass(eq=True)
 class Parameters:
     agent: PPOParameters | VAEParameters | None
@@ -29,9 +31,9 @@ class Parameters:
     def __init__(
         self,
         agent: PPOParameters | VAEParameters | None = None,
-        cardsim: Optional[CardSimParameters] = None,
-        clf_params: Optional[ClassificationParameters] = None,
-        env_params: Optional[EnvParameters] = None,
+        cardsim: CardSimParameters | None = None,
+        clf_params: ClassificationParameters | None = None,
+        env_params: EnvParameters | None = None,
         seed: int = 0,
         cache_root: str = "cache",
         *,
@@ -58,8 +60,7 @@ class Parameters:
                 os.remove(self.banksys_file)
             except OSError:
                 pass
-        self.cardsim.save(self.dataset_dir)
-        self.clf_params.save(self.banksys_dir)
+                self.save()
 
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         self.seed_random()
@@ -70,8 +71,7 @@ class Parameters:
                 return self.agent.get_agent(env, device, self.env_params.know_client, self.agent.quantile)
             case PPOParameters():
                 return self.agent.get_agent(env, device)
-            case _:
-                raise ValueError("Unknown agent type")
+        raise ValueError("Unknown agent type")
 
     @staticmethod
     def load(filename: str):
@@ -112,6 +112,10 @@ class Parameters:
                 cache_root=self._cache_root,
             )
 
+    def save(self):
+        self.cardsim.save(self.dataset_dir)
+        self.clf_params.save(self.banksys_dir)
+
     @property
     def agent_name(self) -> str:
         if self.agent is None:
@@ -121,6 +125,7 @@ class Parameters:
     def make_env(self):
         self.seed_random()
         banksys = self.load_banksys()
+        self.save()
         return CardSimEnv(banksys, self.env_params)
 
     @property
@@ -141,12 +146,15 @@ class Parameters:
         return self.cardsim.cache_dir(self.cache_dir)
 
     def load_banksys(self):
+        logging.info(f"Loading banksys from {self.banksys_file}")
         self.seed_random()
-        transactions, payers, terminals = self.cardsim.load_simulation_data(self.cache_dir)
         if os.path.exists(self.banksys_file):
             from banksys import Banksys
 
             return Banksys.load(self.banksys_file)
+        logging.info("Banksys does not exist, creating one")
+        transactions, payers, terminals = self.cardsim.load_simulation_data(self.cache_dir)
         banksys = self.clf_params.make_banksys(transactions, payers, terminals)
+        logging.info(f"Caching banksys to {self.banksys_file}")
         banksys.save(self.banksys_file)
         return banksys

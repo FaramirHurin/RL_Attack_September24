@@ -12,9 +12,8 @@ from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
 
-
 if TYPE_CHECKING:
-    from banksys import Payer, Banksys
+    from banksys import Banksys, Payer
 
 from .agent import Agent
 
@@ -76,7 +75,7 @@ class Attack_Generation:
         latent_dim,
         hidden_dim,
         lr,
-        trees,
+        trees: int,
         training_data,
         y,
         supervised=False,
@@ -132,7 +131,7 @@ class Attack_Generation:
             samples = self.model.decoder(z).cpu().numpy()
         """
         Eventually to add anomaly detection
-        
+
         if self.supervised:
             undetected = self.detector.predict(samples) == 0
         else:
@@ -184,13 +183,13 @@ class VaeAgent(Agent):
         q_low = transactions_df["amount"].quantile(0.001)
         q_hi = transactions_df["amount"].quantile(0.999)
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
-        labels = transactions_df["is_fraud"].values
+        labels = transactions_df["is_fraud"].values  # type: ignore
         transactions_df = transactions_df[self.columns]
 
         # Normalize the data
         self.scaler = MinMaxScaler()
-        self.scaler.fit(transactions_df[self.columns].values)
-        normalized_values = self.scaler.transform(transactions_df[self.columns].values)
+        self.scaler.fit(transactions_df[self.columns].values)  # type: ignore
+        normalized_values = self.scaler.transform(transactions_df[self.columns].values)  # type: ignore
 
         self.attack_generator = Attack_Generation(
             device=device,
@@ -210,9 +209,11 @@ class VaeAgent(Agent):
         """
         Preprocess the data and return a DataFrame with the transactions
         """
-        assert self.banksys.current_time == self.banksys.attack_start
+        assert self.banksys.is_trained
         terminal_ids = [t.id for t in self.terminals]
-        transactions_df = self.banksys.training_set.filter(pl.col("terminal_id").is_in(terminal_ids)).to_pandas()
+        transactions_df = self.banksys._transactions.filter(
+            (pl.col("timestamp") < self.banksys.current_time) & pl.col("terminal_id").is_in(terminal_ids)
+        ).to_pandas()
 
         # Add x and y of the transaction (from terminal)
         terminals_df = pd.DataFrame([{"terminal_id": t.id, "terminal_x": t.x, "terminal_y": t.y} for t in self.terminals])
@@ -238,7 +239,7 @@ class VaeAgent(Agent):
             # Turn it to the original scale and to dataframe
             batch = self.scaler.inverse_transform(batch)
         # Sort batch by second column (amount)
-        batch = pd.DataFrame(batch, columns=self.columns)
+        batch = pd.DataFrame(batch, columns=self.columns)  # type: ignore
         # batch["is_online"] = batch["is_online"] > 0.5
         batch["amount"] = batch["amount"].round(2)
         if self.know_client:
@@ -256,21 +257,21 @@ class VaeAgent(Agent):
 
         # Push batch["terminal_x"] to be between 0 and 200
 
-        batch["terminal_x"] = batch["terminal_x"].clip(lower=0, upper=200).astype(int)
-        batch["terminal_y"] = batch["terminal_y"].clip(lower=0, upper=200).astype(int)
-        batch.loc[:, "amount"] = batch["amount"].clip(lower=0.01)
+        batch["terminal_x"] = batch["terminal_x"].clip(lower=0, upper=200).astype(int)  # type: ignore
+        batch["terminal_y"] = batch["terminal_y"].clip(lower=0, upper=200).astype(int)  # type: ignore
+        batch.loc[:, "amount"] = batch["amount"].clip(lower=0.01)  # type: ignore
 
         # Compute delay hours and delay days for all transactions
         small_df = batch.copy()
         current_time = self.banksys.current_time
         # If the predicted hour is less than the current hour, we assume the transaction is for the next day
-        small_df["timestamp"] = small_df["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))
+        small_df["timestamp"] = small_df["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))  # type: ignore
         is_past = small_df["timestamp"] < current_time
         small_df.loc[is_past, "timestamp"] += pd.Timedelta(days=1)  # type: ignore
         small_df["delay_hours"] = (small_df["timestamp"] - current_time).dt.total_seconds() / 3600.0  # type: ignore
 
         # Select the closest transaction in time
-        trx = small_df.loc[small_df["delay_hours"].idxmin()]
+        trx = small_df.loc[small_df["delay_hours"].idxmin()]  # type: ignore
         trx = trx[["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]]
         action = trx.to_numpy(dtype=np.float32)
         return action, None
@@ -287,7 +288,7 @@ class VaeAgent(Agent):
         card_df = pd.DataFrame([card.__dict__ for card in customers])
         card_df = card_df[["id", "x", "y"]]
         # rename id to payer_id
-        card_df = card_df.rename(columns={"id": "payer_id"})
+        card_df = card_df.rename(columns={"id": "payer_id"})  # type: ignore
 
         # Join transactionsDF and card_df on payer_id
         transactionsDF = pd.merge(transactionsDF, card_df, on="payer_id", how="left")
@@ -299,7 +300,7 @@ class VaeAgent(Agent):
         return transactionsDF
 
     def update_transition(self, *args, **kwargs):
-        return {}
+        return
 
     def update_episode(self, *args, **kwargs):
-        return {}
+        return

@@ -1,8 +1,8 @@
 import logging
 import os
+from datetime import timedelta
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal
-from datetime import timedelta
 
 import dotenv
 from tap import Tap
@@ -36,8 +36,8 @@ class Arguments(Tap):
     "Whether to use ULB data"
     logdir: str | None = None
     """Directory to store the logs of the experiment"""
-    retrain_interval_days: int | None = None
-    "Interval in days to retrain the classifier"
+    retrain_interval: int | None = None
+    "Interval to retrain the classifier (in days)"
 
 
 def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
@@ -82,12 +82,14 @@ def main(args: Arguments):
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
-        clf_params=ClassificationParameters.paper_params(with_anomaly=args.anomaly, with_modification=args.with_modification),
+        clf_params=ClassificationParameters.paper_params(
+            with_anomaly=args.anomaly, with_modification=args.with_modification, retrain_interval=timedelta(days=10)
+        ),
         env_params=EnvParameters(pool_size=50, n_episodes=6000),
         seed=args.initial_seed,
     )
-    if args.retrain_interval_days is not None:
-        params.clf_params.retrain_interval = timedelta(days=args.retrain_interval_days)
+    print(f"Banksys file: {params.banksys_file}")
+    print(params.clf_params)
     exp = Experiment.create(params, logdir=args.logdir)
     if args.n_jobs == 1:
         return [run(p, rundir) for p, rundir in exp.repeat(args.n_repetitions)]
@@ -112,7 +114,7 @@ if __name__ == "__main__":
                     args.anomaly = anomaly
                     args.with_modification = modification
                     args.n_repetitions = 30
-                    args.initial_seed = 100  # Seed different from the tuning
+                    args.initial_seed = 0  # Seed different from the tuning
                     args.n_jobs = 1
                     args.ulb_data = False
                     args.logdir = os.path.join("logs", f"{algorithm}-retrained")
@@ -124,11 +126,12 @@ if __name__ == "__main__":
                         args.logdir += "-with-modification"
                     else:
                         args.logdir += "-no-modification"
-                    if os.path.exists(args.logdir):
-                        logging.info(f"Logdir {args.logdir} already exists. Skipping...")
-                        continue
+                    # if os.path.exists(args.logdir):
+                    #     logging.info(f"Logdir {args.logdir} already exists. Skipping...")
+                    #     continue
                     logging.info(f"Starting experiment with arguments: {args}")
                     main(args)
+                    exit()
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

@@ -1,13 +1,16 @@
+import hashlib
+import os
 from dataclasses import dataclass
 from datetime import timedelta
-from optuna import Trial
+from functools import cached_property
 from typing import Literal, Sequence
-import polars as pl
+
 import orjson
+import polars as pl
+from optuna import Trial
+
 from banksys.terminal import Terminal
 from utils import serialize_unknown
-import os
-import hashlib
 
 
 @dataclass(eq=True)
@@ -26,7 +29,7 @@ class ClassificationParameters:
     classify_simulated_trx: bool
     retrain_interval: timedelta | None
     """
-    Whether to classify simulated transactions (i.e. not the attacker's ones). 
+    Whether to classify simulated transactions (i.e. not the attacker's ones).
     If False, the classifier uses the ground truth labels corrected by the `fp_rate` and `fn_rate` parameters.
     """
 
@@ -75,8 +78,14 @@ class ClassificationParameters:
         """
         return {timedelta(seconds=key): value for key, value in self._rules.items()}
 
+    @cached_property
+    def longest_window(self):
+        if len(self.aggregation_windows) == 0:
+            raise ValueError("No aggregation windows provided.")
+        return max(*self.aggregation_windows) if len(self.aggregation_windows) > 1 else self.aggregation_windows[0]
+
     @staticmethod
-    def paper_params(with_anomaly: bool, with_modification: bool):
+    def paper_params(with_anomaly: bool, with_modification: bool, *, retrain_interval: timedelta | None = None):
         match (with_modification, with_anomaly):
             case (False, False):
                 # [max_trx_hour: 7, max_trx_day: 10, max_trx_week: 45, n_trees: 200, balance_factor: 0.05010330218871149, quantiles_amount_high: 0.9999906444487933, quantiles_risk_high: 0.9998050395914746, fp_rate: 0.008757552666375281, fn_rate: 0.01853373993723769]
@@ -97,6 +106,7 @@ class ClassificationParameters:
                     },
                     fp_rate=0.008757552666375281,
                     fn_rate=0.01853373993723769,
+                    retrain_interval=retrain_interval,
                 )
             case (False, True):
                 # [max_trx_hour: 7, max_trx_day: 19, max_trx_week: 35, n_trees: 163, balance_factor: 0.12817163708045945, quantiles_amount_high: 0.9995238540405597, quantiles_risk_high: 0.9990276449433015, fp_rate: 0.019241410257713323, fn_rate: 0.004683490375549398]
@@ -117,6 +127,7 @@ class ClassificationParameters:
                     },
                     fp_rate=0.019241410257713323,
                     fn_rate=0.004683490375549398,
+                    retrain_interval=retrain_interval,
                 )
             case (True, False):
                 #  [max_trx_hour: 5, max_trx_day: 8, max_trx_week: 35, n_trees: 165, balance_factor: 0.05720386427396055, quantiles_amount_high: 0.9998653727810304, quantiles_risk_high: 0.9996872427746293, fp_rate: 0.0023521979812597383, fn_rate: 0.01342192652282362]
@@ -137,6 +148,7 @@ class ClassificationParameters:
                     },
                     fp_rate=0.0023521979812597383,
                     fn_rate=0.01342192652282362,
+                    retrain_interval=retrain_interval,
                 )
             case (True, True):
                 # [max_trx_hour: 5, max_trx_day: 5, max_trx_week: 24, n_trees: 169, balance_factor: 0.14187681622345746, quantiles_amount_high: 0.998725033037342, quantiles_risk_high: 0.9993087542222269, fp_rate: 0.016083989915547495, fn_rate: 0.014686295327843348]
@@ -157,6 +169,7 @@ class ClassificationParameters:
                     },
                     fp_rate=0.016083989915547495,
                     fn_rate=0.014686295327843348,
+                    retrain_interval=retrain_interval,
                 )
 
     @staticmethod
@@ -202,6 +215,7 @@ class ClassificationParameters:
         )
 
     def cache_dir(self, dataset_dir: str):
+        print(self)
         serialized = orjson.dumps(self, default=serialize_unknown)
         hash_digest = hashlib.sha256(serialized).hexdigest()
         return os.path.join(dataset_dir, f"banksys-{hash_digest}")

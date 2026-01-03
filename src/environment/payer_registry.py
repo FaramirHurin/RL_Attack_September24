@@ -99,10 +99,7 @@ class PayerRegistry:
 
     def notify_transaction_processed(self, trx: Transaction):
         payer = self.all_payers[trx.payer_id]
-        if payer not in self.previous_frauds:
-            self.previous_frauds[payer] = [trx]
-        else:
-            self.previous_frauds[payer].append(trx)
+        self.previous_frauds[payer].append(trx)
         if payer in self.balance_upper_bound:
             self.balance_upper_bound[payer] -= trx.amount
 

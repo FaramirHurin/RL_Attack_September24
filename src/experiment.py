@@ -1,21 +1,20 @@
-from dataclasses import dataclass, replace
+import logging
+import os
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
 from typing import Any, Optional
-import logging
-from copy import deepcopy
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import orjson
-from parameters import Parameters
-from utils import serialize_unknown
 from marlenv import Episode
 
 from banksys import Transaction
 from environment import Action
+from parameters import Parameters
+from utils import serialize_unknown
 
 
 @dataclass
@@ -208,6 +207,7 @@ class Experiment:
 
     @property
     def n_runs(self):
+        x = int("25")
         return len(self.runs)
 
     @staticmethod
