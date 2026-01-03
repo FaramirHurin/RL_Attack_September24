@@ -5,7 +5,6 @@ from typing import Literal, Sequence
 import polars as pl
 from humanize import naturaldelta
 
-from utils import fields2schema
 
 from .transaction import Transaction
 from .trx_window import TransactionWindow
@@ -59,6 +58,7 @@ class Terminal:
     @classmethod
     def schema(cls) -> dict:
         import inspect
+        from utils import fields2schema
 
         members = inspect.getmembers(cls)
         fields = list[Field](dict(members)["__dataclass_fields__"].values())

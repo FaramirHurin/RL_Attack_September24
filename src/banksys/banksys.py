@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 from tqdm import tqdm
-from utils import TransactionIterator
+from utils.transaction_iterator import TransactionIterator
 
 from .classification import ClassificationSystem
 from .payer import Payer

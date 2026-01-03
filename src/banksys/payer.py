@@ -7,7 +7,6 @@ import polars as pl
 from humanize import naturaldelta
 
 from exceptions import InsufficientFundsError
-from utils import fields2schema
 
 from .transaction import Transaction
 from .trx_window import TransactionWindow
@@ -53,6 +52,8 @@ class Payer:
 
     @classmethod
     def schema(cls) -> dict:
+        from utils import fields2schema
+
         members = inspect.getmembers(cls)
         fields = list[Field](dict(members)["__dataclass_fields__"].values())
         return fields2schema(fields)
