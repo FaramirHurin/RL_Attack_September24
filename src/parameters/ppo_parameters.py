@@ -88,7 +88,8 @@ class PPOParameters:
         Create PPOParameters from a JSON-like dictionary.
         """
         data["critic_c1"] = schedule_from_json(data["critic_c1"])
-        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])  #
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
+        data.pop("name", None)
         return PPOParameters(**data)
 
     def get_agent(self, env: CardSimEnv, device: torch.device):

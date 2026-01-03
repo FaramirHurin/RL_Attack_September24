@@ -190,7 +190,7 @@ class Experiment:
     def load_runs(self):
         results = dict[str, Run]()
         for entry in os.listdir(self.logdir):
-            if not entry.startswith("seed-"):
+            if not (entry.startswith("seed-") or entry.startswith("run-")):
                 continue
             run_dir = os.path.join(self.logdir, entry)
             try:

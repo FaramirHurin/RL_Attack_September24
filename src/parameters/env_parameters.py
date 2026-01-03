@@ -21,7 +21,7 @@ class EnvParameters:
         terminal_fract: float = 0.1,
         pool_size: int = 50,
         include_weekday: bool = True,
-        avg_card_block_delay: int | timedelta = timedelta(days=7),
+        avg_block_delay: int | timedelta = timedelta(days=7),
         customer_location_is_known: bool = True,
         aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
         can_choose_debit_credit: bool = False,
@@ -32,9 +32,9 @@ class EnvParameters:
         self.pool_size = pool_size
         self.include_weekday = include_weekday
         self.customer_location_is_known = customer_location_is_known
-        if isinstance(avg_card_block_delay, int):
-            avg_card_block_delay = timedelta(seconds=avg_card_block_delay)
-        self.avg_block_delay = avg_card_block_delay
+        if isinstance(avg_block_delay, int):
+            avg_block_delay = timedelta(seconds=avg_block_delay)
+        self.avg_block_delay = avg_block_delay
         self.can_choose_debit_credit = can_choose_debit_credit
         self.aggregation_windows = []
         for window in aggregation_windows:

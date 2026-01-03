@@ -78,16 +78,16 @@ class Parameters:
         with open(filename, "rb") as f:
             data = orjson.loads(f.read())
         assert isinstance(data, dict), "Parameters should be a dictionary"
-        match data["agent_name"]:
+        match data["agent"]["name"].lower():
             case "ppo" | "rppo":
-                agent = PPOParameters.from_json(data["agent"])
+                agent = PPOParameters.from_json(data.pop("agent"))
             case "vae":
-                agent = VAEParameters(**data["agent"])
+                agent = VAEParameters(**data.pop("agent"))
             case _:
                 raise ValueError(f"Unknown agent type: {data['agent_name']}")
-        cardsim = CardSimParameters(**data["cardsim"])
-        clf_params = ClassificationParameters(**data["clf_params"])
-        env_params = EnvParameters(**data["env_params"])
+        cardsim = CardSimParameters(**data.pop("cardsim"))
+        clf_params = ClassificationParameters(**data.pop("clf_params"))
+        env_params = EnvParameters(**data.pop("env_params"))
         return Parameters(
             agent=agent,
             cardsim=cardsim,
