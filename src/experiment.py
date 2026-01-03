@@ -251,7 +251,6 @@ class Experiment:
             episodes = run.episodes
             assert episodes is not None
             for episode in episodes:
-                print(episode)
                 actions.extend(episode.actions)
         return actions
 

@@ -79,17 +79,19 @@ def main(args: Arguments):
         agent = PPOParameters.best_ppo(args.anomaly, args.with_modification)
     else:
         raise ValueError(f"Unknown algorithm: {args.agent}")
+    if args.retrain_interval is not None:
+        retrain_interval = timedelta(days=args.retrain_interval)
+    else:
+        retrain_interval = None
     params = Parameters(
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
         clf_params=ClassificationParameters.paper_params(
-            with_anomaly=args.anomaly, with_modification=args.with_modification, retrain_interval=timedelta(days=10)
+            with_anomaly=args.anomaly, with_modification=args.with_modification, retrain_interval=retrain_interval
         ),
         env_params=EnvParameters(pool_size=50, n_episodes=6000),
         seed=args.initial_seed,
     )
-    print(f"Banksys file: {params.banksys_file}")
-    print(params.clf_params)
     exp = Experiment.create(params, logdir=args.logdir)
     if args.n_jobs == 1:
         return [run(p, rundir) for p, rundir in exp.repeat(args.n_repetitions)]
@@ -117,7 +119,8 @@ if __name__ == "__main__":
                     args.initial_seed = 0  # Seed different from the tuning
                     args.n_jobs = 1
                     args.ulb_data = False
-                    args.logdir = os.path.join("logs", f"{algorithm}-retrained")
+                    args.logdir = os.path.join("logs", algorithm)
+                    args.retrain_interval = 1
                     if anomaly:
                         args.logdir += "-with-anomaly"
                     else:
@@ -126,6 +129,8 @@ if __name__ == "__main__":
                         args.logdir += "-with-modification"
                     else:
                         args.logdir += "-no-modification"
+                    if args.retrain_interval is not None:
+                        args.logdir += f"-retrain-{args.retrain_interval}d"
                     # if os.path.exists(args.logdir):
                     #     logging.info(f"Logdir {args.logdir} already exists. Skipping...")
                     #     continue

@@ -90,12 +90,12 @@ def test_Isolation_Forest():
         n_trees=139,
         balance_factor=0.06473635736763925,
         contamination="auto",
-        training_duration=timedelta(days=150),
+        _training_duration=timedelta(days=150),
         quantiles={
             "amount": (0.0, 0.9976319783361984),
             "terminal_risk_last_1 day, 0:00:00": (0.0, 0.9999572867664103),
         },
-        rules={
+        _rules={
             timedelta(hours=1): 8,
             timedelta(days=1): 19,
             timedelta(weeks=1): 32,

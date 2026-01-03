@@ -23,7 +23,6 @@ class ClassificationSystem:
     training_duration: timedelta
     dataset: dict
     retrain_every: timedelta
-    will_retrain: bool
 
     def __init__(self, params: "ClassificationParameters"):
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=-1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
@@ -37,9 +36,6 @@ class ClassificationSystem:
         self.l3 = np.array([], dtype=np.bool)  # Placeholder for the third prediction, to be replaced in predict method
         self.l4 = np.array([], dtype=np.bool)  # Placeholder for the anomaly detection prediction, to be replaced in predict method
         # assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
-        self.dataset = {}
-
-        self.will_retrain = True
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
         logging.info("Fitting random forest")
@@ -52,8 +48,6 @@ class ClassificationSystem:
         logging.info("Fitting statistical classifier")
         self.statistical_classifier.fit(transactions)
         logging.info("Done !")
-
-        self.add_transactions(transactions, is_fraud)
 
     def predict(self, df: pl.DataFrame) -> npt.NDArray[np.bool]:
         self.l1 = self.ml_classifier.predict(df).astype(np.bool)
@@ -77,19 +71,3 @@ class ClassificationSystem:
         if self.use_anomaly:
             detected_by["Anomaly"] = self.l4
         return pl.DataFrame(detected_by)
-
-    def add_transactions(self, transactions: pl.DataFrame, true_labels: npt.NDArray[np.bool_] | list[bool] | pl.Series):
-        # Ensure true_labels is a Polars Series
-        if not isinstance(true_labels, pl.Series):
-            true_labels = pl.Series([true_labels]) if isinstance(true_labels, bool) else pl.Series(true_labels)
-
-        if self.dataset == {}:
-            self.dataset["Transactions"] = transactions
-            self.dataset["Labels"] = true_labels
-        else:
-            # Align schemas before vstack
-            existing_schema = self.dataset["Transactions"].schema
-            transactions = transactions.cast(existing_schema)
-
-            self.dataset["Transactions"] = self.dataset["Transactions"].vstack(transactions)
-            self.dataset["Labels"] = np.concatenate((self.dataset["Labels"], true_labels))

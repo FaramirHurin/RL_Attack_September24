@@ -1,8 +1,7 @@
 import logging
 import os
 import random
-import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import final
 
 import numpy as np
@@ -20,47 +19,14 @@ from .vae_parameters import VAEParameters
 
 
 @final
-@dataclass(eq=True)
+@dataclass(eq=True, frozen=True)
 class Parameters:
-    agent: PPOParameters | VAEParameters | None
-    cardsim: CardSimParameters
-    clf_params: ClassificationParameters
-    env_params: EnvParameters
-    seed: int
-
-    def __init__(
-        self,
-        agent: PPOParameters | VAEParameters | None = None,
-        cardsim: CardSimParameters | None = None,
-        clf_params: ClassificationParameters | None = None,
-        env_params: EnvParameters | None = None,
-        seed: int = 0,
-        cache_root: str = "cache",
-        *,
-        invalidate_dataset_cache: bool = False,
-        invalidate_banksys_cache: bool = False,
-    ):
-        self.seed = seed
-        self.agent = agent
-        self._cache_root = cache_root
-        if cardsim is None:
-            cardsim = CardSimParameters()
-        self.cardsim = cardsim
-        if clf_params is None:
-            clf_params = ClassificationParameters()
-        self.clf_params = clf_params
-        if env_params is None:
-            env_params = EnvParameters()
-        self.env_params = env_params
-        if invalidate_dataset_cache:
-            shutil.rmtree(self.dataset_dir)
-            invalidate_banksys_cache = True
-        if invalidate_banksys_cache:
-            try:
-                os.remove(self.banksys_file)
-            except OSError:
-                pass
-                self.save()
+    agent: PPOParameters | VAEParameters | None = None
+    cardsim: CardSimParameters = field(default_factory=CardSimParameters)
+    clf_params: ClassificationParameters = field(default_factory=ClassificationParameters)
+    env_params: EnvParameters = field(default_factory=EnvParameters)
+    seed: int = 0
+    cache_root: str = "cache"
 
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         self.seed_random()
@@ -109,7 +75,7 @@ class Parameters:
                 clf_params=self.clf_params,
                 env_params=self.env_params,
                 seed=self.seed + i,
-                cache_root=self._cache_root,
+                cache_root=self.cache_root,
             )
 
     def save(self):
@@ -139,7 +105,7 @@ class Parameters:
     @property
     def cache_dir(self):
         """Cache directory taking the seed into account."""
-        return os.path.join(self._cache_root, f"seed-{self.seed}")
+        return os.path.join(self.cache_root, f"seed-{self.seed}")
 
     @property
     def dataset_dir(self):
@@ -147,14 +113,20 @@ class Parameters:
 
     def load_banksys(self):
         logging.info(f"Loading banksys from {self.banksys_file}")
+        file = self.banksys_file
         self.seed_random()
         if os.path.exists(self.banksys_file):
             from banksys import Banksys
 
+            assert file == self.banksys_file
             return Banksys.load(self.banksys_file)
         logging.info("Banksys does not exist, creating one")
         transactions, payers, terminals = self.cardsim.load_simulation_data(self.cache_dir)
+        assert file == self.banksys_file
         banksys = self.clf_params.make_banksys(transactions, payers, terminals)
+        assert file == self.banksys_file
         logging.info(f"Caching banksys to {self.banksys_file}")
+        assert file == self.banksys_file
         banksys.save(self.banksys_file)
+        assert file == self.banksys_file
         return banksys
