@@ -116,11 +116,11 @@ if __name__ == "__main__":
                     args.anomaly = anomaly
                     args.with_modification = modification
                     args.n_repetitions = 30
-                    args.initial_seed = 0  # Seed different from the tuning
-                    args.n_jobs = 1
+                    args.initial_seed = 100  # Seed different from the tuning
+                    args.n_jobs = 16
                     args.ulb_data = False
                     args.logdir = os.path.join("logs", algorithm)
-                    args.retrain_interval = 1
+                    args.retrain_interval = 30
                     if anomaly:
                         args.logdir += "-with-anomaly"
                     else:
@@ -136,7 +136,6 @@ if __name__ == "__main__":
                     #     continue
                     logging.info(f"Starting experiment with arguments: {args}")
                     main(args)
-                    exit()
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e
