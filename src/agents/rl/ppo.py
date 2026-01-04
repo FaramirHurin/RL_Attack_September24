@@ -7,7 +7,7 @@ from marlenv import Transition, Episode
 from marlenv.utils import Schedule
 from agents import Agent
 from utils import tb_log
-
+from copy import deepcopy
 
 from .batch import Batch, EpisodeBatch
 from .replay_memory import ReplayMemory
@@ -43,7 +43,6 @@ class PPO(Agent):
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
         minibatch_size: int = 32,
-        normalize_rewards: bool = True,
         normalize_advantages: bool = True,
         device: torch.device = torch.device("cpu"),
         **kwargs,
@@ -61,10 +60,9 @@ class PPO(Agent):
         self.memory = memory
         self._ratio_min = 1 - eps_clip
         self._ratio_max = 1 + eps_clip
-        self.normalize_rewards = normalize_rewards
         self.normalize_advantages = normalize_advantages
         param_groups, self._parameters = self._compute_param_groups(lr_actor, lr_critic)
-        self.optimizer = torch.optim.Adam(param_groups, eps=1e-5)
+        self.optimizer = torch.optim.AdamW(param_groups, eps=1e-5)
         if isinstance(critic_c1, (float, int)):
             critic_c1 = Schedule.constant(critic_c1)
         self.c1 = critic_c1
@@ -90,30 +88,20 @@ class PPO(Agent):
         np_action = torch_action.squeeze(0).numpy(force=True)
         return np_action, hx
 
-    def _compute_training_data(
-        self, batch: Batch
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.distributions.TransformedDistribution]:
+    def _compute_training_data(self, batch: Batch):
         """Compute the returns, advantages and action log_probs according to the current policy"""
-        # NOTE: Mask the log probs to prevent numerical instability when passed in torch.exp. If the value
-        # present without masking is large enough (e.g. >=10^3), torch.exp yields +inf which causes issues
-        # in the optimization process because it can not be masked properly (0 x inf = NaN).
-        policy = self.actor_critic.policy(batch.obs)[0]
-        log_probs = policy.log_prob(batch.actions)
-        policy2 = self.actor_critic.policy(batch.obs)[0]
-        log_probs2 = policy2.log_prob(batch.actions)
-        assert torch.equal(log_probs, log_probs2)
         values = self.actor_critic.value(batch.obs)
         next_values = self.actor_critic.value(batch.next_obs)
         values[batch.masked_indices] = 0.0
         next_values[batch.dones == 1] = 0.0
         assert torch.all(next_values[batch.masked_indices] == 0.0)
-        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=False)
-        returns = batch.compute_mc_returns(self.gamma, normalize=False)
-        log_probs[batch.masked_indices] = 0.0
+        advantages = batch.compute_gae(self.gamma, values, next_values, self.gae_lambda, normalize=self.normalize_advantages)
+        returns = batch.compute_mc_returns(self.gamma, 0.0)
+        advantages[batch.masked_indices] = 0.0
         assert torch.all(advantages[batch.masked_indices] == 0)
         assert torch.all(returns[batch.dones == 1] == 0.0)
         assert torch.all(returns[batch.masked_indices] == 0.0)
-        return returns, advantages, log_probs, values, policy
+        return returns, advantages
 
     def save(self, path: str):
         directory = os.path.dirname(path)
@@ -126,18 +114,13 @@ class PPO(Agent):
             self.actor_critic.load_state_dict(torch.load(f))
 
     def train(self, batch: Batch, step_num: int, episode_num: int, simulation_t: int):
-        if self.normalize_rewards:
-            batch.normalize_rewards()
         self.c1.update(episode_num)
         self.c2.update(episode_num)
+
+        old_ac = deepcopy(self.actor_critic)
         with torch.no_grad():
-            returns, advantages, log_probs, values, policy = self._compute_training_data(batch)
-
-        base_policy = policy.base_dist
-        assert isinstance(base_policy, torch.distributions.MultivariateNormal)
-        means, cov = base_policy.mean, base_policy.covariance_matrix
-
-        critic_losses, actor_losses, entropy_losses, losses, ratios, entropies = [], [], [], [], [], []
+            returns, advantages = self._compute_training_data(batch)
+        critic_losses, actor_losses, entropy_losses, losses, ratios, entropies, norms = [], [], [], [], [], [], []
         for e in range(self.n_epochs):
             if self.minibatch_size == batch.size:
                 minibatch = batch
@@ -147,7 +130,10 @@ class PPO(Agent):
                 minibatch = batch.get_minibatch(indices)
             if isinstance(minibatch, EpisodeBatch):
                 indices = (slice(None), indices)  # The episode dimension come second in episode batches: (time, episode, ...)
-            mini_log_probs, mini_returns, mini_advantages = log_probs[indices], returns[indices], advantages[indices]
+            mini_returns, mini_advantages = returns[indices], advantages[indices]
+            with torch.no_grad():
+                mini_log_probs = old_ac.policy(minibatch.obs)[0].log_prob(minibatch.actions)
+                mini_log_probs[minibatch.masked_indices] = 0.0
 
             # Use the Monte Carlo estimate of returns as target values
             # L^VF(θ) = E[(V(s) - V_targ(s))^2] in PPO paper
@@ -159,25 +145,16 @@ class PPO(Agent):
             # Actor loss (ratio between the new and old policy):
             # L^CLIP(θ) = E[ min(r(θ)A, clip(r(θ), 1 − ε, 1 + ε)A) ] in PPO paper
             mini_policy = self.actor_critic.policy(minibatch.obs)[0]
-            mini_base_policy = mini_policy.base_dist
             mini_new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
             mini_new_log_probs[minibatch.masked_indices] = 0.0
             ratio = torch.exp(mini_new_log_probs - mini_log_probs)
-
             surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
             surr_min = torch.min(surrogate1, surrogate2)
             actor_loss = -torch.sum(surr_min) / minibatch.masks_sum  # Minus sign to maximize the objective
 
             if e == 0:
-                assert isinstance(mini_base_policy, torch.distributions.MultivariateNormal)
-                mini_means, mini_cov = mini_base_policy.mean, mini_base_policy.covariance_matrix
-                assert torch.allclose(means[indices], mini_means, rtol=1e-5, atol=1e-7)
-                assert torch.allclose(cov[indices], mini_cov, rtol=1e-5, atol=1e-7), f"Diff = {(cov[indices] - mini_cov).abs().max()}"
-                assert torch.allclose(mini_new_log_probs, log_probs[indices], rtol=1e-5, atol=1e-7)
-                # Ratio should be close to 1 at epoch 0 (within numerical tolerance)
-                assert torch.allclose(ratio, torch.ones_like(ratio), rtol=1e-5, atol=1e-7)
-                assert torch.allclose(mini_values, values[indices], rtol=1e-4, atol=1e-5)
+                assert torch.equal(ratio, torch.ones_like(ratio)), f"Ratio max diff = {(ratio - 1).abs().max()}"
 
             # S[\pi_0](s_t) in the paper (equation (9))
             entropy = mini_policy.base_dist.entropy()
@@ -189,7 +166,8 @@ class PPO(Agent):
             loss = actor_loss + self.c1 * critic_loss + self.c2 * entropy_loss
             loss.backward()
             if self.grad_norm_clipping is not None:
-                torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
+                norm = torch.nn.utils.clip_grad_norm_(self._parameters, self.grad_norm_clipping)
+                norms.append(norm.cpu().item())
             self.optimizer.step()
             critic_losses.append(critic_loss.item())
             actor_losses.append(actor_loss.item())
@@ -198,9 +176,6 @@ class PPO(Agent):
             ratios.append(ratio.numpy(force=True))
             entropies.append(entropy.numpy(force=True))
 
-        tb_log("ppo/mean_log_probs", log_probs.mean().item(), simulation_t)
-        tb_log("ppo/min_log_probs", log_probs.min().item(), simulation_t)
-        tb_log("ppo/max_log_probs", log_probs.max().item(), simulation_t)
         tb_log("ppo/min_new_log_prob", mini_new_log_probs.min().item(), simulation_t)
         tb_log("ppo/max_new_log_prob", mini_new_log_probs.max().item(), simulation_t)
         tb_log("ppo/mean_new_log_prob", mini_new_log_probs.mean().item(), simulation_t)
@@ -222,6 +197,10 @@ class PPO(Agent):
         tb_log("ppo/mean_entropy", np.mean(entropies), simulation_t)
         tb_log("ppo/min_entropy", np.min(entropies), simulation_t)
         tb_log("ppo/max_entropy", np.max(entropies), simulation_t)
+        if len(norms) > 0:
+            tb_log("ppo/min_grad_norm", min(norms), simulation_t)
+            tb_log("ppo/max_grad_norm", max(norms), simulation_t)
+            tb_log("ppo/mean_grad_norm", np.mean(norms), simulation_t)
 
     def update_transition(self, transition: Transition, step: int, episode_num: int, simulation_t: int):
         if self.memory.update_on_transitions:

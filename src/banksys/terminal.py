@@ -1,12 +1,13 @@
 from dataclasses import Field, dataclass
 from datetime import datetime, timedelta
 from typing import Literal, Sequence
-from humanize import naturaldelta
-from .trx_window import TransactionWindow
-import polars as pl
 
-from utils import fields2schema
+import polars as pl
+from humanize import naturaldelta
+
+
 from .transaction import Transaction
+from .trx_window import TransactionWindow
 
 
 @dataclass
@@ -55,16 +56,9 @@ class Terminal:
         return [Terminal(aggregation_windows=aggregetion_windows, **kwargs) for kwargs in df.iter_rows(named=True)]
 
     @classmethod
-    def field_names(cls) -> list[str]:
-        import inspect
-
-        members = inspect.getmembers(cls)
-        fields = list[Field](dict(members)["__dataclass_fields__"].values())
-        return [field.name for field in fields]
-
-    @classmethod
     def schema(cls) -> dict:
         import inspect
+        from utils import fields2schema
 
         members = inspect.getmembers(cls)
         fields = list[Field](dict(members)["__dataclass_fields__"].values())

@@ -27,6 +27,7 @@ def _make_test_without_batch(network_class: Type[LinearActorCritic | RecurrentAc
         base_dist1 = policy1.base_dist
         if isinstance(base_dist1, torch.distributions.Independent):
             base_dist1 = base_dist1.base_dist
+            assert isinstance(base_dist1, torch.distributions.Normal)
             means1: torch.Tensor = base_dist1.loc
             stds1 = base_dist1.scale
             cov1 = None
@@ -45,6 +46,7 @@ def _make_test_without_batch(network_class: Type[LinearActorCritic | RecurrentAc
         if isinstance(base_dist2, torch.distributions.Independent):  # Independent distribution
             assert stds1 is not None, "stds1 should not be None for Independent distribution"
             base_dist2 = base_dist2.base_dist
+            assert isinstance(base_dist2, torch.distributions.Normal)
             means2 = base_dist2.loc
             stds2 = base_dist2.scale
             assert torch.equal(means1, means2)

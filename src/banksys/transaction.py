@@ -1,7 +1,7 @@
-from dataclasses import Field, dataclass, asdict
+from dataclasses import Field, asdict, dataclass
 from datetime import datetime
+
 import polars as pl
-from utils import fields2schema
 
 
 @dataclass
@@ -47,6 +47,14 @@ class Transaction:
             return False
         return self.predicted_label
 
+    @property
+    def date(self):
+        return self.timestamp.date()
+
+    @property
+    def weekday_index(self):
+        return self.timestamp.weekday()
+
     def as_df(self, with_label: bool = False, with_predicted_label: bool = False) -> pl.DataFrame:
         """
         Convert the transaction to a Polars DataFrame.
@@ -59,19 +67,9 @@ class Transaction:
         return pl.DataFrame(data)
 
     @classmethod
-    def field_names(cls, with_predicted_label: bool = True):
-        import inspect
-
-        members = inspect.getmembers(cls)
-        fields = list[Field](dict(members)["__dataclass_fields__"].values())
-        names = [field.name for field in fields]
-        if not with_predicted_label:
-            names.remove("predicted_label")
-        return names
-
-    @classmethod
     def schema(cls, with_predicted_label: bool = True):
         import inspect
+        from utils import fields2schema
 
         members = inspect.getmembers(cls)
         fields = list[Field](dict(members)["__dataclass_fields__"].values())

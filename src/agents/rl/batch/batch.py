@@ -53,7 +53,7 @@ class Batch(ABC):
     def normalize_rewards(self):
         self.rewards = self._normalize(self.rewards)
 
-    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0, normalize: bool = True):
+    def compute_mc_returns(self, gamma: float, next_value: torch.Tensor | float = 0):
         """
         Compute the returns using the Monte Carlo method, i.e. the discounted sum of rewards until the end of the episode.
         """
@@ -63,8 +63,6 @@ class Batch(ABC):
         for t in range(self.n_steps - 1, -1, -1):
             next_value = self.masked_rewards[t] + gamma ** self.dt[t] * next_value * self.not_dones[t]
             returns[t] = next_value
-        if normalize:
-            returns = self._normalize(returns)
         return returns
 
     def compute_td1_returns(self, gamma: float, next_values: torch.Tensor, normalize: bool = False):
@@ -90,7 +88,7 @@ class Batch(ABC):
             normalize: Whether to normalize the advantages.
         """
         values = all_values[:-1]
-        returns = self.compute_mc_returns(gamma, all_values[-1], normalize=False)
+        returns = self.compute_mc_returns(gamma, all_values[-1])
         advantages = returns - values
         if normalize:
             advantages = self._normalize(advantages)

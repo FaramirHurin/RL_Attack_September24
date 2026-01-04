@@ -3,7 +3,7 @@ name = "rl-transaction-attack"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11,<4"
+requires-python = ">=3.12,<4"
 dependencies = [
     "deprecated>=1.2.18",
     "imblearn>=0.0",
@@ -17,15 +17,14 @@ dependencies = [
     "polars>=1.14.0",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
-    "scikit-learn>=1.5.2",
+    "scikit-learn<1.8",
     "scipy>=1.15.2",
     "seaborn>=0.13.2",
-    "torch==2.7",
+    "torch<2.8",
     "tqdm>=4.67.1",
     "gunicorn>=23.0.0",
     "ipywidgets>=8.1.7",
     "pyarrow>=20.0.0",
-    "pytest>=8.3.5",
     "pyinstrument>=5.1.1",
     "tensorboard>=2.20.0",
     "humanize>=4.14.0",
@@ -37,4 +36,12 @@ dependencies = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 
+[tool.ruff]
+line-length = 140
 
+[dependency-groups]
+dev = ["pytest>=9.0.2"]
+
+
+[tool.basedpyright]
+include = ["src"]

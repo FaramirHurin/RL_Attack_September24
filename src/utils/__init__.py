@@ -1,13 +1,15 @@
-from typing import Any
-import polars as pl
-from datetime import datetime, timedelta
-from dataclasses import Field
 import logging
+from dataclasses import Field
+from datetime import datetime, timedelta
 from functools import lru_cache
+from typing import Any
+
+import numpy as np
+import polars as pl
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
 
+from banksys.transaction import Transaction
 
 writer = None
 prev_t = 0

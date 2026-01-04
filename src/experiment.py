@@ -1,21 +1,20 @@
-from dataclasses import dataclass, replace
+import logging
+import os
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cached_property
 from typing import Any, Optional
-import logging
-from copy import deepcopy
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import orjson
-from parameters import Parameters
-from utils import serialize_unknown
 from marlenv import Episode
 
 from banksys import Transaction
 from environment import Action
+from parameters import Parameters
+from utils import serialize_unknown
 
 
 @dataclass
@@ -61,7 +60,7 @@ class Run:
             f.write(orjson.dumps(params, default=serialize_unknown))
         episodes_path = os.path.join(rundir, "episodes.json")
         with open(episodes_path, "wb") as f:
-            f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY))
+            f.write(orjson.dumps(episodes, option=orjson.OPT_SERIALIZE_NUMPY, default=serialize_unknown))
         metrics_path = os.path.join(rundir, "metrics.json")
         with open(metrics_path, "wb") as f:
             metrics = [e.metrics for e in episodes]
@@ -104,6 +103,10 @@ class Run:
                 )
         items = [LogItem.from_dict(m) for m in metrics_dict]
         return Run(rundir, params, items)
+
+    @property
+    def n_episodes(self) -> int:
+        return len(self.items)
 
     @cached_property
     def total_amount(self) -> float:
@@ -187,7 +190,7 @@ class Experiment:
     def load_runs(self):
         results = dict[str, Run]()
         for entry in os.listdir(self.logdir):
-            if not entry.startswith("seed-"):
+            if not (entry.startswith("seed-") or entry.startswith("run-")):
                 continue
             run_dir = os.path.join(self.logdir, entry)
             try:
@@ -204,6 +207,7 @@ class Experiment:
 
     @property
     def n_runs(self):
+        x = int("25")
         return len(self.runs)
 
     @staticmethod
@@ -247,7 +251,6 @@ class Experiment:
             episodes = run.episodes
             assert episodes is not None
             for episode in episodes:
-                print(episode)
                 actions.extend(episode.actions)
         return actions
 

@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
-@dataclass(eq=True)
+@dataclass(eq=True, frozen=True)
 class CardSimParameters:
     n_days: int = 365
     start_date: str = "2023-01-01"

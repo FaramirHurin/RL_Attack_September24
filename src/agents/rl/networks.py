@@ -1,9 +1,11 @@
-from typing import Optional
 from abc import ABC, abstractmethod
+from typing import Optional
+
 import torch
+from marlenv import ContinuousSpace
 from torch import distributions
 from torch.distributions import transforms
-from marlenv import ContinuousSpace
+
 from utils import tb_log
 
 
@@ -67,8 +69,7 @@ class ActorCritic(torch.nn.Module, ABC):
         if self.use_covariance_matrix:
             # Generate a Positive Definite covariance matrix
             # https://stackoverflow.com/questions/58176501/how-do-you-generate-positive-definite-matrix-in-pytorch
-            raw = outputs[:, self.n_actions :]
-            raw = raw.reshape(-1, self.n_actions, self.n_actions)
+            raw = outputs[:, self.n_actions :].reshape(-1, self.n_actions, self.n_actions)
             positive_semi_definite = raw @ raw.transpose(1, 2)
             positive_definite = positive_semi_definite + torch.eye(self.n_actions, device=outputs.device)
             cov = positive_definite.reshape(*dims, self.n_actions, self.n_actions)
@@ -94,7 +95,6 @@ class LinearActorCritic(ActorCritic):
         INNER_SIZE_ACTIONS = 64
         INNER_SIZE_SEQUNTIAL = 64
         self.actor = torch.nn.Sequential(
-            # torch.nn.BatchNorm1d(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_ACTIONS),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_ACTIONS, INNER_SIZE_ACTIONS),
@@ -103,7 +103,6 @@ class LinearActorCritic(ActorCritic):
         ).to(self.device)
 
         self.critic = torch.nn.Sequential(
-            # torch.nn.LayerNorm(state_size),
             torch.nn.Linear(state_size, INNER_SIZE_SEQUNTIAL),
             torch.nn.Tanh(),
             torch.nn.Linear(INNER_SIZE_SEQUNTIAL, INNER_SIZE_SEQUNTIAL),
@@ -122,8 +121,8 @@ class LinearActorCritic(ActorCritic):
         dist = self.make_distribution(outputs)
         return dist, None
 
-    def value(self, state: torch.Tensor):
-        value = self.critic.forward(state)
+    def value(self, states: torch.Tensor):
+        value = self.critic.forward(states)
         return torch.squeeze(value, -1)
 
     def to(self, device: torch.device, *args, **kwargs):
@@ -138,10 +137,11 @@ class RNN(torch.nn.Module):
         super().__init__()
         self.n_outputs = n_outputs
         self.fc1 = torch.nn.Sequential(torch.nn.Linear(n_inputs, n_hidden), torch.nn.ReLU())
-        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, batch_first=False)
+        self.gru = torch.nn.GRU(input_size=n_hidden, hidden_size=n_hidden, num_layers=2, batch_first=False)
         self.fc2 = torch.nn.Linear(n_hidden, n_outputs)
 
     def forward(self, obs: torch.Tensor, hidden_states: Optional[torch.Tensor]) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self.gru.flatten_parameters()
         x = self.fc1.forward(obs)
         x, hidden_states = self.gru.forward(x, hidden_states)
         x = self.fc2.forward(x)

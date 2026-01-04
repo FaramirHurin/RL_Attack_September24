@@ -77,7 +77,7 @@ def test_episode_batch_creation():
         assert torch.all(batch.rewards[MIN_EP_LENGTH + t :, t] == 0.0)
 
 
-def test_episode_minibatch_actions():
+def test_episode_minibatch_attrs():
     length = 10
     episodes = [_make_episode(length, 5, 0.5) for _ in range(10)]
     for i, e in enumerate(episodes):

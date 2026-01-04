@@ -1,7 +1,6 @@
 import logging
 import os
 import pickle
-import time
 from datetime import datetime
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -9,15 +8,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 from tqdm import tqdm
-
-from utils import tb_log
+from utils.transaction_iterator import TransactionIterator
 
 from .classification import ClassificationSystem
 from .payer import Payer
 from .terminal import Terminal
 from .transaction import Transaction
-from datetime import timedelta
-
 
 if TYPE_CHECKING:
     from parameters import ClassificationParameters
@@ -37,56 +33,63 @@ class Banksys:
         silent: bool = False,
         clf: ClassificationSystem | None = None,
     ):
-        max_aggregation_duration = (
-            max(*params.aggregation_windows) if len(params.aggregation_windows) > 1 else params.aggregation_windows[0]
-        )
-
-
-
-        self.current_time: datetime = transactions["timestamp"].min()  # type: ignore[assignment]
-        self.attack_end: datetime = transactions["timestamp"].max()  # type: ignore[assignment]
-        self.training_start = self.current_time + max_aggregation_duration
-        self.attack_start = self.training_start + params.training_duration
-
-        self.last_training = self.training_start
-        self.will_retrain = True
-        self.retrain_every = timedelta(days=60)
-        self.training_features = []
-        self.training_labels = []
-
-        assert self.attack_start < self.attack_end, f"Attack start ({self.attack_start}) must be before attack end ({self.attack_end})."
-        self.silent = silent
-        self.classify_simulated_trx = params.classify_simulated_trx
-        if clf is not None:
-            self.clf = clf
-        else:
-            self.clf = ClassificationSystem(params)
+        if params.classify_simulated_trx:
+            raise NotImplementedError("Classification of simulated transactions is no longer supported.")
         self._transactions = transactions.sort("timestamp").with_columns(
             predicted_label=self._approximate_labels(transactions, fp_rate=params.fp_rate, fn_rate=params.fn_rate)
         )
-        if params.classify_simulated_trx:
-            # Remove 'predicted_label' for the attack set.
-            self._transactions = self._transactions.with_columns(
-                predicted_label=pl.when(pl.col("timestamp") > self.attack_start).then(None).otherwise(pl.col("predicted_label"))
-            )
-        # Rename column card_id to payer_id for consistency
-        self._transactions = self._transactions.rename({"card_id": "payer_id"})
-
-
-        self.trx_iterator = self._transactions.iter_rows(named=True)
-        self.next_trx = Transaction(**next(self.trx_iterator))
-        self.payers = sorted(Payer.from_df(payers, params.aggregation_windows), key=lambda c: c.id)
-        self.terminals = sorted(Terminal.from_df(terminals, params.aggregation_windows), key=lambda t: t.id)
-        self.aggregation_windows = params.aggregation_windows
+        self.trx_iterator = TransactionIterator(self._transactions)
+        self.payers = Payer.from_df(payers.sort("id"), params.aggregation_windows)
+        self.terminals = Terminal.from_df(terminals.sort("id"), params.aggregation_windows)
         self.schema = pl.DataFrame(self.make_transaction_features(self.next_trx)).schema
-        self.setup_training()
-        self.fit()
+        self.silent = silent
+        if clf is None:
+            clf = ClassificationSystem(params)
+        self.clf = clf
 
-    def setup_training(self):
+        self.last_training = None
+        self.training_features = list[dict[str, Any]]()
+        self.training_labels = list[bool]()
+        self.retrain_every = params.retrain_interval
+        self.attack_start = self.t_start + params.longest_window + params.training_duration
+        self.current_time = self.t_start
+        assert self.attack_start < self.t_max, f"Attack start ({self.attack_start}) must precede attack end ({self.t_max})."
         logging.info("System warmup for training feature aggregation...")
-        self._fast_forward(self.training_start, show_progress=not self.silent)
+        self._fast_forward(self.t_start + params.longest_window, show_progress=not self.silent, compute_features=False)
         logging.info("Building classifier training features...")
         self._fast_forward(self.attack_start, show_progress=not self.silent, compute_features=True)
+        self.fit()
+
+    @property
+    def must_retrain_now(self):
+        if self.last_training is None:
+            # The system has never been trained, so there is no RE-training to do.
+            return False
+        if self.retrain_every is None:
+            return False
+        return self.current_time - self.last_training >= self.retrain_every
+
+    @property
+    def is_trained(self):
+        return self.last_training is not None
+
+    @cached_property
+    def t_max(self) -> datetime:
+        return self._transactions["timestamp"].max()  # type: ignore[return-value]
+
+    @cached_property
+    def t_start(self) -> datetime:
+        return self._transactions["timestamp"].min()  # type: ignore[return-value]
+
+    @property
+    def will_retrain(self):
+        """Whether the banksys will eventually retrain."""
+        return self.retrain_every is not None
+
+    @property
+    def next_trx(self):
+        """Peek at the next transaction to be processed."""
+        return self.trx_iterator.peek()
 
     def fit(self):
         """
@@ -94,109 +97,68 @@ class Banksys:
 
         Called for training
         """
-        train_x = pl.DataFrame(self.training_features, schema=self.schema)
-        train_y = np.array(self.training_labels)  #self.training_set["is_fraud"].to_numpy().astype(np.bool)
+        logging.info(f"Training the Banksys classifier on {len(self.training_labels)} datapoints")
+        train_x = pl.DataFrame(self.training_features, self.schema)
+        train_y = np.array(self.training_labels)
         self.last_training = self.current_time
-        self.clf.fit(pl.DataFrame(train_x), train_y)
-        # We clean the training set after training to implement sliding window logic 
+        self.clf.fit(train_x, train_y)
+        # We clean the training set after training to implement the sliding window logic
         self.training_features.clear()
         self.training_labels.clear()
 
-
-    def _fast_forward(self, until: datetime, *, show_progress: bool = False, compute_features: bool = False, start: datetime = None):
+    def _fast_forward(self, until: datetime, *, show_progress: bool = False, compute_features: bool = False):
         """
         Fast forward the system to the given date, adding all the transactions to the
         system but without classifying them.
         """
-        if until > self.attack_end:
-            raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.attack_end}.")
-        if start is None:
-            start = self.next_trx.timestamp
+        if until > self.t_max:
+            raise ValueError(f"Cannot forward to {until}, it is beyond the attack end date {self.t_max}.")
+        start = self.current_time
         if show_progress:
             n = self._transactions.filter(pl.col("timestamp").is_between(start, until)).height
         else:
             n = 0
         pbar = tqdm(total=n, desc="Fast-forwarding transactions", unit="trx", disable=not show_progress)
         date = start.date()
-        features = list[dict[str, Any]]()
         while self.next_trx.timestamp < until:
-            if compute_features or self.will_retrain: # Retraining needed to add the transactions for retraining
-                feature = self.make_transaction_features(self.next_trx)
-                features.append(feature)
+            trx = next(self.trx_iterator)
+            assert trx.predicted_label is not None
+            if compute_features:
+                feature = self.make_transaction_features(trx)
                 self.training_features.append(feature)
-                self.training_labels.append(self.next_trx.is_fraud)
-
-            self.payers[self.next_trx.payer_id].add(self.next_trx, update_balance=False)
-            self.terminals[self.next_trx.terminal_id].add(self.next_trx)
-            if self.next_trx.timestamp.date() != date:
-                date = self.next_trx.timestamp.date()
+                self.training_labels.append(trx.is_fraud)
+            self.payers[trx.payer_id].add(trx, update_balance=False)
+            self.terminals[trx.terminal_id].add(trx)
+            if show_progress and trx.date != date:
+                date = trx.date
                 pbar.set_description(f"{date.isoformat()}")
-            if self.next_trx.timestamp - self.last_training > self.retrain_every:
+            if self.must_retrain_now:
                 self.fit()
             pbar.update()
-            self.next_trx = Transaction(**next(self.trx_iterator))
-
         pbar.close()
         self.current_time = until
 
-        return features
-
-
-    def process_transaction(self, trx: Transaction, *, compute_other_features: bool = False):
+    def process_transaction(self, trx: Transaction):
         """
         Process the transaction (i.e. add it to the system) and return whether it is fraudulent or not.
         If `real_label` is True, it will use the real label from the transaction.
         """
-        self.will_retrain = True
-        try:
-            self.real_last_training
-            self.retrain_every
-        except:
-            self.real_last_training = trx.timestamp
-            self.retrain_every = timedelta(days=30)
-            print('It won\'t happen again')
-
         assert trx.predicted_label is None, "Transaction has already been processed !"
         assert trx.is_fraud, "Method `process_transaction` is meant to process fraudulent transactions only."
-        other_features = pl.DataFrame(self._fast_forward(trx.timestamp, compute_features=compute_other_features), schema=self.schema)
+        self._fast_forward(trx.timestamp, compute_features=self.will_retrain)
         features = self.make_transaction_features(trx)
         self.training_features.append(features)
         self.training_labels.append(trx.is_fraud)
-        elapsed = trx.timestamp - self.attack_start
-        tb_log("features", {k: v for k, v in features.items() if k not in WEEKDAYS}, elapsed)
         features_df = pl.DataFrame(features, schema=self.schema)
         trx.predicted_label = self.clf.predict(features_df).item()
 
-
-
-
-
-
-
         self.payers[trx.payer_id].add(trx, update_balance=True)
         self.terminals[trx.terminal_id].add(trx)
-        return features, other_features
-
-    def process_transactions(self, transactions: list[Transaction]):
-        """
-        Receives a list of independent transactions (no terminal nor payer in common) and processes them,
-        assigning a predicted label to each transaction.
-        """
-        features = list[dict[str, Any]]()
-        for trx in transactions:
-            assert trx.predicted_label is not None, "`process_transactions` is only intented for simulated transactions, not attack ones"
-            features.append(self.make_transaction_features(trx))
-        df = pl.DataFrame(features, schema=self.schema)
-        labels = self.clf.predict(df)
-        for trx, label in zip(transactions, labels):
-            trx.predicted_label = label
-            self.terminals[trx.terminal_id].add(trx)
-            self.payers[trx.payer_id].add(trx, update_balance=False)
-        return df
+        return features
 
     def make_transaction_features(self, trx: Transaction):
         weekday = [0.0] * 7
-        weekday[trx.timestamp.weekday()] = 1.0
+        weekday[trx.weekday_index] = 1.0
         return {
             "hour": trx.timestamp.hour,
             "is_online": trx.is_online,
@@ -233,40 +195,3 @@ class Banksys:
             banksys = pickle.load(f)
             assert isinstance(banksys, Banksys)
         return banksys
-
-    @cached_property
-    def training_set(self):
-        return self._transactions.filter(pl.col("timestamp").is_between(self.training_start, self.attack_start, closed="left"))
-
-    @property
-    def max_attack_duration(self):
-        """
-        Returns the maximum duration of the attack, which is the difference between the attack end and attack start.
-        """
-        return self.attack_end - self.attack_start
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # Remove the transactions iterator to avoid pickling it
-        del state["trx_iterator"]
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        # Recreate the transactions iterator
-        remaining_trx = self._transactions.filter(pl.col("timestamp") > self.next_trx.timestamp)
-        self.trx_iterator = remaining_trx.iter_rows(named=True)
-
-
-def extract_trx_features(df: pl.DataFrame):
-    weekday = df["timestamp"].dt.weekday()
-    trx_df = df.with_columns(
-        pl.col("timestamp").dt.weekday().cast(pl.Float32).alias("day_of_week"),
-        pl.col("timestamp").dt.hour().cast(pl.Float32).alias("hour"),
-        pl.col("is_online"),
-        pl.col("amount"),
-        *[pl.Series(name=day, values=(weekday == (i + 1)).cast(pl.Float32)) for i, day in enumerate("Mon Tue Wed Thu Fri Sat Sun".split())],
-    )
-    return trx_df.drop("timestamp")
-
-

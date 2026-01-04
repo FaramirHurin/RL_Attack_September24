@@ -1,4 +1,3 @@
-import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Optional
 
@@ -24,9 +23,9 @@ class PPOParameters:
     grad_norm_clipping: Optional[float]
     train_on: Literal["transition", "episode"]
     is_recurrent: bool
-    normalize_rewards: bool
     normalize_advantages: bool
-    use_covariance_matrix: bool = True
+    use_covariance_matrix: bool
+    name: Literal["ppo", "rppo"]
 
     def __init__(
         self,
@@ -43,7 +42,6 @@ class PPOParameters:
         minibatch_size: int = 32,
         gae_lambda: float = 0.95,
         grad_norm_clipping: Optional[float] = None,
-        normalize_rewards: bool = True,
         normalize_advantages: bool = True,
         use_covariance_matrix: bool = True,
     ):
@@ -56,11 +54,9 @@ class PPOParameters:
         assert lr_actor > 0.0, "`lr_actor` must be positive."
         assert lr_critic > 0.0, "`lr_critic` must be positive."
         assert grad_norm_clipping is None or grad_norm_clipping > 0.0, "`grad_norm_clipping` must be positive or None."
-
+        assert not is_recurrent or train_on == "episode", "Recurrent PPO only supports episode training."
+        self.name = "rppo" if is_recurrent else "ppo"
         self.is_recurrent = is_recurrent
-        if self.is_recurrent and not train_on == "episode":
-            logging.warning("Recurrent PPO is only supported for episode training. Switching to episode training.")
-            train_on = "episode"
         self.train_on = train_on
         self.gamma = gamma
         self.lr_actor = lr_actor
@@ -78,7 +74,6 @@ class PPOParameters:
         self.minibatch_size = minibatch_size
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
-        self.normalize_rewards = normalize_rewards
         self.normalize_advantages = normalize_advantages
 
     def as_dict(self):
@@ -87,23 +82,17 @@ class PPOParameters:
         kwargs["entropy_c2"] = self.entropy_c2
         return kwargs
 
-    @property
-    def name(self):
-        if self.is_recurrent:
-            return "RPPO"
-        return "PPO"
-
     @staticmethod
     def from_json(data: dict[str, Any]):
         """
         Create PPOParameters from a JSON-like dictionary.
         """
         data["critic_c1"] = schedule_from_json(data["critic_c1"])
-        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])  #
+        data["entropy_c2"] = schedule_from_json(data["entropy_c2"])
+        data.pop("name", None)
         return PPOParameters(**data)
 
     def get_agent(self, env: CardSimEnv, device: torch.device):
-        # from agents import RPPO
         from agents.rl.networks import LinearActorCritic, RecurrentActorCritic
         from agents.rl.ppo import PPO
         from agents.rl.replay_memory import EpisodeMemory, TransitionMemory
@@ -116,149 +105,253 @@ class PPOParameters:
             case _:
                 raise ValueError(f"Unknown value for `train_on`: {self.train_on}")
         if self.is_recurrent:
-            network = RecurrentActorCritic(env.observation_size, env.action_space, device, self.use_covariance_matrix)
+            network = RecurrentActorCritic(
+                env.observation_size,
+                env.action_space,
+                device,
+                self.use_covariance_matrix,
+            )
         else:
-            network = LinearActorCritic(env.observation_size, env.action_space, device, self.use_covariance_matrix)
+            network = LinearActorCritic(
+                env.observation_size,
+                env.action_space,
+                device,
+                self.use_covariance_matrix,
+            )
         self_dict = self.as_dict()
         self_dict.pop("is_recurrent")
         self_dict.pop("train_on")
         self_dict.pop("use_covariance_matrix")
+        self_dict.pop("name")
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
-    def best_rppo(use_anomaly: bool):
-        if use_anomaly:
-            # [train_interval: 22, minibatch_size: 19, enable_clipping: False, critic_c1_start: 0.9701562934412689, critic_c1_end: 0.4306998581855381, critic_c1_steps: 3236, entropy_c2_start: 0.1874643823290062, entropy_c2_end: 0.06233195672785177, entropy_c2_steps: 1490, n_epochs: 99, lr_actor: 0.007574187431079166, lr_critic: 0.00022409294538605477, normalize_rewards: True, normalize_advantages: False]
-            return PPOParameters(
-                is_recurrent=True,
-                train_on="episode",
-                gamma=0.99,
-                train_interval=22,
-                minibatch_size=19,
-                grad_norm_clipping=None,
-                critic_c1=Schedule.linear(
-                    start_value=0.9701562934412689,
-                    end_value=0.4306998581855381,
-                    n_steps=3236,
-                ),
-                entropy_c2=Schedule.linear(
-                    start_value=0.1874643823290062,
-                    end_value=0.06233195672785177,
-                    n_steps=1490,
-                ),
-                n_epochs=99,
-                lr_actor=0.007574187431079166,
-                lr_critic=0.00022409294538605477,
-                normalize_rewards=True,
-                normalize_advantages=False,
-            )
-        # [train_interval: 6, minibatch_size: 4, enable_clipping: False, critic_c1_start: 0.6197368580425953, critic_c1_end: 0.28357737275967154, critic_c1_steps: 3568, entropy_c2_start: 0.12680308057421288, entropy_c2_end: 0.05239959343497925, entropy_c2_steps: 1811, n_epochs: 69, lr_actor: 0.005174911984331964, lr_critic: 0.0011333727632600946, normalize_rewards: False, normalize_advantages: True]
-        return PPOParameters(
-            is_recurrent=True,
-            train_on="episode",
-            gamma=0.99,
-            train_interval=6,
-            minibatch_size=4,
-            grad_norm_clipping=None,
-            critic_c1=Schedule.linear(
-                start_value=0.6197368580425953,
-                end_value=0.28357737275967154,
-                n_steps=3568,
-            ),
-            entropy_c2=Schedule.linear(
-                start_value=0.12680308057421288,
-                end_value=0.05239959343497925,
-                n_steps=1811,
-            ),
-            n_epochs=69,
-            lr_actor=0.005174911984331964,
-            lr_critic=0.0011333727632600946,
-            normalize_rewards=False,
-            normalize_advantages=True,
-        )
+    def best_rppo(anomaly: bool, modification: bool):
+        match (anomaly, modification):
+            case (False, False):
+                # Optuna trial 121
+                # Params = [train_interval: 9, minibatch_size: 5, grad_norm_clipping: 0.018075514993835563, critic_c1_start: 0.9230322797219449, critic_c1_end: 0.3690399676267296, critic_c1_steps: 3741, entropy_c2_start: 0.1837360921799257, entropy_c2_end: 0.09817927437616152, entropy_c2_steps: 701, n_epochs: 20, lr_actor: 0.00019476641687574513, lr_critic: 0.00039743028447575556, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=True,
+                    train_on="episode",
+                    train_interval=9,
+                    minibatch_size=5,
+                    grad_norm_clipping=0.018075514993835563,
+                    critic_c1=Schedule.linear(
+                        start_value=0.9230322797219449,
+                        end_value=0.3690399676267296,
+                        n_steps=3741,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.1837360921799257,
+                        end_value=0.09817927437616152,
+                        n_steps=701,
+                    ),
+                    n_epochs=20,
+                    lr_actor=0.00019476641687574513,
+                    lr_critic=0.00039743028447575556,
+                    normalize_advantages=False,
+                )
+            case (False, True):
+                # Optuna trial 68
+                # Params = [train_interval: 17, minibatch_size: 13, grad_norm_clipping: 0.8777594561163811, critic_c1_start: 0.24974225773295028, critic_c1_end: 0.10544686676716412, critic_c1_steps: 3430, entropy_c2_start: 0.0013550962620539116, entropy_c2_end: 0.04674500282092511, entropy_c2_steps: 1356, n_epochs: 13, lr_actor: 0.0006746651394977868, lr_critic: 0.00028738665522909563, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=True,
+                    train_on="episode",
+                    train_interval=17,
+                    minibatch_size=13,
+                    grad_norm_clipping=0.8777594561163811,
+                    critic_c1=Schedule.linear(
+                        start_value=0.24974225773295028,
+                        end_value=0.10544686676716412,
+                        n_steps=3430,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.0013550962620539116,
+                        end_value=0.04674500282092511,
+                        n_steps=1356,
+                    ),
+                    n_epochs=13,
+                    lr_actor=0.0006746651394977868,
+                    lr_critic=0.00028738665522909563,
+                    normalize_advantages=False,
+                )
+            case (True, False):
+                # Optuna trial 54
+                # Params = [train_interval: 44, minibatch_size: 33, grad_norm_clipping: 0.048428316027431084, critic_c1_start: 0.7125282508145335, critic_c1_end: 0.16286778125492998, critic_c1_steps: 241, entropy_c2_start: 0.07854662818273801, entropy_c2_end: 0.08216516313921232, entropy_c2_steps: 2302, n_epochs: 5, lr_actor: 0.005856005059230748, lr_critic: 0.0013681256233237888, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=True,
+                    train_on="episode",
+                    train_interval=44,
+                    minibatch_size=33,
+                    grad_norm_clipping=0.048428316027431084,
+                    critic_c1=Schedule.linear(
+                        start_value=0.7125282508145335,
+                        end_value=0.16286778125492998,
+                        n_steps=241,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.07854662818273801,
+                        end_value=0.08216516313921232,
+                        n_steps=2302,
+                    ),
+                    n_epochs=5,
+                    lr_actor=0.005856005059230748,
+                    lr_critic=0.0013681256233237888,
+                    normalize_advantages=False,
+                )
+            case (True, True):
+                # Optuna trial 58
+                # Params = [train_interval: 15, minibatch_size: 6, grad_norm_clipping: 4.300306541157133, critic_c1_start: 0.10312961820069343, critic_c1_end: 0.4813358684576971, critic_c1_steps: 701, entropy_c2_start: 0.1708107295846123, entropy_c2_end: 0.029362965791121597, entropy_c2_steps: 1253, n_epochs: 23, lr_actor: 0.00016481198970555, lr_critic: 0.008264238504481972, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=True,
+                    train_on="episode",
+                    train_interval=15,
+                    minibatch_size=6,
+                    grad_norm_clipping=4.300306541157133,
+                    critic_c1=Schedule.linear(
+                        start_value=0.10312961820069343,
+                        end_value=0.4813358684576971,
+                        n_steps=701,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.1708107295846123,
+                        end_value=0.029362965791121597,
+                        n_steps=1253,
+                    ),
+                    n_epochs=23,
+                    lr_actor=0.00016481198970555,
+                    lr_critic=0.008264238504481972,
+                    normalize_advantages=False,
+                )
 
     @staticmethod
-    def best_ppo(anomaly: bool):
+    def best_ppo(anomaly: bool, modification: bool):
         """
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
-        if anomaly:
-            return PPOParameters(
-                is_recurrent=False,
-                train_on="transition",
-                train_interval=6,
-                minibatch_size=4,
-                grad_norm_clipping=2.9821909373292796,
-                critic_c1=Schedule.linear(
-                    start_value=0.6914911855828353,
-                    end_value=0.2877063934847368,
-                    n_steps=3572,
-                ),
-                entropy_c2=Schedule.linear(
-                    start_value=0.08521542110698155,
-                    end_value=0.08272396424417085,
-                    n_steps=2311,
-                ),
-                n_epochs=73,
-                lr_actor=0.0005459901195471092,
-                lr_critic=0.0004241921268503483,
-                normalize_rewards=True,
-                normalize_advantages=False,
-                use_covariance_matrix=True,
-            )
-        return PPOParameters(
-            is_recurrent=False,
-            train_on="transition",
-            train_interval=60,
-            minibatch_size=53,
-            grad_norm_clipping=None,
-            critic_c1=Schedule.linear(
-                start_value=0.2474884474147402,
-                end_value=0.45684372656802896,
-                n_steps=1537,
-            ),
-            entropy_c2=Schedule.linear(
-                start_value=0.1720759514831205,
-                end_value=0.020839775092720596,
-                n_steps=3622,
-            ),
-            n_epochs=15,
-            lr_actor=0.009869271609124462,
-            lr_critic=0.00020047940328712973,
-            normalize_rewards=True,
-            normalize_advantages=True,
-            use_covariance_matrix=True,
-        )
+        match (anomaly, modification):
+            case (False, False):
+                # Optuna trial number 76 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 57, minibatch_size: 28, grad_norm_clipping: 10.324662966280236, critic_c1_start: 0.32980225996920964, critic_c1_end: 0.0727049296457613, critic_c1_steps: 3535, entropy_c2_start: 0.1564628009423709, entropy_c2_end: 0.07259805698828797, entropy_c2_steps: 1307, n_epochs: 13, lr_actor: 0.00031959245717122, lr_critic: 0.00010032690412000196, normalize_advantages: False]
+                return PPOParameters(
+                    train_on="transition",
+                    is_recurrent=False,
+                    train_interval=57,
+                    minibatch_size=28,
+                    grad_norm_clipping=10.324662966280236,
+                    critic_c1=Schedule.linear(
+                        start_value=0.32980225996920964,
+                        end_value=0.0727049296457613,
+                        n_steps=3535,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.1564628009423709,
+                        end_value=0.07259805698828797,
+                        n_steps=1307,
+                    ),
+                    n_epochs=13,
+                    lr_actor=0.00031959245717122,
+                    lr_critic=0.00010032690412000196,
+                    normalize_advantages=False,
+                )
+            case (False, True):
+                # Optuna trial number 79 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 60, minibatch_size: 33, grad_norm_clipping: 0.011791604576331605, critic_c1_start: 0.8286882375218461, critic_c1_end: 0.4166607963061905, critic_c1_steps: 1521, entropy_c2_start: 0.15453790731608788, entropy_c2_end: 0.05144345719538858, entropy_c2_steps: 2450, n_epochs: 9, lr_actor: 0.0005991165920540275, lr_critic: 0.00015607240842916922, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=False,
+                    train_on="transition",
+                    train_interval=60,
+                    minibatch_size=33,
+                    grad_norm_clipping=0.011791604576331605,
+                    critic_c1=Schedule.linear(
+                        start_value=0.8286882375218461,
+                        end_value=0.4166607963061905,
+                        n_steps=1521,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.15453790731608788,
+                        end_value=0.05144345719538858,
+                        n_steps=2450,
+                    ),
+                    n_epochs=9,
+                    lr_actor=0.0005991165920540275,
+                    lr_critic=0.00015607240842916922,
+                    normalize_advantages=False,
+                )
+            case (True, False):
+                # Optuna trial number 54 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 44, minibatch_size: 33, grad_norm_clipping: 0.048428316027431084, critic_c1_start: 0.7125282508145335, critic_c1_end: 0.16286778125492998, critic_c1_steps: 241, entropy_c2_start: 0.07854662818273801, entropy_c2_end: 0.08216516313921232, entropy_c2_steps: 2302, n_epochs: 5, lr_actor: 0.005856005059230748, lr_critic: 0.0013681256233237888, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=False,
+                    train_on="transition",
+                    train_interval=44,
+                    minibatch_size=33,
+                    grad_norm_clipping=0.048428316027431084,
+                    critic_c1=Schedule.linear(
+                        start_value=0.7125282508145335,
+                        end_value=0.16286778125492998,
+                        n_steps=241,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.07854662818273801,
+                        end_value=0.08216516313921232,
+                        n_steps=2302,
+                    ),
+                    n_epochs=5,
+                    lr_actor=0.005856005059230748,
+                    lr_critic=0.0013681256233237888,
+                    normalize_advantages=False,
+                )
+            case (True, True):
+                # Optuna trial number 121 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 9, minibatch_size: 5, grad_norm_clipping: 0.018075514993835563, critic_c1_start: 0.9230322797219449, critic_c1_end: 0.3690399676267296, critic_c1_steps: 3741, entropy_c2_start: 0.1837360921799257, entropy_c2_end: 0.09817927437616152, entropy_c2_steps: 701, n_epochs: 20, lr_actor: 0.00019476641687574513, lr_critic: 0.00039743028447575556, normalize_advantages: False]
+                return PPOParameters(
+                    is_recurrent=False,
+                    train_on="transition",
+                    train_interval=9,
+                    minibatch_size=5,
+                    grad_norm_clipping=0.018075514993835563,
+                    critic_c1=Schedule.linear(
+                        start_value=0.9230322797219449,
+                        end_value=0.3690399676267296,
+                        n_steps=3741,
+                    ),
+                    entropy_c2=Schedule.linear(
+                        start_value=0.1837360921799257,
+                        end_value=0.09817927437616152,
+                        n_steps=701,
+                    ),
+                    n_epochs=20,
+                    lr_actor=0.00019476641687574513,
+                    lr_critic=0.00039743028447575556,
+                    normalize_advantages=False,
+                )
 
     @staticmethod
     def suggest_rppo(trial: Trial):
-        train_interval = trial.suggest_int("train_interval", 4, 64)
+        train_interval = trial.suggest_int("train_interval", 4, 256)
         minibatch_size = trial.suggest_int("minibatch_size", 2, train_interval)
-        enable_clipping = trial.suggest_categorical("enable_clipping", [True, False])
-        if enable_clipping:
-            grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.01, 10, log=True)
-        else:
-            grad_norm_clipping = None
+        grad_norm_clipping = trial.suggest_float("grad_norm_clipping", 0.01, 50, log=True)
         return PPOParameters(
             is_recurrent=True,
             train_on="episode",
             critic_c1=Schedule.linear(
                 trial.suggest_float("critic_c1_start", 0.1, 1.0),
                 trial.suggest_float("critic_c1_end", 0.001, 0.5),
-                trial.suggest_int("critic_c1_steps", 1000, 4000),
+                trial.suggest_int("critic_c1_steps", 1, 4000),
             ),
             entropy_c2=Schedule.linear(
                 trial.suggest_float("entropy_c2_start", 0.001, 0.2),
                 trial.suggest_float("entropy_c2_end", 0.0001, 0.1),
-                trial.suggest_int("entropy_c2_steps", 1000, 4000),
+                trial.suggest_int("entropy_c2_steps", 1, 4000),
             ),
-            n_epochs=trial.suggest_int("n_epochs", 10, 100),
+            n_epochs=trial.suggest_int("n_epochs", 5, 40),
             minibatch_size=minibatch_size,
             train_interval=train_interval,
             lr_actor=trial.suggest_float("lr_actor", 0.0001, 0.01, log=True),
             lr_critic=trial.suggest_float("lr_critic", 0.0001, 0.01, log=True),
             grad_norm_clipping=grad_norm_clipping,
-            normalize_rewards=trial.suggest_categorical("normalize_rewards", [True, False]),
             normalize_advantages=trial.suggest_categorical("normalize_advantages", [True, False]),
         )
 

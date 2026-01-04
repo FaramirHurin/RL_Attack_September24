@@ -7,9 +7,8 @@ __pycache__/
 data.zip
 nohup*
 uv.lock
-.vscode"*.pyc" 
-"*.pyc" 
-.vscode/
+.vscode
+*.pyc
 .idea
 cache
 
@@ -25,6 +24,7 @@ tuning-2/*
 .pytest_cache/
 .devcontainer
 # Tensorboard default directory
-runs/ 
+runs/
 # Copilot agent instructions
 .github/copilot-instructions.md
+.zed

@@ -1,8 +1,6 @@
 import random
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-import polars as pl
 import numpy as np
 from marlenv import ContinuousSpace, MARLEnv, Observation, State, Step
 
@@ -31,11 +29,9 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         self.customer_location_is_known = params.customer_location_is_known
         self.include_weekday = params.include_weekday
         self.action_buffer = PriorityQueue[tuple[Payer, np.ndarray]]()
-        self.fraud_features = dict[datetime, dict[str, Any]]()
-        self.other_features = dict[datetime, pl.DataFrame]()
         obs = self.compute_state(system.payers[0])
         low = [0.01] + [0.0] * 3 + [1 / 60]
-        high = [100.0, 200.0, 200.0, 1.0, params.avg_block_delay.total_seconds() / 3600]
+        high = [200.0, 200.0, 200.0, 1.0, params.avg_block_delay.total_seconds() / 3600]
         labels = ["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]
         if params.can_choose_debit_credit:
             low += [0.0]
@@ -48,7 +44,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
             state_shape=obs.shape,
         )
 
-    def reset(self):
+    def reset(self):  # type: ignore[override]
         self.payer_registry.reset()
         self.action_buffer.clear()
 
@@ -62,11 +58,11 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
         execution_time = self.t + action.timedelta
         self.action_buffer.push((payer, np_action), execution_time)
 
-    def get_observation(self, payer: Payer):
+    def get_observation(self, payer: Payer):  # type: ignore[override]
         state = self.compute_state(payer)
         return Observation(state, self.available_actions())
 
-    def get_state(self, payer: Payer):
+    def get_state(self, payer: Payer):  # type: ignore[override]
         state = self.compute_state(payer)
         return State(state)
 
@@ -112,14 +108,14 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
     def elapsed_seconds(self):
         return int(self.elapsed_time.total_seconds())
 
-    def step(self):
+    def step(self):  # type: ignore[override]
         """
         Performs the next action in the queue.
         """
         t, (payer, np_action) = self.action_buffer.ppop()
         action = Action.from_numpy(np_action)
-        if t >= self.system.attack_end:
-            raise AttackPeriodExpired(f"The end date of the attack ({self.system.attack_end.isoformat()}) has been reached")
+        if t >= self.system.t_max:
+            raise AttackPeriodExpired(f"The end date of the attack ({self.system.t_max.isoformat()}) has been reached")
         tb_log("action", action.as_dict(), self.elapsed_time)
         info = dict[str, Any](t=t.isoformat(), expired=False, insufficient_funds=False)
         if self.payer_registry.has_expired(payer, t):
@@ -137,9 +133,7 @@ class CardSimEnv(MARLEnv[ContinuousSpace]):
                 is_fraud=True,
             )
             try:
-                features, other_features = self.system.process_transaction(trx, compute_other_features=False)
-                self.fraud_features[self.t] = features
-                self.other_features[self.t] = other_features
+                self.system.process_transaction(trx)
                 if trx.fraud_is_detected:
                     info |= self.system.clf.get_details().to_dicts()[0]
                     reward = 0.0

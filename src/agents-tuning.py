@@ -1,83 +1,50 @@
 import logging
 import os
-from multiprocessing.pool import Pool, AsyncResult
 
 import dotenv
 import optuna
-import torch
+from optuna.storages import JournalStorage
+from optuna.storages.journal import JournalFileBackend
 
-from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, VAEParameters
-from experiment import Experiment, Run
-from runner import Runner
+from parameters import CardSimParameters, ClassificationParameters, Parameters, PPOParameters, EnvParameters, VAEParameters
+from experiment import Experiment
+from main import run_parallel
 
-N_JOBS = 5
-POOL_SIZE = 4
-N_RUNS = 4
-USE_ANOMALY = True
-
-
-def run(p: Parameters, trial_num: int):
-    logging.info(f"Starting trial {trial_num} with seed {p.seed}...")
-    try:
-        if not torch.cuda.is_available():
-            device = torch.device("cpu")
-        else:
-            # We assign the run to the device based on its absolute run number, i.e.
-            # trial.number * N_PARALLEL + seed_value.
-            device_num = (trial_num + p.seed) % torch.cuda.device_count()
-            device = torch.device(f"cuda:{device_num}")
-        runner = Runner(p, quiet=True, device=device)
-        logging.info(f"Running trial {trial_num} with seed {p.seed}...")
-        episodes = runner.run()
-        return Run.create(p, episodes)
-    except Exception as e:
-        logging.error(f"Trial {trial_num}: Error occurred while running experiment with seed {p.seed}: {e}", exc_info=True)
+POOL_SIZE = 8
+N_RUNS = 8
+N_TRIALS = 80
 
 
 def experiment(trial: optuna.Trial) -> float:
+    match AGENT:
+        case "rppo":
+            agent = PPOParameters.suggest_rppo(trial)
+        case "ppo":
+            agent = PPOParameters.suggest_ppo(trial)
+        case "vae":
+            agent = VAEParameters.suggest(trial)
+        case other:
+            raise ValueError(f"Unknown agent type: {other}")
+    if AGENT == "vae":
+        n_episodes = 1000
+    else:
+        n_episodes = 4000
     params = Parameters(
-        agent=PPOParameters.suggest_rppo(trial),
-        clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
-        cardsim=CardSimParameters.paper_params(with_modification=True),
-        save=False,
-        n_episodes=4000,
-        seed=0,
+        agent=agent,
+        clf_params=ClassificationParameters.paper_params(USE_ANOMALY, WITH_MODIFICATION),
+        cardsim=CardSimParameters.paper_params(with_modification=WITH_MODIFICATION),
+        env_params=EnvParameters(n_episodes=n_episodes),
     )
-    exp = Experiment.create(params)
-    total = 0.0
-    with Pool(POOL_SIZE) as pool:
-        handles = list[AsyncResult[Run | None]]()
-        for p in exp.repeat(N_RUNS):
-            logging.info(f"Submitting trial {trial.number} run with seed {p.seed}...")
-            handles.append(pool.apply_async(run, (p, trial.number)))
-        for h in handles:
-            r = h.get()
-            if r is None:
-                logging.error(f"Trial {trial.number} run failed.")
-            else:
-                total += r.total_amount
-                logging.info(f"Trial {trial.number} run completed with result {r.total_amount:.2f}")
+    exp = Experiment.create(params, f"logs/tuning/{AGENT}/trial-{trial.number}")
+    runs = run_parallel(exp, n_jobs=POOL_SIZE, n_repetitions=N_RUNS)
+    amounts = [r.total_amount for r in runs]
+    trial.set_user_attr("amounts", amounts)
+    trial.set_user_attr("#episodes", [r.n_episodes for r in runs])
+    trial.set_user_attr("logdir", exp.logdir)
+    total = sum(amounts)
     objective = total / N_RUNS
     logging.info(f"Trial {trial.number} avg objective: {objective}")
     return objective
-
-
-def main():
-    global USE_ANOMALY
-    p = Parameters(
-        clf_params=ClassificationParameters.paper_params(USE_ANOMALY),
-        cardsim=CardSimParameters.paper_params(with_modification=True),
-        save=False,
-    )
-    p.load_banksys()
-    USE_ANOMALY = False
-    study = optuna.create_study(
-        storage="sqlite:///agents-tuning.db",
-        study_name=f"rppo-use-anomaly={USE_ANOMALY}",
-        direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
-    )
-    study.optimize(experiment, n_trials=80, n_jobs=N_JOBS)
 
 
 if __name__ == "__main__":
@@ -88,4 +55,19 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    main()
+    for WITH_MODIFICATION in (False, True):
+        for USE_ANOMALY in (False, True):
+            for AGENT in ("ppo", "rppo", "vae"):
+                study = optuna.create_study(
+                    storage=JournalStorage(JournalFileBackend(file_path="agents-tuning.journal")),
+                    study_name=f"{AGENT.upper()}-anomaly={USE_ANOMALY}-modification={WITH_MODIFICATION}",
+                    direction=optuna.study.StudyDirection.MAXIMIZE,
+                    load_if_exists=True,
+                )
+                n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+                n_remaining = N_TRIALS - n_complete
+                if n_remaining > 4:
+                    logging.info(f"Running {study.study_name} for {n_remaining} more trials")
+                    study.optimize(experiment, n_trials=n_remaining, n_jobs=2)
+                else:
+                    logging.info(f"Study {study.study_name} already has {n_complete} completed trials, skipping")

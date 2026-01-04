@@ -27,8 +27,6 @@ def make_trx(
         is_fraud = random.random() > 0.5
     if is_online is None:
         is_online = random.random() > 0.5
-    if is_credit is None:
-        is_credit = random.random() > 0.5
     return Transaction(
         amount=amount,
         timestamp=t,
@@ -44,8 +42,8 @@ def test_invalid_dates():
     params = Parameters(
         cardsim=CardSimParameters(n_days=50, n_payers=100),
         clf_params=ClassificationParameters(
-            training_duration=timedelta(days=30),
-            aggregation_windows=(timedelta(days=30),),
+            _training_duration=timedelta(days=30),
+            _aggregation_windows=(timedelta(days=30),),
         ),
     )  # Not enough data for the classification system
     transactions, cards, terminals = params.cardsim.load_simulation_data(params.dataset_dir)
@@ -65,10 +63,13 @@ def test_fast_forward():
     """
     Test that the system indeed simulated until the given date
     """
-    bs = mock_banksys()
+    params = Parameters(cardsim=CardSimParameters(n_days=100, n_payers=100))
+    trx, cards, terminals = params.cardsim.load_simulation_data(params.dataset_dir)
+    bs = Banksys(trx, cards, terminals, params.clf_params)
+    bs.clf = MockClassificationSystem()
     assert bs.next_trx.timestamp >= bs.attack_start
 
-    max_window = max(bs.aggregation_windows)
+    max_window = params.clf_params.longest_window
 
     bs._fast_forward(bs.attack_start + max_window / 2, compute_features=False)
     assert bs.next_trx.timestamp >= bs.attack_start + max_window / 2
@@ -99,10 +100,10 @@ def test_balance_and_date():
         pl.DataFrame([Payer(0, 10, 25, 500, AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)]),
         pl.DataFrame([Terminal(0, 75, 95, AGG_WINDOWS), Terminal(1, 17, 56, AGG_WINDOWS)]),
         params=ClassificationParameters(
-            training_duration=timedelta(days=30),
+            _training_duration=timedelta(days=30),
             balance_factor=1,
             fp_rate=0.0,
-            aggregation_windows=AGG_WINDOWS,
+            _aggregation_windows=AGG_WINDOWS,
         ),
     )
     system.clf = MockClassificationSystem()
@@ -136,7 +137,7 @@ def test_n_transacations_per_card():
         trx_df,
         pl.DataFrame([Payer(0, 10, 25, 500, AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)]),
         pl.DataFrame([Terminal(0, 75, 95, AGG_WINDOWS), Terminal(1, 17, 56, AGG_WINDOWS)]),
-        params=ClassificationParameters(training_duration=timedelta(days=30), balance_factor=1),
+        params=ClassificationParameters(_training_duration=timedelta(days=30), balance_factor=1),
     )
     system.clf = MockClassificationSystem()
 
@@ -184,14 +185,14 @@ def test_make_features():
         terminals,
         params=ClassificationParameters(
             balance_factor=1,
-            aggregation_windows=AGG_WINDOWS,
-            training_duration=timedelta(days=30),
+            _aggregation_windows=AGG_WINDOWS,
+            _training_duration=timedelta(days=30),
         ),
         clf=clf,
     )
 
     def verify(trx: Transaction):
-        features, _ = system.process_transaction(trx)
+        features = system.process_transaction(trx)
         trx.predicted_label = True
         assert features.pop("amount") == trx.amount
         assert features.pop("is_online") == trx.is_online
@@ -204,7 +205,7 @@ def test_make_features():
             else:
                 assert features.pop(day) == 0
 
-        for delta in system.aggregation_windows:
+        for delta in AGG_WINDOWS:
             payer_transactions = list[Transaction]()
             for t in train_trx:
                 if t.is_fraud:  # Frauds are not added to the payer's history
@@ -285,9 +286,9 @@ def test_aggregated_features():
         payers,
         terminals,
         params=ClassificationParameters(
-            training_duration=timedelta(days=30),
+            _training_duration=timedelta(days=30),
             balance_factor=1,
-            aggregation_windows=AGG_WINDOWS,
+            _aggregation_windows=AGG_WINDOWS,
         ),
         clf=clf,
     )
@@ -299,7 +300,7 @@ def test_aggregated_features():
     for delta_days in range(6):
         hour = random.randint(0, 23)
         is_online = random.random() > 0.5
-        features, _ = system.process_transaction(
+        features = system.process_transaction(
             Transaction(
                 10,
                 START_DATE + timedelta(days=delta_days, hours=hour),
