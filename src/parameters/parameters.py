@@ -52,8 +52,31 @@ class Parameters:
             case _:
                 raise ValueError(f"Unknown agent type: {data['agent_name']}")
         cardsim = CardSimParameters(**data.pop("cardsim"))
-        clf_params = ClassificationParameters(**data.pop("clf_params"))
-        env_params = EnvParameters(**data.pop("env_params"))
+
+        # --- Handle clf_params safely ---
+        clf_params_dict = data.pop("clf_params", {}).copy()
+
+        # Rename old keys to new internal names
+        if "training_duration" in clf_params_dict:
+            clf_params_dict["_training_duration"] = clf_params_dict.pop("training_duration")
+
+        if "aggregation_windows" in clf_params_dict:
+            clf_params_dict["_aggregation_windows"] = clf_params_dict.pop("aggregation_windows")
+
+        # --- Handle env_params safely ---
+        env_params_dict = data.pop("env_params", {}).copy()
+
+        # Rename avg_block_delay → _avg_block_delay
+        if "avg_block_delay" in env_params_dict:
+            env_params_dict["_avg_block_delay"] = env_params_dict.pop("avg_block_delay")
+
+        # Remove legacy aggregation_windows if present
+        env_params_dict.pop("aggregation_windows", None)
+
+        # --- Instantiate parameter objects ---
+        clf_params = ClassificationParameters(**clf_params_dict)
+        env_params = EnvParameters(**env_params_dict)
+
         return Parameters(
             agent=agent,
             cardsim=cardsim,

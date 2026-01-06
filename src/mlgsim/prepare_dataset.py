@@ -8,6 +8,7 @@ transactions_df = None
 def preprocess():
 
     directory = 'simulated-data-raw/'
+    transactions_df = None
 
     for file in os.listdir(directory):
         if file.endswith('.pkl') and file.startswith('2018'):
