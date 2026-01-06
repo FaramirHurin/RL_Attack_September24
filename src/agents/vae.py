@@ -11,6 +11,7 @@ import torch.optim as optim
 from imblearn.ensemble import BalancedRandomForestClassifier
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import MinMaxScaler
+from environment import Action
 
 if TYPE_CHECKING:
     from banksys import Banksys, Payer
@@ -185,6 +186,9 @@ class VaeAgent(Agent):
         transactions_df = transactions_df[(transactions_df["amount"] < q_hi) & (transactions_df["amount"] > q_low)]
         labels = transactions_df["is_fraud"].values  # type: ignore
         transactions_df = transactions_df[self.columns]
+        from environment.action import FIELDS_INDEX
+
+        self.action_columns = list(FIELDS_INDEX.keys())
 
         # Normalize the data
         self.scaler = MinMaxScaler()
@@ -241,40 +245,32 @@ class VaeAgent(Agent):
         # Sort batch by second column (amount)
         batch = pd.DataFrame(batch, columns=self.columns)  # type: ignore
         # batch["is_online"] = batch["is_online"] > 0.5
-        batch["amount"] = batch["amount"].round(2)
-        if self.know_client:
-            # TODO How to pass observation[payer_x]. Possibly -2, -1
-            batch["terminal_x"] = observation[-2] + batch["delta_x"]
-            batch["terminal_y"] = observation[-1] + batch["delta_y"]
-        else:
-            batch["terminal_x"] = batch["terminal_x"].astype(int)
-            batch["terminal_y"] = batch["terminal_y"].astype(int)
-
-        batch = batch.sort_values(by="amount", ascending=True)
-
         # Filter the highest amounts based on the quantile
         batch = batch[batch["amount"] >= batch["amount"].quantile(self.quantile)]
-
-        # Push batch["terminal_x"] to be between 0 and 200
-
-        batch["terminal_x"] = batch["terminal_x"].clip(lower=0, upper=200).astype(int)  # type: ignore
-        batch["terminal_y"] = batch["terminal_y"].clip(lower=0, upper=200).astype(int)  # type: ignore
-        batch.loc[:, "amount"] = batch["amount"].clip(lower=0.01)  # type: ignore
+        batch.loc[:, "amount"] = batch["amount"].round(2)
+        if self.know_client:
+            # TODO How to pass observation[payer_x]. Possibly -2, -1
+            batch["terminal_x"] = (observation[-2] * 200 + batch["delta_x"]).clip(lower=0, upper=200).astype(int)
+            batch["terminal_y"] = (observation[-1] * 200 + batch["delta_y"]).clip(lower=0, upper=200).astype(int)
+        else:
+            raise NotImplementedError("Double check if this is correct: do we have to multiply by 200?")
+            batch["terminal_x"] = (batch["terminal_x"] * 200).astype(int)
+            batch["terminal_y"] = (batch["terminal_y"] * 200).astype(int)
 
         # Compute delay hours and delay days for all transactions
-        small_df = batch.copy()
         current_time = self.banksys.current_time
         # If the predicted hour is less than the current hour, we assume the transaction is for the next day
-        small_df["timestamp"] = small_df["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))  # type: ignore
-        is_past = small_df["timestamp"] < current_time
-        small_df.loc[is_past, "timestamp"] += pd.Timedelta(days=1)  # type: ignore
-        small_df["delay_hours"] = (small_df["timestamp"] - current_time).dt.total_seconds() / 3600.0  # type: ignore
+        batch["timestamp"] = batch["hour"].apply(lambda h: current_time.replace(hour=int(h), minute=int(h * 60) % 60))  # type: ignore
+        is_past = batch["timestamp"] < current_time
+        batch.loc[is_past, "timestamp"] += pd.Timedelta(days=1)  # type: ignore
+        batch["delay_hours"] = (batch["timestamp"] - current_time).dt.total_seconds() / 3600.0  # type: ignore
 
         # Select the closest transaction in time
-        trx = small_df.loc[small_df["delay_hours"].idxmin()]  # type: ignore
-        trx = trx[["amount", "terminal_x", "terminal_y", "is_online", "delay_hours"]]
-        action = trx.to_numpy(dtype=np.float32)
-        return action, None
+        trx = batch.loc[batch["delay_hours"].idxmin()]  # type: ignore
+        trx = trx[self.action_columns]
+        action = Action(**trx.to_dict())  # type: ignore[union-attr]
+        # action = trx.to_numpy(dtype=np.float32)
+        return action.to_numpy(), None
 
     @staticmethod
     def _trx_and_customers(transactionsDF: pd.DataFrame, customers: list["Payer"]) -> pd.DataFrame:
