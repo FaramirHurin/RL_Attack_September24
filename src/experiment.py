@@ -225,11 +225,14 @@ class Experiment:
 
     @cached_property
     def n_transactions_over_time(self):
-        return np.array([e.n_transactions_over_time for e in self.runs.values()])
+        return [e.n_transactions_over_time for e in self.runs.values()]
+
 
     @cached_property
     def amounts_over_time(self):
         return [run.amount_over_time for run in self.runs.values()]
+
+
         #  for run in self.runs.values():
         #     amounts.append(run.amount_over_time)
         #  return amounts
