@@ -26,7 +26,7 @@ class Arguments(Tap):
     "Whether to use anomaly detection"
     n_repetitions: int = 1
     "Number of repetitions for the experiment"
-    with_modification: bool = False
+    modification: bool = False
     "Whether to use modification in the environment"
     initial_seed: int = 0
     "Initial random seed"
@@ -34,10 +34,23 @@ class Arguments(Tap):
     "Number of parallel jobs to run"
     ulb_data: bool = False
     "Whether to use ULB data"
-    logdir: str | None = None
-    """Directory to store the logs of the experiment"""
     retrain_interval: int | None = None
     "Interval to retrain the classifier (in days)"
+
+    @property
+    def logdir(self):
+        logdir = os.path.join("logs", self.agent)
+        if self.anomaly:
+            logdir += "-with-anomaly"
+        else:
+            logdir += "-no-anomaly"
+        if self.modification:
+            logdir += "-with-modification"
+        else:
+            logdir += "-no-modification"
+        if self.retrain_interval is not None:
+            logdir += f"-retrain-{self.retrain_interval}d"
+        return logdir
 
 
 def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
@@ -72,11 +85,11 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
 
 def main(args: Arguments):
     if args.agent == "vae":
-        agent = VAEParameters.best_vae(args.anomaly, args.with_modification)
+        agent = VAEParameters.best_vae(args.anomaly, args.modification)
     elif args.agent == "rppo":
-        agent = PPOParameters.best_rppo(args.anomaly, args.with_modification)
+        agent = PPOParameters.best_rppo(args.anomaly, args.modification)
     elif args.agent == "ppo":
-        agent = PPOParameters.best_ppo(args.anomaly, args.with_modification)
+        agent = PPOParameters.best_ppo(args.anomaly, args.modification)
     else:
         raise ValueError(f"Unknown algorithm: {args.agent}")
     if args.retrain_interval is not None:
@@ -85,11 +98,11 @@ def main(args: Arguments):
         retrain_interval = None
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=args.with_modification, ulb_data=args.ulb_data),
+        cardsim=CardSimParameters.paper_params(with_modification=args.modification, ulb_data=args.ulb_data),
         clf_params=ClassificationParameters.paper_params(
-            with_anomaly=args.anomaly, with_modification=args.with_modification, retrain_interval=retrain_interval
+            with_anomaly=args.anomaly, with_modification=args.modification, retrain_interval=retrain_interval
         ),
-        env_params=EnvParameters(pool_size=50, n_episodes=6000),
+        env_params=EnvParameters(),
         seed=args.initial_seed,
     )
     exp = Experiment.create(params, logdir=args.logdir)
@@ -107,35 +120,9 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     try:
-        # args = Arguments().parse_args()
-        for algorithm in ("ppo", "rppo", "vae"):
-            for anomaly in (False, True):
-                for modification in (False, True):
-                    args = Arguments().parse_args()
-                    args.agent = algorithm
-                    args.anomaly = anomaly
-                    args.with_modification = modification
-                    args.n_repetitions = 30
-                    args.initial_seed = 100  # Seed different from the tuning
-                    args.n_jobs = 16
-                    args.ulb_data = False
-                    args.logdir = os.path.join("logs", algorithm)
-                    args.retrain_interval = 30
-                    if anomaly:
-                        args.logdir += "-with-anomaly"
-                    else:
-                        args.logdir += "-no-anomaly"
-                    if modification:
-                        args.logdir += "-with-modification"
-                    else:
-                        args.logdir += "-no-modification"
-                    if args.retrain_interval is not None:
-                        args.logdir += f"-retrain-{args.retrain_interval}d"
-                    # if os.path.exists(args.logdir):
-                    #     logging.info(f"Logdir {args.logdir} already exists. Skipping...")
-                    #     continue
-                    logging.info(f"Starting experiment with arguments: {args}")
-                    main(args)
+        args = Arguments().parse_args()
+        logging.info(f"Starting experiment with arguments: {args}")
+        main(args)
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         raise e

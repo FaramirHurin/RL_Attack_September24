@@ -1,11 +1,11 @@
 import logging
-from datetime import timedelta
 from typing import TYPE_CHECKING
 import numpy.typing as npt
 import polars as pl
 import numpy as np
 from imblearn.ensemble import BalancedRandomForestClassifier
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
+from sklearn.ensemble import IsolationForest
+import multiprocessing
 
 from .rule_based import RuleBasedClassifier
 from .statistical import StatisticalClassifier
@@ -15,22 +15,13 @@ if TYPE_CHECKING:
 
 
 class ClassificationSystem:
-    ml_classifier: RandomForestClassifier
-    rule_classifier: RuleBasedClassifier
-    statistical_classifier: StatisticalClassifier
-    anomaly_detection_classifier: IsolationForest
-    use_anomaly: bool
-    training_duration: timedelta
-    dataset: dict
-    retrain_every: timedelta
-
     def __init__(self, params: "ClassificationParameters"):
-        self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, n_jobs=-1, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
-        self.anomaly_detection_classifier = IsolationForest(n_jobs=-1, contamination=params.contamination)
+        self.params = params
+        self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
+        self.anomaly_detection_classifier = IsolationForest(contamination=params.contamination)
         self.statistical_classifier = StatisticalClassifier(params.quantiles)
         self.rule_classifier = RuleBasedClassifier(params.rules)
         self.use_anomaly = params.use_anomaly
-        self.training_duration = params.training_duration
         self.l1 = np.array([], dtype=np.bool)  # Placeholder for the first prediction, to be replaced in predict method
         self.l2 = np.array([], dtype=np.bool)  # Placeholder for the second prediction, to be replaced in predict method
         self.l3 = np.array([], dtype=np.bool)  # Placeholder for the third prediction, to be replaced in predict method
@@ -38,13 +29,20 @@ class ClassificationSystem:
         # assert not params.use_anomaly, "Anomaly detection is not supported in this version of the classification system."
 
     def fit(self, transactions: pl.DataFrame, is_fraud: np.ndarray):
-        logging.info("Fitting random forest")
-        self.ml_classifier.n_jobs = -1  # type: ignore[assignment]
+        # Avoid nested multiprocessing
+        n_jobs = 1 if multiprocessing.current_process().daemon else -1
+        self.ml_classifier = BalancedRandomForestClassifier(
+            n_estimators=self.params.n_trees,
+            sampling_strategy=self.params.balance_factor,  # type: ignore[assignment]
+            n_jobs=n_jobs,
+        )
         self.ml_classifier.fit(transactions, is_fraud)
         self.ml_classifier.n_jobs = 1  # type: ignore[assignment]
         if self.use_anomaly:
             logging.info("Fitting anomaly classifier")
+            self.anomaly_detection_classifier = IsolationForest(n_jobs=n_jobs, contamination=self.params.contamination)
             self.anomaly_detection_classifier.fit(transactions)
+            self.anomaly_detection_classifier.n_jobs = 1  # type: ignore[assignment]
         logging.info("Fitting statistical classifier")
         self.statistical_classifier.fit(transactions)
         logging.info("Done !")
