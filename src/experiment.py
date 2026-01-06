@@ -133,11 +133,7 @@ class Run:
                     json_episode[key] = [np.array(v) for v in value]
         episodes = list[Episode]()
         for e in json_data:
-            for key in (
-                "obs",
-                "mask",
-                "dones",
-            ):
+            for key in ("obs", "mask", "dones", "next_obs"):
                 if key in e:
                     del e[key]
             episodes.append(Episode(**e))

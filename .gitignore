@@ -28,3 +28,4 @@ runs/
 # Copilot agent instructions
 .github/copilot-instructions.md
 .zed
+*.pdf
