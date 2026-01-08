@@ -12,7 +12,7 @@ from main import run_parallel
 
 POOL_SIZE = 8
 N_RUNS = 8
-N_TRIALS = 80
+N_TRIALS = 55
 
 
 def experiment(trial: optuna.Trial) -> float:
@@ -57,17 +57,17 @@ if __name__ == "__main__":
     )
     for WITH_MODIFICATION in (False, True):
         for USE_ANOMALY in (False, True):
-            for AGENT in ("ppo", "rppo", "vae"):
-                study = optuna.create_study(
-                    storage=JournalStorage(JournalFileBackend(file_path="agents-tuning.journal")),
-                    study_name=f"{AGENT.upper()}-anomaly={USE_ANOMALY}-modification={WITH_MODIFICATION}",
-                    direction=optuna.study.StudyDirection.MAXIMIZE,
-                    load_if_exists=True,
-                )
-                n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
-                n_remaining = N_TRIALS - n_complete
-                if n_remaining > 4:
-                    logging.info(f"Running {study.study_name} for {n_remaining} more trials")
-                    study.optimize(experiment, n_trials=n_remaining, n_jobs=2)
-                else:
-                    logging.info(f"Study {study.study_name} already has {n_complete} completed trials, skipping")
+            AGENT = "vae"
+            study = optuna.create_study(
+                storage=JournalStorage(JournalFileBackend(file_path="agents-tuning.journal")),
+                study_name=f"{AGENT.upper()}-anomaly={USE_ANOMALY}-modification={WITH_MODIFICATION}",
+                direction=optuna.study.StudyDirection.MAXIMIZE,
+                load_if_exists=True,
+            )
+            n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+            n_remaining = N_TRIALS - n_complete
+            if n_remaining > 4:
+                logging.info(f"Running {study.study_name} for {n_remaining} more trials")
+                study.optimize(experiment, n_trials=n_remaining, n_jobs=1)
+            else:
+                logging.info(f"Study {study.study_name} already has {n_complete} completed trials, skipping")
