@@ -36,6 +36,7 @@ class Arguments(Tap):
     "Whether to use ULB data"
     retrain_interval: int | None = None
     "Interval to retrain the classifier (in days)"
+    only_clipped_surrogate: bool = False
 
     @property
     def logdir(self):
@@ -50,6 +51,8 @@ class Arguments(Tap):
             logdir += "-no-modification"
         if self.retrain_interval is not None:
             logdir += f"-retrain-{self.retrain_interval}d"
+        if self.only_clipped_surrogate:
+            logdir += "-only-clipped-surrogate"
         return logdir
 
 
@@ -87,9 +90,9 @@ def main(args: Arguments):
     if args.agent == "vae":
         agent = VAEParameters.best_vae(args.anomaly, args.modification)
     elif args.agent == "rppo":
-        agent = PPOParameters.best_rppo(args.anomaly, args.modification)
+        agent = PPOParameters.best_rppo(args.anomaly, args.modification, only_clipped_surrogate=args.only_clipped_surrogate)
     elif args.agent == "ppo":
-        agent = PPOParameters.best_ppo(args.anomaly, args.modification)
+        agent = PPOParameters.best_ppo(args.anomaly, args.modification, args.only_clipped_surrogate)
     else:
         raise ValueError(f"Unknown algorithm: {args.agent}")
     if args.retrain_interval is not None:

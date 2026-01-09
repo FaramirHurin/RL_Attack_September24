@@ -27,6 +27,7 @@ class PPO(Agent):
     lr: float
     n_epochs: int
     grad_norm_clipping: Optional[float]
+    only_clipped_surrogate: bool
 
     def __init__(
         self,
@@ -45,6 +46,7 @@ class PPO(Agent):
         minibatch_size: int = 32,
         normalize_advantages: bool = True,
         device: torch.device = torch.device("cpu"),
+        only_clipped_surrogate: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -71,6 +73,7 @@ class PPO(Agent):
         self.c2 = entropy_c2
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
+        self.only_clipped_surrogate = only_clipped_surrogate
 
     def _compute_param_groups(self, lr_actor: float, lr_critic: float):
         all_parameters = list(self.actor_critic.parameters())
@@ -148,10 +151,13 @@ class PPO(Agent):
             mini_new_log_probs: torch.Tensor = mini_policy.log_prob(minibatch.actions)
             mini_new_log_probs[minibatch.masked_indices] = 0.0
             ratio = torch.exp(mini_new_log_probs - mini_log_probs)
-            surrogate1 = mini_advantages * ratio
             surrogate2 = torch.clamp(ratio, self._ratio_min, self._ratio_max) * mini_advantages
-            surr_min = torch.min(surrogate1, surrogate2)
-            actor_loss = -torch.sum(surr_min) / minibatch.masks_sum  # Minus sign to maximize the objective
+            if self.only_clipped_surrogate:
+                actor_loss = -torch.sum(surrogate2) / minibatch.masks_sum  # Minus sign to maximize the objective
+            else:
+                surrogate1 = mini_advantages * ratio
+                surr_min = torch.min(surrogate1, surrogate2)
+                actor_loss = -torch.sum(surr_min) / minibatch.masks_sum  # Minus sign to maximize the objective
 
             if e == 0:
                 assert torch.equal(ratio, torch.ones_like(ratio)), f"Ratio max diff = {(ratio - 1).abs().max()}"

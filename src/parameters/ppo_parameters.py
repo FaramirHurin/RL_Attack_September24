@@ -26,6 +26,7 @@ class PPOParameters:
     normalize_advantages: bool
     use_covariance_matrix: bool
     name: Literal["ppo", "rppo"]
+    only_clipped_surrogate: bool
 
     def __init__(
         self,
@@ -44,6 +45,7 @@ class PPOParameters:
         grad_norm_clipping: Optional[float] = None,
         normalize_advantages: bool = True,
         use_covariance_matrix: bool = True,
+        only_clipped_surrogate: bool = False,
     ):
         assert train_interval > 0, "`train_interval` must be positive."
         assert train_interval >= minibatch_size, "`train_interval` must be greater than or equal to `minibatch_size`."
@@ -75,6 +77,7 @@ class PPOParameters:
         self.gae_lambda = gae_lambda
         self.grad_norm_clipping = grad_norm_clipping
         self.normalize_advantages = normalize_advantages
+        self.only_clipped_surrogate = only_clipped_surrogate
 
     def as_dict(self):
         kwargs = asdict(self)
@@ -126,7 +129,7 @@ class PPOParameters:
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
-    def best_rppo(anomaly: bool, modification: bool):
+    def best_rppo(anomaly: bool, modification: bool, only_clipped_surrogate: bool = False):
         match (anomaly, modification):
             case (False, False):
                 # Optuna trial 121
@@ -151,6 +154,7 @@ class PPOParameters:
                     lr_actor=0.00019476641687574513,
                     lr_critic=0.00039743028447575556,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (False, True):
                 # Optuna trial 68
@@ -175,6 +179,7 @@ class PPOParameters:
                     lr_actor=0.0006746651394977868,
                     lr_critic=0.00028738665522909563,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, False):
                 # Optuna trial 54
@@ -199,6 +204,7 @@ class PPOParameters:
                     lr_actor=0.005856005059230748,
                     lr_critic=0.0013681256233237888,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, True):
                 # Optuna trial 58
@@ -223,10 +229,11 @@ class PPOParameters:
                     lr_actor=0.00016481198970555,
                     lr_critic=0.008264238504481972,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
 
     @staticmethod
-    def best_ppo(anomaly: bool, modification: bool):
+    def best_ppo(anomaly: bool, modification: bool, only_clipped_surrogate: bool = False):
         """
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
@@ -254,6 +261,7 @@ class PPOParameters:
                     lr_actor=0.00031959245717122,
                     lr_critic=0.00010032690412000196,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (False, True):
                 # Optuna trial number 79 (cf: tuning/agents-tuning.journal)
@@ -278,6 +286,7 @@ class PPOParameters:
                     lr_actor=0.0005991165920540275,
                     lr_critic=0.00015607240842916922,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, False):
                 # Optuna trial number 54 (cf: tuning/agents-tuning.journal)
@@ -302,6 +311,7 @@ class PPOParameters:
                     lr_actor=0.005856005059230748,
                     lr_critic=0.0013681256233237888,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, True):
                 # Optuna trial number 121 (cf: tuning/agents-tuning.journal)
@@ -326,6 +336,7 @@ class PPOParameters:
                     lr_actor=0.00019476641687574513,
                     lr_critic=0.00039743028447575556,
                     normalize_advantages=False,
+                    only_clipped_surrogate=only_clipped_surrogate,
                 )
 
     @staticmethod
