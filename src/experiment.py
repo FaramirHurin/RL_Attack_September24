@@ -271,6 +271,8 @@ class Experiment:
             stds.append(np.std(values))
         return np.array(means), np.array(stds)
 
+
+
     @cached_property
     def total_amounts(self):
         """

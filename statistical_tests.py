@@ -5,9 +5,15 @@
 #         Pierre-Alain Muller <pierre-alain.muller@uha.fr>
 # License: GPL3
 
+import  sys
+import os
+sys.path.append(os.path.abspath("src"))
+
+import os
 import numpy as np
 import pandas as pd
 import matplotlib
+from src.experiment import Experiment
 
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -20,6 +26,8 @@ import math
 from scipy.stats import wilcoxon
 from scipy.stats import friedmanchisquare
 import networkx
+
+
 
 # inspired from orange3 https://docs.orange.biolab.si/3/data-mining-library/reference/evaluation.cd.html
 def graph_ranks(avranks, names, p_values, cd=None, cdmethod=None, lowv=None, highv=None,
@@ -381,6 +389,70 @@ def wilcoxon_holm(alpha=0.05, df_perf=None):
 
 
 
-df_perf = pd.read_csv('example.csv', index_col=False)
 
-draw_cd_diagram(df_perf=df_perf, title='Accuracy', labels=True)
+anomaly = True
+modification = True
+retrain = False
+
+def logdirs(anomaly: bool, modification: bool, retrain_every=None):
+    a_str = "with-anomaly" if anomaly else "no-anomaly"
+    m_str = "with-modification" if modification else "no-modification"
+    mod_str = "retrain-30d"
+    if retrain:
+        return {algo: os.path.join( 'logsNEW', f"{algo}-{a_str}-{m_str}-{mod_str}") for algo in ("ppo", "rppo", "vae")}
+    else:
+        return {algo: os.path.join( 'logsNEW', f"{algo}-{a_str}-{m_str}") for algo in ("ppo", "rppo", "vae")}
+prename = f"a_{int(anomaly)}_m_{int(modification)}_r_{int(retrain)}"
+
+rows_1000 = []
+rows_2000 = []
+rows_4000 = []
+rows_6000 = []
+
+for label, logdir in logdirs(anomaly, modification).items():
+    print(label, logdir)
+    exp = Experiment.load(logdir)
+    amounts = exp.amounts_over_time
+
+    for run_number in range(len(amounts)):
+        remaining_length = 6000 - len(amounts[run_number])
+        if remaining_length > 0:
+            filling_array = np.zeros(remaining_length, dtype=np.float64)
+            amounts[run_number] = np.concatenate(
+                (amounts[run_number], filling_array), axis=0
+            )
+
+        rows_1000.append({
+            "classifier_name": label,
+            "dataset_name": f"run_{run_number}",
+            "accuracy": amounts[run_number][999],
+        })
+
+        rows_2000.append({
+            "classifier_name": label,
+            "dataset_name": f"run_{run_number}",
+            "accuracy": amounts[run_number][1999],
+        })
+
+        rows_4000.append({
+            "classifier_name": label,
+            "dataset_name": f"run_{run_number}",
+            "accuracy": amounts[run_number][3999],
+        })
+
+        rows_6000.append({
+            "classifier_name": label,
+            "dataset_name": f"run_{run_number}",
+            "accuracy": amounts[run_number][5999],
+        })
+
+# Create final DataFrames (contain ALL labels)
+df_perf_1000 = pd.DataFrame(rows_1000)
+df_perf_2000 = pd.DataFrame(rows_2000)
+df_perf_4000 = pd.DataFrame(rows_4000)
+df_perf_6000 = pd.DataFrame(rows_6000)
+
+
+# df_perf = pd.read_csv('example.csv', index_col=False)
+
+draw_cd_diagram(df_perf=df_perf_4000, title='Total Amount Collected', labels=True)
