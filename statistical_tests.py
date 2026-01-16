@@ -283,7 +283,7 @@ def form_cliques(p_values, nnames):
     return networkx.find_cliques(g)
 
 
-def draw_cd_diagram(df_perf=None, alpha=0.05, title=None, labels=False):
+def draw_cd_diagram(df_perf=None, alpha=0.05, title=None, labels=False, prefix=None):
     """
     Draws the critical difference diagram given the list of pairwise classifiers that are
     significant or not
@@ -306,7 +306,7 @@ def draw_cd_diagram(df_perf=None, alpha=0.05, title=None, labels=False):
         }
     if title:
         plt.title(title,fontdict=font, y=0.9, x=0.5)
-    plt.savefig('cd-diagram.png',bbox_inches='tight')
+    plt.savefig(str(prefix)+'cd-diagram.png',bbox_inches='tight')
 
 def wilcoxon_holm(alpha=0.05, df_perf=None):
     """
@@ -455,4 +455,8 @@ df_perf_6000 = pd.DataFrame(rows_6000)
 
 # df_perf = pd.read_csv('example.csv', index_col=False)
 
-draw_cd_diagram(df_perf=df_perf_4000, title='Total Amount Collected', labels=True)
+for roundN in [1000, 2000, 4000, 6000]:
+
+    prefix = f"a_{int(anomaly)}_m_{int(modification)}_r_{int(retrain)}_round_{roundN}"
+
+draw_cd_diagram(df_perf=df_perf_4000, title='Total Amount Collected', labels=True, prefix=prefix)
