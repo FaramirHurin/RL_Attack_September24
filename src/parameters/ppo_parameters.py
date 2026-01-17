@@ -289,52 +289,52 @@ class PPOParameters:
                     only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, False):
-                # Optuna trial number 54 (cf: tuning/agents-tuning.journal)
-                # Params = [train_interval: 44, minibatch_size: 33, grad_norm_clipping: 0.048428316027431084, critic_c1_start: 0.7125282508145335, critic_c1_end: 0.16286778125492998, critic_c1_steps: 241, entropy_c2_start: 0.07854662818273801, entropy_c2_end: 0.08216516313921232, entropy_c2_steps: 2302, n_epochs: 5, lr_actor: 0.005856005059230748, lr_critic: 0.0013681256233237888, normalize_advantages: False]
+                # Optuna trial number 36 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 21, minibatch_size: 10, grad_norm_clipping: 0.08740144166970691, critic_c1_start: 0.5022830818338972, critic_c1_end: 0.4680455572966218, critic_c1_steps: 3977, entropy_c2_start: 0.015375490168475087, entropy_c2_end: 0.020519944266016665, entropy_c2_steps: 1138, n_epochs: 20, lr_actor: 0.00013616829214563935, lr_critic: 0.007580009275920479, normalize_advantages: False]
                 return PPOParameters(
                     is_recurrent=False,
                     train_on="transition",
-                    train_interval=44,
-                    minibatch_size=33,
-                    grad_norm_clipping=0.048428316027431084,
+                    train_interval=21,
+                    minibatch_size=10,
+                    grad_norm_clipping=0.08740144166970691,
                     critic_c1=Schedule.linear(
-                        start_value=0.7125282508145335,
-                        end_value=0.16286778125492998,
-                        n_steps=241,
+                        start_value=0.5022830818338972,
+                        end_value=0.4680455572966218,
+                        n_steps=3977,
                     ),
                     entropy_c2=Schedule.linear(
-                        start_value=0.07854662818273801,
-                        end_value=0.08216516313921232,
-                        n_steps=2302,
+                        start_value=0.015375490168475087,
+                        end_value=0.020519944266016665,
+                        n_steps=1138,
                     ),
-                    n_epochs=5,
-                    lr_actor=0.005856005059230748,
-                    lr_critic=0.0013681256233237888,
+                    n_epochs=20,
+                    lr_actor=0.00013616829214563935,
+                    lr_critic=0.007580009275920479,
                     normalize_advantages=False,
                     only_clipped_surrogate=only_clipped_surrogate,
                 )
             case (True, True):
-                # Optuna trial number 121 (cf: tuning/agents-tuning.journal)
-                # Params = [train_interval: 9, minibatch_size: 5, grad_norm_clipping: 0.018075514993835563, critic_c1_start: 0.9230322797219449, critic_c1_end: 0.3690399676267296, critic_c1_steps: 3741, entropy_c2_start: 0.1837360921799257, entropy_c2_end: 0.09817927437616152, entropy_c2_steps: 701, n_epochs: 20, lr_actor: 0.00019476641687574513, lr_critic: 0.00039743028447575556, normalize_advantages: False]
+                # Optuna trial number 15 (cf: tuning/agents-tuning.journal)
+                # Params = [train_interval: 11, minibatch_size: 6, grad_norm_clipping: 9.993923973368044, critic_c1_start: 0.8196142264304965, critic_c1_end: 0.2201015063197512, critic_c1_steps: 130, entropy_c2_start: 0.041071043250555064, entropy_c2_end: 0.05681305189183647, entropy_c2_steps: 2805, n_epochs: 13, lr_actor: 0.00016703204598157576, lr_critic: 0.0016573166846766557, normalize_advantages: False]
                 return PPOParameters(
                     is_recurrent=False,
                     train_on="transition",
-                    train_interval=9,
-                    minibatch_size=5,
-                    grad_norm_clipping=0.018075514993835563,
+                    train_interval=11,
+                    minibatch_size=6,
+                    grad_norm_clipping=9.993923973368044,
                     critic_c1=Schedule.linear(
-                        start_value=0.9230322797219449,
-                        end_value=0.3690399676267296,
-                        n_steps=3741,
+                        start_value=0.8196142264304965,
+                        end_value=0.2201015063197512,
+                        n_steps=130,
                     ),
                     entropy_c2=Schedule.linear(
-                        start_value=0.1837360921799257,
-                        end_value=0.09817927437616152,
-                        n_steps=701,
+                        start_value=0.041071043250555064,
+                        end_value=0.05681305189183647,
+                        n_steps=2805,
                     ),
-                    n_epochs=20,
-                    lr_actor=0.00019476641687574513,
-                    lr_critic=0.00039743028447575556,
+                    n_epochs=13,
+                    lr_actor=0.00016703204598157576,
+                    lr_critic=0.0016573166846766557,
                     normalize_advantages=False,
                     only_clipped_surrogate=only_clipped_surrogate,
                 )
