@@ -83,21 +83,19 @@ class VAEParameters:
                     beta=0.6087043524048532,
                 )
             case (True, False):
-                # Trial 73, value=3692.26 (file tuning/agents_tuning.journal)
-                # [latent_dim: 88, hidden_dim: 146, lr: 1.5072646114347918e-05, batch_size: 58, num_epochs: 1670, quantile: 0.997564842075417, generated_size: 449, beta: 0.15944396195830168, n_infiltrated_terminals: 63]
-                # Optuna trial,23,  value=30023.99 (file tuning/vae_tuning.journal)
-                #  [latent_dim: 66, hidden_dim: 17, lr: 3.2264426994127435e-05, batch_size: 18, num_epochs: 6600, quantile: 0.5985052875072323, generated_size: 29, beta: 0.42151271274078445, n_infiltrated_terminals: 100]
+                # Optuna trial 82 with value 393930
+                # Params = [latent_dim: 89, hidden_dim: 131, lr: 0.0009388578140355416, batch_size: 17, num_epochs: 4800, quantile: 0.9937020257932133, generated_size: 115, beta: 0.004630972484961304, n_infiltrated_terminals: 79]
                 return VAEParameters(
-                    latent_dim=66,
-                    hidden_dim=17,
-                    lr=3.2264426994127435e-05,
-                    batch_size=18,
-                    num_epochs=6600,
-                    quantile=0.5985052875072323,
+                    latent_dim=89,
+                    hidden_dim=131,
+                    lr=0.0009388578140355416,
+                    batch_size=17,
+                    num_epochs=4800,
+                    quantile=0.9937020257932133,
                     supervised=False,
-                    generated_size=29,
-                    n_infiltrated_terminals=100,
-                    beta=0.42151271274078445,
+                    generated_size=115,
+                    n_infiltrated_terminals=79,
+                    beta=0.004630972484961304,
                 )
             case (True, True):
                 # Trial 86, value=2078.11 in (file tuning/agents_tuning.journal)
@@ -125,8 +123,8 @@ class VAEParameters:
             lr=trial.suggest_float("lr", 1e-5, 1e-3),
             trees=-1,
             supervised=False,
-            batch_size=trial.suggest_int("batch_size", 8, 64),
-            num_epochs=trial.suggest_int("num_epochs", 1000, 10_000, step=200),
+            batch_size=trial.suggest_int("batch_size", 8, 256),
+            num_epochs=trial.suggest_int("num_epochs", 1000, 20_000, step=200),
             quantile=trial.suggest_float("quantile", 0.0, 1.0),
             generated_size=trial.suggest_int("generated_size", 10, 1000),
             beta=trial.suggest_float("beta", 0.0, 1.0),
