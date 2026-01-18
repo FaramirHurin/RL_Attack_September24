@@ -6,10 +6,11 @@ from marlenv.utils import Schedule
 from optuna import Trial
 
 from environment import CardSimEnv
+from .agent_parameters import AgentParameters
 
 
 @dataclass(eq=True, unsafe_hash=True)
-class PPOParameters:
+class PPOParameters(AgentParameters):
     gamma: float
     lr_actor: float
     lr_critic: float
