@@ -12,7 +12,7 @@ from main import run_parallel
 
 POOL_SIZE = 8
 N_RUNS = 8
-N_TRIALS = 55
+N_TRIALS = 150
 
 
 def experiment(trial: optuna.Trial) -> float:
@@ -25,10 +25,7 @@ def experiment(trial: optuna.Trial) -> float:
             agent = VAEParameters.suggest(trial)
         case other:
             raise ValueError(f"Unknown agent type: {other}")
-    if AGENT == "vae":
-        n_episodes = 1000
-    else:
-        n_episodes = 4000
+    n_episodes = 4000
     params = Parameters(
         agent=agent,
         clf_params=ClassificationParameters.paper_params(USE_ANOMALY, WITH_MODIFICATION),
@@ -47,6 +44,15 @@ def experiment(trial: optuna.Trial) -> float:
     return objective
 
 
+def load_study(file: str, study_name: str):
+    return optuna.create_study(
+        storage=JournalStorage(JournalFileBackend(file_path=file)),
+        study_name=study_name,
+        direction=optuna.study.StudyDirection.MAXIMIZE,
+        load_if_exists=True,
+    )
+
+
 if __name__ == "__main__":
     dotenv.load_dotenv()  # Load the "private" .env file
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -55,19 +61,18 @@ if __name__ == "__main__":
         level=log_level,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    for WITH_MODIFICATION in (False, True):
-        for USE_ANOMALY in (False, True):
-            AGENT = "vae"
-            study = optuna.create_study(
-                storage=JournalStorage(JournalFileBackend(file_path="agents-tuning.journal")),
-                study_name=f"{AGENT.upper()}-anomaly={USE_ANOMALY}-modification={WITH_MODIFICATION}",
-                direction=optuna.study.StudyDirection.MAXIMIZE,
-                load_if_exists=True,
-            )
-            n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
-            n_remaining = N_TRIALS - n_complete
-            if n_remaining > 4:
-                logging.info(f"Running {study.study_name} for {n_remaining} more trials")
-                study.optimize(experiment, n_trials=n_remaining, n_jobs=1)
-            else:
-                logging.info(f"Study {study.study_name} already has {n_complete} completed trials, skipping")
+    AGENT = "ppo"
+    USE_ANOMALY = True
+    WITH_MODIFICATION = False
+    study_name = f"{AGENT.upper()}-anomaly={USE_ANOMALY}-modification={WITH_MODIFICATION}"
+    file_name = f"{AGENT}-tuning.journal"
+    study = load_study(file_name, study_name)
+    n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+    n_remaining = N_TRIALS - n_complete
+    while n_remaining > 0:
+        logging.info(f"Running {study.study_name}: {n_remaining} trials remaining")
+        study.optimize(experiment, n_trials=1, n_jobs=1)
+        study = load_study(file_name, study_name)
+        n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+        n_remaining = N_TRIALS - n_complete
+    logging.info(f"Study {study.study_name} completed with {n_complete} trials")

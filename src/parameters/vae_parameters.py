@@ -98,21 +98,18 @@ class VAEParameters:
                     beta=0.004630972484961304,
                 )
             case (True, True):
-                # Trial 86, value=2078.11 in (file tuning/agents_tuning.journal)
-                # [latent_dim: 57, hidden_dim: 160, lr: 1.0399119421042868e-05, batch_size: 13, num_epochs: 2901, quantile: 0.9796006640858727, generated_size: 466, beta: 0.2979145387502194, n_infiltrated_terminals: 1]
-                # Trial 98, value=90087.71 (file tuning/vae_tuning.journal)
-                # [latent_dim: 55, hidden_dim: 103, lr: 1.1699546326454397e-05, batch_size: 48, num_epochs: 4000, quantile: 0.9993816480073827, generated_size: 69, beta: 0.5420575862666193, n_infiltrated_terminals: 21]
+                # [latent_dim: 18, hidden_dim: 132, lr: 1.3405653341115532e-05, batch_size: 60, num_epochs: 4200, quantile: 0.9996175271306038, generated_size: 133, beta: 0.9150224049456201, n_infiltrated_terminals: 87]
                 return VAEParameters(
-                    latent_dim=55,
-                    hidden_dim=103,
-                    lr=1.1699546326454397e-05,
-                    batch_size=48,
-                    num_epochs=4000,
-                    quantile=0.9993816480073827,
+                    latent_dim=18,
+                    hidden_dim=132,
+                    lr=1.3405653341115532e-05,
+                    batch_size=60,
+                    num_epochs=4200,
+                    quantile=0.9996175271306038,
                     supervised=False,
-                    generated_size=69,
-                    n_infiltrated_terminals=21,
-                    beta=0.5420575862666193,
+                    generated_size=133,
+                    n_infiltrated_terminals=87,
+                    beta=0.9150224049456201,
                 )
 
     @staticmethod
