@@ -306,7 +306,9 @@ def draw_cd_diagram(df_perf=None, alpha=0.05, title=None, labels=False, prefix=N
         }
     if title:
         plt.title(title,fontdict=font, y=0.9, x=0.5)
+        print(str(prefix))
     plt.savefig(str(prefix)+'cd-diagram.png',bbox_inches='tight')
+    print(str(prefix)+'cd-diagram.png')
 
 def wilcoxon_holm(alpha=0.05, df_perf=None):
     """
@@ -455,8 +457,6 @@ df_perf_6000 = pd.DataFrame(rows_6000)
 
 # df_perf = pd.read_csv('example.csv', index_col=False)
 
-for roundN in [1000, 2000, 4000, 6000]:
-
+for roundN, df in zip( [1000, 2000, 4000, 6000], [df_perf_1000, df_perf_2000, df_perf_4000, df_perf_6000]):
     prefix = f"a_{int(anomaly)}_m_{int(modification)}_r_{int(retrain)}_round_{roundN}"
-
-draw_cd_diagram(df_perf=df_perf_4000, title='Total Amount Collected', labels=True, prefix=prefix)
+    draw_cd_diagram(df_perf=df, title='Total Amount Collected', labels=True, prefix=prefix)

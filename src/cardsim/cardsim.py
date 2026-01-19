@@ -101,6 +101,8 @@ class Cardsim:
         fraud_rate: float = 0.01,
         lr_cap: float = 5.0,
         fraud_flag_threshold: float = 0.01,
+         addnoise: bool = False,
+
     ):
         """
         Create a payment transaction simulator.
@@ -219,24 +221,39 @@ class Cardsim:
         """
         # Configures logging level for the class
         # Seeds: vary for key simulation components, so data are not identical
+        self.addnoise = addnoise
+
         self.base_seed = seed
         # World
         self.dcpc_start_year = dcpc_start_year
         self.dcpc_end_year = dcpc_end_year
         self.dcpc_folder = dcpc_folder
         self.grid_size = grid_size
-        self.payer_payee_factor = payer_payee_factor
-        self.txns_samples_m = txns_samples_m
-        self.txns_samples_n = txns_samples_n
-        self.value_samples_m = value_samples_m
-        self.value_samples_n = value_samples_n
-        self.debit_fraud_mult = debit_fraud_mult
-        self.credit_fraud_mult = credit_fraud_mult
-        # Simulator
-        self.credit_card_marginal_p = credit_card_marginal_p
-        self.credit_card_conditional_p = credit_card_conditional_p
-        self.remote_marginal_p = remote_marginal_p
-        self.remote_conditional_p = remote_conditional_p
+
+        self.payer_payee_factor = int(self._jitter(payer_payee_factor, rel_std=0.05, min_val=1))
+
+        self.txns_samples_m = int(self._jitter(txns_samples_m, rel_std=0.02, min_val=1))
+        self.txns_samples_n = int(self._jitter(txns_samples_n, rel_std=0.02, min_val=1))
+        self.value_samples_m = int(self._jitter(value_samples_m, rel_std=0.02, min_val=1))
+        self.value_samples_n = int(self._jitter(value_samples_n, rel_std=0.02, min_val=1))
+
+        self.debit_fraud_mult = self._jitter(debit_fraud_mult, rel_std=0.03, min_val=1.0)
+        self.credit_fraud_mult = self._jitter(credit_fraud_mult, rel_std=0.03, min_val=1.0)
+
+        # Simulator probabilities (clipped)
+        self.credit_card_marginal_p = self._jitter(
+            credit_card_marginal_p, rel_std=0.02, min_val=0.0, max_val=1.0
+        )
+        self.credit_card_conditional_p = self._jitter(
+            credit_card_conditional_p, rel_std=0.02, min_val=0.0, max_val=1.0
+        )
+        self.remote_marginal_p = self._jitter(
+            remote_marginal_p, rel_std=0.02, min_val=0.0, max_val=1.0
+        )
+        self.remote_conditional_p = self._jitter(
+            remote_conditional_p, rel_std=0.02, min_val=0.0, max_val=1.0
+        )
+
         self.distance_mode_quantile = (
             self.DEFAULT_DISTANCE_MODE_QUANTILE.copy() if distance_mode_quantile is None else distance_mode_quantile
         )
@@ -254,6 +271,21 @@ class Cardsim:
         self.lr_cap = lr_cap
         self.fraud_flag_threshold = fraud_flag_threshold
         self.run_id = None
+
+    def _jitter(self, x, rel_std=0.01, min_val=None, max_val=None):
+        """
+        Apply small relative Gaussian noise to a scalar if addnoise=True.
+        """
+        if not self.addnoise or x is None:
+            return x
+
+        noisy = x * (1.0 + np.random.normal(0.0, rel_std))
+
+        if min_val is not None or max_val is not None:
+            noisy = np.clip(noisy, min_val, max_val)
+
+        return noisy
+
 
     @property
     def t_start(self) -> datetime:
