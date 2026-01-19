@@ -53,12 +53,18 @@ def experiment(trial: optuna.Trial, args: Args) -> float:
     return objective
 
 
-def load_study(file: str, study_name: str):
+def load_study(algo: Literal["rppo", "ppo", "vae"], modification: bool, anomaly: bool, only_load: bool = False) -> optuna.Study:
+    filename = os.path.join("tuning", f"{algo}-tuning.journal")
+    study_name = f"{algo.upper()}-anomaly={anomaly}-modification={modification}"
+    if algo == "rppo" and anomaly and not modification:
+        study_name += "-6000"
+    if only_load:
+        return optuna.load_study(study_name=study_name, storage=JournalStorage(JournalFileBackend(file_path=filename)))
     return optuna.create_study(
-        storage=JournalStorage(JournalFileBackend(file_path=file)),
+        storage=JournalStorage(JournalFileBackend(file_path=filename)),
         study_name=study_name,
         direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=True,
+        load_if_exists=not only_load,
     )
 
 
@@ -71,15 +77,13 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     args = Args().parse_args()
-    study_name = f"{args.agent.upper()}-anomaly={args.anomaly}-modification={args.modification}-{args.n_episodes}"
-    file_name = f"{args.agent}-tuning.journal"
-    study = load_study(file_name, study_name)
+    study = load_study(args.agent, args.modification, args.anomaly)
     n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
     n_remaining = args.n_trials - n_complete
     while n_remaining > 0:
         logging.info(f"Running {study.study_name}: {n_remaining} trials remaining")
         study.optimize(lambda trial: experiment(trial, args), n_trials=1, n_jobs=1)
-        study = load_study(file_name, study_name)
+        study = load_study(args.agent, args.modification, args.anomaly)
         n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
         n_remaining = args.n_trials - n_complete
     logging.info(f"Study {study.study_name} completed with {n_complete} trials")
