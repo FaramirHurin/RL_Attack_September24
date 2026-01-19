@@ -6,6 +6,7 @@ import hashlib
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
@@ -16,6 +17,7 @@ class CardSimParameters:
     n_payers: int = 10_000
     with_modification: bool = False
     ulb_data: bool = False
+    noise: bool = False
 
     def load_simulation_data(self, cache_dir: str):
         from cardsim import Cardsim
@@ -41,7 +43,7 @@ class CardSimParameters:
             )
             return transactions, cards, terminals
 
-        return Cardsim().load(
+        return Cardsim(addnoise=self.noise).load(
             n_days=self.n_days,
             n_payers=self.n_payers,
             start_date=self.start_date,
@@ -55,7 +57,7 @@ class CardSimParameters:
         return os.path.join(cache_dir, hash_digest)
 
     @staticmethod
-    def paper_params(with_modification: bool, ulb_data: bool = False):
+    def paper_params(with_modification: bool, ulb_data: bool = False, with_noise: bool = False):
         """
         - n_days: 365 * 2 + 150 + 30
         - n_payers: 20_000
@@ -67,6 +69,7 @@ class CardSimParameters:
             start_date="2023-01-01",
             with_modification=with_modification,
             ulb_data=ulb_data,
+            noise=with_noise,
         )
 
     def save(self, directory: str):

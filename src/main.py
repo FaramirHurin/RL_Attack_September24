@@ -29,7 +29,7 @@ class Arguments(Tap):
     "Number of repetitions for the experiment"
     modification: bool = False
     "Whether to use modification in the environment"
-    initial_seed: int = 0
+    initial_seed: int = 100
     "Initial random seed"
     n_jobs: int = 1
     "Number of parallel jobs to run"
@@ -38,6 +38,8 @@ class Arguments(Tap):
     retrain_interval: int | None = None
     "Interval to retrain the classifier (in days)"
     only_clipped_surrogate: bool = False
+    noise: bool = False
+    "Whether to add noise to the CardSim data"
 
     @property
     def logdir(self):
@@ -104,7 +106,7 @@ def main(args: Arguments):
         retrain_interval = None
     params = Parameters(
         agent=agent,
-        cardsim=CardSimParameters.paper_params(with_modification=args.modification, ulb_data=args.ulb_data),
+        cardsim=CardSimParameters.paper_params(with_modification=args.modification, ulb_data=args.ulb_data, with_noise=args.noise),
         clf_params=ClassificationParameters.paper_params(
             with_anomaly=args.anomaly, with_modification=args.modification, retrain_interval=retrain_interval
         ),
