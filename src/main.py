@@ -15,12 +15,13 @@ from parameters import (
     Parameters,
     PPOParameters,
     VAEParameters,
+    RandomParameters,
 )
 from runner import Runner
 
 
 class Arguments(Tap):
-    agent: Literal["vae", "ppo", "rppo"] = "ppo"
+    agent: Literal["vae", "ppo", "rppo", "random"] = "ppo"
     "Algorithm to use for the agent"
     anomaly: bool = False
     "Whether to use anomaly detection"
@@ -93,8 +94,10 @@ def main(args: Arguments):
         agent = PPOParameters.best_rppo(args.anomaly, args.modification, only_clipped_surrogate=args.only_clipped_surrogate)
     elif args.agent == "ppo":
         agent = PPOParameters.best_ppo(args.anomaly, args.modification, args.only_clipped_surrogate)
+    elif args.agent == "random":
+        agent = RandomParameters()  # Random agent does not need parameters
     else:
-        raise ValueError(f"Unknown algorithm: {args.agent}")
+        raise ValueError(f"Unknown agent type: {args.agent}")
     if args.retrain_interval is not None:
         retrain_interval = timedelta(days=args.retrain_interval)
     else:

@@ -14,14 +14,13 @@ from environment import CardSimEnv
 from .cardsim_parameters import CardSimParameters
 from .classification_parameters import ClassificationParameters
 from .env_parameters import EnvParameters
-from .ppo_parameters import PPOParameters
-from .vae_parameters import VAEParameters
+from .agent_parameters import RandomParameters, PPOParameters, VAEParameters
 
 
 @final
 @dataclass(eq=True, frozen=True)
 class Parameters:
-    agent: PPOParameters | VAEParameters | None = None
+    agent: PPOParameters | VAEParameters | RandomParameters = field(default_factory=RandomParameters)
     cardsim: CardSimParameters = field(default_factory=CardSimParameters)
     clf_params: ClassificationParameters = field(default_factory=ClassificationParameters)
     env_params: EnvParameters = field(default_factory=EnvParameters)
@@ -31,13 +30,15 @@ class Parameters:
     def make_agent(self, env: CardSimEnv, device: torch.device) -> Agent:
         self.seed_random()
         match self.agent:
-            case None:
-                raise ValueError("Agent is not set. Please provide an agent.")
+            case RandomParameters():
+                from agents import RandomAgent
+
+                return RandomAgent(env.action_space)
             case VAEParameters():
                 return self.agent.get_agent(env, device, self.env_params.know_client, self.agent.quantile)
             case PPOParameters():
                 return self.agent.get_agent(env, device)
-        raise ValueError("Unknown agent type")
+        raise ValueError(f"Unknown agent type: {self.agent}")
 
     @staticmethod
     def load(filename: str):
@@ -49,6 +50,8 @@ class Parameters:
                 agent = PPOParameters.from_json(data.pop("agent"))
             case "vae":
                 agent = VAEParameters(**data.pop("agent"))
+            case "random":
+                agent = RandomParameters(**data.pop("agent"))
             case _:
                 raise ValueError(f"Unknown agent type: {data['agent_name']}")
         cardsim = CardSimParameters(**data.pop("cardsim"))
