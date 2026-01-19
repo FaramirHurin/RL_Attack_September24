@@ -56,15 +56,13 @@ def experiment(trial: optuna.Trial, args: Args) -> float:
 def load_study(algo: Literal["rppo", "ppo", "vae"], modification: bool, anomaly: bool, only_load: bool = False) -> optuna.Study:
     filename = os.path.join("tuning", f"{algo}-tuning.journal")
     study_name = f"{algo.upper()}-anomaly={anomaly}-modification={modification}"
-    if algo == "rppo" and anomaly and not modification:
-        study_name += "-6000"
     if only_load:
         return optuna.load_study(study_name=study_name, storage=JournalStorage(JournalFileBackend(file_path=filename)))
     return optuna.create_study(
         storage=JournalStorage(JournalFileBackend(file_path=filename)),
         study_name=study_name,
         direction=optuna.study.StudyDirection.MAXIMIZE,
-        load_if_exists=not only_load,
+        load_if_exists=True,
     )
 
 

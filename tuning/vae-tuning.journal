@@ -3122,3 +3122,7 @@
 {"op_code":5,"worker_id":"2210cac2-f043-40d9-b993-74b3fb6acdd6-139779242534720","trial_id":221,"param_name":"generated_size","param_value_internal":291.0,"distribution":"{\"name\": \"IntDistribution\", \"attributes\": {\"log\": false, \"step\": 1, \"low\": 10, \"high\": 1000}}"}
 {"op_code":5,"worker_id":"2210cac2-f043-40d9-b993-74b3fb6acdd6-139779242534720","trial_id":221,"param_name":"beta","param_value_internal":0.4867576925695499,"distribution":"{\"name\": \"FloatDistribution\", \"attributes\": {\"step\": null, \"low\": 0.0, \"high\": 1.0, \"log\": false}}"}
 {"op_code":5,"worker_id":"2210cac2-f043-40d9-b993-74b3fb6acdd6-139779242534720","trial_id":221,"param_name":"n_infiltrated_terminals","param_value_internal":77.0,"distribution":"{\"name\": \"IntDistribution\", \"attributes\": {\"log\": false, \"step\": 1, \"low\": 1, \"high\": 100}}"}
+{"op_code":6,"worker_id":"8ad9abf2-00c2-474e-998f-4ded10dc244d-124257308612352","trial_id":182,"state":3,"values":null,"datetime_complete":"2026-01-19T22:01:02.084669"}
+{"op_code":6,"worker_id":"8ad9abf2-00c2-474e-998f-4ded10dc244d-124257308612352","trial_id":183,"state":3,"values":null,"datetime_complete":"2026-01-19T22:01:03.943562"}
+{"op_code":6,"worker_id":"8ad9abf2-00c2-474e-998f-4ded10dc244d-124255398262528","trial_id":219,"state":3,"values":null,"datetime_complete":"2026-01-19T22:01:06.940692"}
+{"op_code":6,"worker_id":"8ad9abf2-00c2-474e-998f-4ded10dc244d-124257308612352","trial_id":220,"state":3,"values":null,"datetime_complete":"2026-01-19T22:01:09.007419"}
