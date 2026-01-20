@@ -252,10 +252,6 @@ class VaeAgent(Agent):
             # TODO How to pass observation[payer_x]. Possibly -2, -1
             batch["terminal_x"] = (observation[-2] * 200 + batch["delta_x"]).clip(lower=0, upper=200).astype(int)
             batch["terminal_y"] = (observation[-1] * 200 + batch["delta_y"]).clip(lower=0, upper=200).astype(int)
-        else:
-            raise NotImplementedError("Double check if this is correct: do we have to multiply by 200?")
-            batch["terminal_x"] = (batch["terminal_x"] * 200).astype(int)
-            batch["terminal_y"] = (batch["terminal_y"] * 200).astype(int)
 
         # Compute delay hours and delay days for all transactions
         current_time = self.banksys.current_time
@@ -266,8 +262,9 @@ class VaeAgent(Agent):
         batch["delay_hours"] = (batch["timestamp"] - current_time).dt.total_seconds() / 3600.0  # type: ignore
 
         # Select the closest transaction in time
-        trx = batch.loc[batch["delay_hours"].idxmin()]  # type: ignore
+        trx = batch.loc[batch["delay_hours"].idxmin()]  # type: ignore[union-attr]
         trx = trx[self.action_columns]
+        trx["is_online"] = bool(trx["is_online"] > 0.5)
         action = Action(**trx.to_dict())  # type: ignore[union-attr]
         # action = trx.to_numpy(dtype=np.float32)
         return action.to_numpy(), None

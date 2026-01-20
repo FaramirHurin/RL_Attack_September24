@@ -35,7 +35,7 @@ class Parameters:
 
                 return RandomAgent(env.action_space)
             case VAEParameters():
-                return self.agent.get_agent(env, device, self.env_params.know_client, self.agent.quantile)
+                return self.agent.get_agent(env, device, self.env_params.customer_location_is_known, self.agent.quantile)
             case PPOParameters():
                 return self.agent.get_agent(env, device)
         raise ValueError(f"Unknown agent type: {self.agent}")
