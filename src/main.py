@@ -41,6 +41,7 @@ class Arguments(Tap):
     only_clipped_surrogate: bool = False
     noise: bool = False
     "Whether to add noise to the CardSim data"
+    know_client: bool = False
 
     @property
     def logdir(self):
@@ -57,6 +58,10 @@ class Arguments(Tap):
             logdir += f"-retrain-{self.retrain_interval}d"
         if self.only_clipped_surrogate:
             logdir += "-only-clipped-surrogate"
+        if not self.know_client and self.agent in ("ppo", "rppo"):
+            # For PPO/RPPO agents, knowing the client changes the state space.
+            # It has no effect on the other methods
+            logdir += "-unknown-client"
         return logdir
 
 
@@ -121,9 +126,11 @@ def main(args: Arguments):
         agent=agent,
         cardsim=CardSimParameters.paper_params(with_modification=args.modification, ulb_data=args.ulb_data, with_noise=args.noise),
         clf_params=ClassificationParameters.paper_params(
-            with_anomaly=args.anomaly, with_modification=args.modification, retrain_interval=retrain_interval
+            with_anomaly=args.anomaly,
+            with_modification=args.modification,
+            retrain_interval=retrain_interval,
         ),
-        env_params=EnvParameters(),
+        env_params=EnvParameters(know_client=args.know_client),
         seed=args.initial_seed,
     )
     exp = Experiment.create(params, logdir=args.logdir)
