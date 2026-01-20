@@ -1,6 +1,7 @@
 import logging
 import os
-from datetime import timedelta
+import time
+from datetime import timedelta, datetime
 from multiprocessing.pool import AsyncResult, Pool
 from typing import Literal
 
@@ -14,8 +15,8 @@ from parameters import (
     EnvParameters,
     Parameters,
     PPOParameters,
-    VAEParameters,
     RandomParameters,
+    VAEParameters,
 )
 from runner import Runner
 
@@ -81,11 +82,23 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
         for p, rundir in exp.repeat(n_repetitions):
             logging.info(f"Submitting run with seed {p.seed}...")
             handles.append(pool.apply_async(run, (p, rundir, True)))
-        for h in handles:
-            r = h.get()
-            if r is not None:
-                runs.append(r)
-                logging.info(f"Run with seed {r.params.seed} completed with result {r.total_amount:.2f}")
+        logging.info(f"Waiting for {len(handles)} runs to complete...")
+        start = datetime.now()
+        while len(handles) > 0:
+            ready = [(i, h) for i, h in enumerate(handles) if h.ready()]
+            for i, h in reversed(ready):
+                r = h.get()
+                if r is not None:
+                    runs.append(r)
+                    logging.info(f"Run with seed {r.params.seed} completed with result {r.total_amount:.2f}")
+                handles.pop(i)
+            if len(ready) > 0:
+                n_finished = n_repetitions - len(handles)
+                n_remaining = len(handles)
+                avg_time = (datetime.now() - start) / n_finished
+                remaining = n_remaining * avg_time
+                logging.info(f"{n_finished}/{n_repetitions}] runs complete -- ETA {remaining}")
+            time.sleep(1)
     return runs
 
 
