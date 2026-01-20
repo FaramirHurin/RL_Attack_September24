@@ -5,7 +5,6 @@ from datetime import timedelta
 @dataclass(frozen=True)
 class EnvParameters:
     n_episodes: int = 6000
-    know_client: bool = True
     terminal_fract: float = 0.1
     pool_size: int = 50
     include_weekday: bool = True

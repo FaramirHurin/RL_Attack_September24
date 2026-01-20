@@ -130,7 +130,7 @@ def main(args: Arguments):
             with_modification=args.modification,
             retrain_interval=retrain_interval,
         ),
-        env_params=EnvParameters(know_client=args.know_client),
+        env_params=EnvParameters(customer_location_is_known=args.know_client),
         seed=args.initial_seed,
     )
     exp = Experiment.create(params, logdir=args.logdir)

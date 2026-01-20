@@ -48,8 +48,11 @@ class VAEParameters(AgentParameters):
     def best_vae(anomaly: bool, modification: bool):
         from agents_tuning import load_study
 
-        study = load_study("vae", modification, anomaly, only_load=True)
-        return VAEParameters(**study.best_params, supervised=False)
+        try:
+            study = load_study("vae", modification, anomaly, only_load=True)
+            return VAEParameters(**study.best_params, supervised=False)
+        except KeyError:
+            raise NotImplementedError("No best VAE parameters found for the given configuration.")
 
     @staticmethod
     def suggest(trial: Trial):

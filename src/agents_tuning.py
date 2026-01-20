@@ -40,7 +40,7 @@ def experiment(trial: optuna.Trial, args: Args) -> float:
         agent=agent,
         clf_params=ClassificationParameters.paper_params(args.anomaly, args.modification),
         cardsim=CardSimParameters.paper_params(with_modification=args.modification),
-        env_params=EnvParameters(n_episodes=args.n_episodes, know_client=args.know_client),
+        env_params=EnvParameters(n_episodes=args.n_episodes, customer_location_is_known=args.know_client),
     )
     exp = Experiment.create(params, f"logs/tuning/{args.agent}/trial-{trial.number}")
     runs = run_parallel(exp, n_jobs=args.pool_size, n_repetitions=args.n_runs)

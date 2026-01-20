@@ -134,7 +134,10 @@ class PPOParameters(AgentParameters):
     def best_rppo(anomaly: bool, modification: bool, only_clipped_surrogate: bool = False):
         from agents_tuning import load_study
 
-        study = load_study("rppo", modification, anomaly, only_load=True)
+        try:
+            study = load_study("rppo", modification, anomaly, only_load=True)
+        except KeyError:
+            raise NotImplementedError("No best RPPO parameters found for the given configuration.")
         best_params = deepcopy(study.best_params)
         best_params["critic_c1"] = Schedule.linear(
             best_params.pop("critic_c1_start"),
@@ -155,7 +158,10 @@ class PPOParameters(AgentParameters):
         """
         from agents_tuning import load_study
 
-        study = load_study("ppo", modification, anomaly, only_load=True)
+        try:
+            study = load_study("ppo", modification, anomaly, only_load=True)
+        except KeyError:
+            raise NotImplementedError("No best PPO parameters found for the given configuration.")
         best_params = deepcopy(study.best_params)
         best_params["critic_c1"] = Schedule.linear(
             best_params.pop("critic_c1_start"),
