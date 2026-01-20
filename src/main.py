@@ -58,9 +58,8 @@ class Arguments(Tap):
             logdir += f"-retrain-{self.retrain_interval}d"
         if self.only_clipped_surrogate:
             logdir += "-only-clipped-surrogate"
-        if not self.know_client and self.agent in ("ppo", "rppo"):
-            # For PPO/RPPO agents, knowing the client changes the state space.
-            # It has no effect on the other methods
+        if not self.know_client and self.agent != "random":
+            # It has no effect on random agent
             logdir += "-unknown-client"
         return logdir
 
