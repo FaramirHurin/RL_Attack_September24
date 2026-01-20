@@ -12,6 +12,7 @@ uv.lock
 .idea
 cache
 
+archives/
 logs/*
 logs-1/*
 .env
@@ -29,3 +30,12 @@ runs/
 .github/copilot-instructions.md
 .zed
 *.pdf
+
+!logs/ppo-with-anomaly-no-modification
+!logs/ppo-with-anomaly-with-modification
+!logs/rppo-with-anomaly-no-modification
+!logs/rppo-with-anomaly-with-modification
+!logs/vae-with-anomaly-no-modification
+!logs/vae-with-anomaly-with-modification
+!logs/random-with-anomaly-no-modification
+!logs/random-with-anomaly-with-modification
