@@ -58,9 +58,9 @@ class Arguments(Tap):
             logdir += f"-retrain-{self.retrain_interval}d"
         if self.only_clipped_surrogate:
             logdir += "-only-clipped-surrogate"
-        if not self.know_client and self.agent != "random":
+        if self.know_client and self.agent != "random":
             # It has no effect on random agent
-            logdir += "-unknown-client"
+            logdir += "-known-client"
         return logdir
 
 

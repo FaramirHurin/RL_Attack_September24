@@ -39,3 +39,11 @@ runs/
 !logs/vae-with-anomaly-with-modification
 !logs/random-with-anomaly-no-modification
 !logs/random-with-anomaly-with-modification
+!logs/ppo-with-anomaly-no-modification-known-client
+!logs/ppo-with-anomaly-with-modification-known-client
+!logs/rppo-with-anomaly-no-modification-known-client
+!logs/rppo-with-anomaly-with-modification-known-client
+!logs/vae-with-anomaly-no-modification-known-client
+!logs/vae-with-anomaly-with-modification-known-client
+!logs/random-with-anomaly-no-modification-known-client
+!logs/random-with-anomaly-with-modification-known-client
