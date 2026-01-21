@@ -101,18 +101,32 @@ def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
                 n_remaining = len(handles)
                 avg_time = (datetime.now() - start) / n_finished
                 remaining = n_remaining * avg_time
-                logging.info(f"{n_finished}/{n_repetitions}] runs complete -- ETA {remaining}")
+                logging.info(f"[{n_finished}/{n_repetitions}] runs complete -- ETA {remaining}")
             time.sleep(1)
     return runs
 
 
 def main(args: Arguments):
     if args.agent == "vae":
-        agent = VAEParameters.best_vae(args.anomaly, args.modification)
+        agent = VAEParameters.best_vae(
+            args.anomaly,
+            args.modification,
+            args.know_client,
+        )
     elif args.agent == "rppo":
-        agent = PPOParameters.best_rppo(args.anomaly, args.modification, only_clipped_surrogate=args.only_clipped_surrogate)
+        agent = PPOParameters.best_rppo(
+            args.anomaly,
+            args.modification,
+            args.know_client,
+            only_clipped_surrogate=args.only_clipped_surrogate,
+        )
     elif args.agent == "ppo":
-        agent = PPOParameters.best_ppo(args.anomaly, args.modification, args.only_clipped_surrogate)
+        agent = PPOParameters.best_ppo(
+            args.anomaly,
+            args.modification,
+            args.know_client,
+            args.only_clipped_surrogate,
+        )
     elif args.agent == "random":
         agent = RandomParameters()  # Random agent does not need parameters
     else:

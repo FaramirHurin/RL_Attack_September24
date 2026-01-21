@@ -54,9 +54,17 @@ def experiment(trial: optuna.Trial, args: Args) -> float:
     return objective
 
 
-def load_study(algo: Literal["rppo", "ppo", "vae"], modification: bool, anomaly: bool, only_load: bool = False) -> optuna.Study:
+def load_study(
+    algo: Literal["rppo", "ppo", "vae"],
+    modification: bool,
+    anomaly: bool,
+    know_client: bool,
+    only_load: bool = False,
+) -> optuna.Study:
     filename = os.path.join("tuning", f"{algo}-tuning.journal")
     study_name = f"{algo.upper()}-anomaly={anomaly}-modification={modification}"
+    if not know_client:
+        study_name += "-unknown_client"
     if only_load:
         return optuna.load_study(study_name=study_name, storage=JournalStorage(JournalFileBackend(file_path=filename)))
     return optuna.create_study(
@@ -76,13 +84,13 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     args = Args().parse_args()
-    study = load_study(args.agent, args.modification, args.anomaly)
+    study = load_study(args.agent, args.modification, args.anomaly, args.know_client)
     n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
     n_remaining = args.n_trials - n_complete
     while n_remaining > 0:
         logging.info(f"Running {study.study_name}: {n_remaining} trials remaining")
         study.optimize(lambda trial: experiment(trial, args), n_trials=1, n_jobs=1)
-        study = load_study(args.agent, args.modification, args.anomaly)
+        study = load_study(args.agent, args.modification, args.anomaly, args.know_client)
         n_complete = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
         n_remaining = args.n_trials - n_complete
     logging.info(f"Study {study.study_name} completed with {n_complete} trials")

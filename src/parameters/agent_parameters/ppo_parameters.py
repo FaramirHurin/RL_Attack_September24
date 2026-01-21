@@ -131,11 +131,11 @@ class PPOParameters(AgentParameters):
         return PPO(network, memory, **self_dict, device=device)
 
     @staticmethod
-    def best_rppo(anomaly: bool, modification: bool, only_clipped_surrogate: bool = False):
+    def best_rppo(anomaly: bool, modification: bool, know_client: bool, only_clipped_surrogate: bool = False):
         from agents_tuning import load_study
 
         try:
-            study = load_study("rppo", modification, anomaly, only_load=True)
+            study = load_study("rppo", modification, anomaly, know_client, only_load=True)
         except KeyError:
             raise NotImplementedError("No best RPPO parameters found for the given configuration.")
         best_params = deepcopy(study.best_params)
@@ -152,14 +152,14 @@ class PPOParameters(AgentParameters):
         return PPOParameters(**best_params, only_clipped_surrogate=only_clipped_surrogate, is_recurrent=True, train_on="episode")
 
     @staticmethod
-    def best_ppo(anomaly: bool, modification: bool, only_clipped_surrogate: bool = False):
+    def best_ppo(anomaly: bool, modification: bool, know_client: bool, only_clipped_surrogate: bool = False):
         """
         The result of the hyperparameter tuning with Optuna for standard PPO (non-recurrent).
         """
         from agents_tuning import load_study
 
         try:
-            study = load_study("ppo", modification, anomaly, only_load=True)
+            study = load_study("ppo", modification, anomaly, know_client, only_load=True)
         except KeyError:
             raise NotImplementedError("No best PPO parameters found for the given configuration.")
         best_params = deepcopy(study.best_params)

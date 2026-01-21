@@ -45,11 +45,11 @@ class VAEParameters(AgentParameters):
         )
 
     @staticmethod
-    def best_vae(anomaly: bool, modification: bool):
+    def best_vae(anomaly: bool, modification: bool, know_client: bool):
         from agents_tuning import load_study
 
         try:
-            study = load_study("vae", modification, anomaly, only_load=True)
+            study = load_study("vae", modification, anomaly, know_client, only_load=True)
             return VAEParameters(**study.best_params, supervised=False)
         except KeyError:
             raise NotImplementedError("No best VAE parameters found for the given configuration.")

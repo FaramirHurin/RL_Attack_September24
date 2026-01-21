@@ -73,8 +73,9 @@ class Parameters:
         if "avg_block_delay" in env_params_dict:
             env_params_dict["_avg_block_delay"] = env_params_dict.pop("avg_block_delay")
 
-        # Remove legacy aggregation_windows if present
+        # Remove legacy aggregation_windows and know_client if present
         env_params_dict.pop("aggregation_windows", None)
+        env_params_dict.pop("know_client", None)
 
         # --- Instantiate parameter objects ---
         clf_params = ClassificationParameters(**clf_params_dict)

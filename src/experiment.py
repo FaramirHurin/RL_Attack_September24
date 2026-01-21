@@ -227,11 +227,9 @@ class Experiment:
     def n_transactions_over_time(self):
         return [e.n_transactions_over_time for e in self.runs.values()]
 
-
     @cached_property
     def amounts_over_time(self):
         return [run.amount_over_time for run in self.runs.values()]
-
 
         #  for run in self.runs.values():
         #     amounts.append(run.amount_over_time)
@@ -259,7 +257,7 @@ class Experiment:
         Returns the mean and standard deviation of amounts over time for all runs.
         """
         amounts = self.amounts_over_time
-        maxlen = max(len(a) for a in amounts)
+        maxlen = max((len(a) for a in amounts), default=0)
         means = []
         stds = []
         for t in range(maxlen):
@@ -270,8 +268,6 @@ class Experiment:
             means.append(np.mean(values))
             stds.append(np.std(values))
         return np.array(means), np.array(stds)
-
-
 
     @cached_property
     def total_amounts(self):
