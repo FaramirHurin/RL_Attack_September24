@@ -7,6 +7,15 @@ function ctrl_c() {
 
 rm logs.txt
 
+for agent in "rppo" "ppo" "vae" "random"; do
+    echo "Running experiments with retraining for $agent"
+    python src/main.py --agent=$agent --anomaly --n_jobs=10 --n_repetitions=10 --retrain_interval=30 --initial_seed=100
+    python src/main.py --agent=$agent --anomaly --n_jobs=10 --n_repetitions=10 --retrain_interval=30 --initial_seed=110
+    python src/main.py --agent=$agent --anomaly --n_jobs=10 --n_repetitions=10 --retrain_interval=30 --initial_seed=120
+done
+
+exit 0
+
 
 for anomaly in "--anomaly" ""; do
     for modification in "" "--modification"; do
@@ -19,7 +28,6 @@ for anomaly in "--anomaly" ""; do
                 wait
             fi
             echo "Tuning of $agent $anomaly $modification completed."
-            # python src/main.py --agent=$agent $anomaly $modification --n_jobs=30 --n_repetitions=30
         done
     done
 done

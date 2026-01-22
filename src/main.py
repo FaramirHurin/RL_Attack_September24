@@ -42,6 +42,8 @@ class Arguments(Tap):
     noise: bool = False
     "Whether to add noise to the CardSim data"
     know_client: bool = False
+    override: bool = False
+    "Whether to override existing logs"
 
     @property
     def logdir(self):
@@ -64,9 +66,18 @@ class Arguments(Tap):
         return logdir
 
 
-def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
+def run(p: Parameters, rundir: str, quiet: bool = False, override: bool = False) -> Run | None:
     # utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
     logging.info(f"Starting run with seed {p.seed}...")
+    if not override:
+        try:
+            run = Run.load(rundir)
+            if run.params == p:
+                logging.info(f"Run with seed {p.seed} already exists at {rundir}, skipping...")
+                return run
+            logging.info(f"Run directory {rundir} exists but parameters differ, re-running...")
+        except FileNotFoundError:
+            pass
     p.seed_random()
     try:
         runner = Runner(p, quiet=quiet)
@@ -79,13 +90,13 @@ def run(p: Parameters, rundir: str, quiet: bool = False) -> Run | None:
         )
 
 
-def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32):
+def run_parallel(exp: Experiment, n_jobs: int = 8, n_repetitions: int = 32, override: bool = False):
     runs = list[Run]()
     with Pool(n_jobs) as pool:
         handles = list[AsyncResult[Run | None]]()
         for p, rundir in exp.repeat(n_repetitions):
             logging.info(f"Submitting run with seed {p.seed}...")
-            handles.append(pool.apply_async(run, (p, rundir, True)))
+            handles.append(pool.apply_async(run, (p, rundir, True, override)))
         logging.info(f"Waiting for {len(handles)} runs to complete...")
         start = datetime.now()
         while len(handles) > 0:
@@ -148,8 +159,8 @@ def main(args: Arguments):
     )
     exp = Experiment.create(params, logdir=args.logdir)
     if args.n_jobs == 1:
-        return [run(p, rundir) for p, rundir in exp.repeat(args.n_repetitions)]
-    return run_parallel(exp, n_jobs=args.n_jobs, n_repetitions=args.n_repetitions)
+        return [run(p, rundir, override=args.override) for p, rundir in exp.repeat(args.n_repetitions)]
+    return run_parallel(exp, n_jobs=args.n_jobs, n_repetitions=args.n_repetitions, override=args.override)
 
 
 if __name__ == "__main__":
