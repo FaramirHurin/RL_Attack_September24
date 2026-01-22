@@ -191,16 +191,16 @@ class ClassificationParameters:
 
     @staticmethod
     def suggest(trial: Trial, use_anomaly: bool):
-        max_per_hour = trial.suggest_int("max_trx_hour", 2, 10)
-        max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 20)
-        max_per_week = trial.suggest_int("max_trx_week", max_per_day, 50)
+        max_per_hour = trial.suggest_int("max_trx_hour", 2, 40)
+        max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 400)
+        max_per_week = trial.suggest_int("max_trx_week", max_per_day, 450)
         return ClassificationParameters(
             _training_duration=timedelta(days=30).total_seconds(),
             n_trees=trial.suggest_int("n_trees", 20, 200),
             contamination="auto",
-            balance_factor=trial.suggest_float("balance_factor", 0.05, 0.2),
+            balance_factor=trial.suggest_float("balance_factor", 0.0001, 0.2),
             quantiles={
-                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.995, 1.0)),
+                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.9995, 1.0)),
                 Terminal.colname("risk", timedelta(days=1)): (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
             },
             use_anomaly=use_anomaly,
@@ -209,8 +209,8 @@ class ClassificationParameters:
                 timedelta(days=1): max_per_day,
                 timedelta(weeks=1): max_per_week,
             },
-            fp_rate=trial.suggest_float("fp_rate", 0.0, 0.02),
-            fn_rate=trial.suggest_float("fn_rate", 0.0, 0.02),
+            fp_rate=0, #trial.suggest_float("fp_rate", 0.0, 0.02),
+            fn_rate=0, #trial.suggest_float("fn_rate", 0.0, 0.02),
         )
 
     def make_banksys(

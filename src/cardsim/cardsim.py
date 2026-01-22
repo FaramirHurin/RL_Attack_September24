@@ -239,7 +239,7 @@ class Cardsim:
         self.debit_fraud_mult = self._jitter(debit_fraud_mult, rel_std=0.03, min_val=1.0)
         self.credit_fraud_mult = self._jitter(credit_fraud_mult, rel_std=0.03, min_val=1.0)
 
-        # Simulator probabilities (clipped)
+        # Simulator pr pyobabilities (clipped)
         self.credit_card_marginal_p = self._jitter(credit_card_marginal_p, rel_std=0.02, min_val=0.0, max_val=1.0)
         self.credit_card_conditional_p = self._jitter(credit_card_conditional_p, rel_std=0.02, min_val=0.0, max_val=1.0)
         self.remote_marginal_p = self._jitter(remote_marginal_p, rel_std=0.02, min_val=0.0, max_val=1.0)
