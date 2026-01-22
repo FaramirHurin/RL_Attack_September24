@@ -31,19 +31,3 @@ runs/
 .zed
 *.pdf
 
-!logs/ppo-with-anomaly-no-modification
-!logs/ppo-with-anomaly-with-modification
-!logs/rppo-with-anomaly-no-modification
-!logs/rppo-with-anomaly-with-modification
-!logs/vae-with-anomaly-no-modification
-!logs/vae-with-anomaly-with-modification
-!logs/random-with-anomaly-no-modification
-!logs/random-with-anomaly-with-modification
-!logs/ppo-with-anomaly-no-modification-known-client
-!logs/ppo-with-anomaly-with-modification-known-client
-!logs/rppo-with-anomaly-no-modification-known-client
-!logs/rppo-with-anomaly-with-modification-known-client
-!logs/vae-with-anomaly-no-modification-known-client
-!logs/vae-with-anomaly-with-modification-known-client
-!logs/random-with-anomaly-no-modification-known-client
-!logs/random-with-anomaly-with-modification-known-client
