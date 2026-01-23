@@ -28,49 +28,14 @@ class ClassificationParameters:
     fp_rate: float = 0.0
     fn_rate: float = 0.0
     classify_simulated_trx: bool = False
+    iforest_n_estimators: int = 100
+    iforest_max_features: float = 1.0
+    iforest_bootstrap: bool = False
     retrain_interval: timedelta | None = None
     """
     Whether to classify simulated transactions (i.e. not the attacker's ones).
     If False, the classifier uses the ground truth labels corrected by the `fp_rate` and `fn_rate` parameters.
     """
-
-    # def __init__(
-    #     self,
-    #     use_anomaly: bool = True,
-    #     n_trees: int = 100,
-    #     balance_factor: float = 0.1,
-    #     contamination: float | Literal["auto"] = "auto",
-    #     training_duration: timedelta | float = timedelta(days=30),
-    #     quantiles: dict[str, tuple[float, float]] = {"amount": (0.01, 0.99)},
-    #     rules: dict[timedelta, int] = {
-    #         timedelta(hours=1).total_seconds(): 6,
-    #         timedelta(days=1): 16,
-    #         timedelta(weeks=1): 30,
-    #     },
-    #     aggregation_windows: Sequence[timedelta | float] = (timedelta(hours=1), timedelta(days=1), timedelta(days=7), timedelta(days=30)),
-    #     retrain_interval: timedelta | None = None,
-    #     fp_rate: float = 0.0,
-    #     fn_rate: float = 0.0,
-    #     classify_simulated_trx: bool = False,
-    # ):
-    #     self.use_anomaly = use_anomaly
-    #     self.n_trees = n_trees
-    #     self.balance_factor = balance_factor
-    #     self.contamination = contamination
-    #     if isinstance(training_duration, (float, int)):
-    #         training_duration = timedelta(seconds=training_duration)
-    #     self.training_duration = training_duration
-    #     self.quantiles = quantiles
-    #     self._rules = {td.total_seconds(): value for td, value in rules.items()}
-    #     self.fp_rate = fp_rate
-    #     self.fn_rate = fn_rate
-    #     self._aggregation_windows = []
-    #     for window in aggregation_windows:
-    #         if isinstance(window, (float, int)):
-    #             window = timedelta(seconds=window)
-    #         self._aggregation_windows.append(window)
-    #     self.classify_simulated_trx = classify_simulated_trx
-    #     self.retrain_interval = retrain_interval
 
     @property
     def training_duration(self):
@@ -190,27 +155,55 @@ class ClassificationParameters:
                 )
 
     @staticmethod
-    def suggest(trial: Trial, use_anomaly: bool):
-        max_per_hour = trial.suggest_int("max_trx_hour", 2, 40)
-        max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 400)
-        max_per_week = trial.suggest_int("max_trx_week", max_per_day, 450)
+    def suggest(trial: Trial, use_anomaly: bool, use_rules: bool, use_statistical: bool):
+        if not use_rules:
+            max_per_hour = 100
+            max_per_day = 500
+            max_per_week = 1000
+        else:
+            max_per_hour = trial.suggest_int("max_trx_hour", 2, 40)
+            max_per_day = trial.suggest_int("max_trx_day", max_per_hour, 400)
+            max_per_week = trial.suggest_int("max_trx_week", max_per_day, 450)
+        if not use_statistical:
+            quantiles_amount_high = 1.0
+            quantiles_risk_high = 1.0
+        else:
+            quantiles_amount_high = trial.suggest_float("quantiles_amount_high", 0.9995, 1.0)
+            quantiles_risk_high = trial.suggest_float("quantiles_risk_high", 0.995, 1.0)
+        if use_anomaly:
+            if not trial.suggest_categorical("auto_contamination", [True, False]):
+                contamination = trial.suggest_float("contamination", 0.001, 0.1, log=True)
+            else:
+                contamination = "auto"
+            n_estimators = trial.suggest_int("iforest_n_estimators", 50, 200)
+            max_features = trial.suggest_float("iforest_max_features", 0.5, 1.0)
+            bootstrap = trial.suggest_categorical("iforest_bootstrap", [True, False])
+        else:
+            contamination = "auto"
+            n_estimators = 100
+            max_features = 1.0
+            bootstrap = False
+
         return ClassificationParameters(
             _training_duration=timedelta(days=30).total_seconds(),
             n_trees=trial.suggest_int("n_trees", 20, 200),
-            contamination="auto",
-            balance_factor=trial.suggest_float("balance_factor", 0.0001, 0.2),
+            contamination=contamination,
+            balance_factor=trial.suggest_float("balance_factor", 0.02, 0.2, log=True),
             quantiles={
-                "amount": (0, trial.suggest_float("quantiles_amount_high", 0.9995, 1.0)),
-                Terminal.colname("risk", timedelta(days=1)): (0, trial.suggest_float("quantiles_risk_high", 0.995, 1.0)),
+                "amount": (0, quantiles_amount_high),
+                Terminal.colname("risk", timedelta(days=1)): (0, quantiles_risk_high),
             },
             use_anomaly=use_anomaly,
+            iforest_n_estimators=n_estimators,
+            iforest_max_features=max_features,
+            iforest_bootstrap=bootstrap,
             _rules={
                 timedelta(hours=1): max_per_hour,
                 timedelta(days=1): max_per_day,
                 timedelta(weeks=1): max_per_week,
             },
-            fp_rate=0, #trial.suggest_float("fp_rate", 0.0, 0.02),
-            fn_rate=0, #trial.suggest_float("fn_rate", 0.0, 0.02),
+            fp_rate=0,  # trial.suggest_float("fp_rate", 0.0, 0.02),
+            fn_rate=0,  # trial.suggest_float("fn_rate", 0.0, 0.02),
         )
 
     def make_banksys(

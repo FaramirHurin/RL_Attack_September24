@@ -18,7 +18,13 @@ class ClassificationSystem:
     def __init__(self, params: "ClassificationParameters"):
         self.params = params
         self.ml_classifier = BalancedRandomForestClassifier(n_estimators=params.n_trees, sampling_strategy=params.balance_factor)  # type: ignore[assignment]
-        self.anomaly_detection_classifier = IsolationForest(contamination=params.contamination)
+        self.anomaly_detection_classifier = IsolationForest(
+            contamination=params.contamination,
+            n_estimators=params.iforest_n_estimators,
+            max_features=params.iforest_max_features,
+            bootstrap=params.iforest_bootstrap,
+        )
+        # type: ignore[assignment]
         self.statistical_classifier = StatisticalClassifier(params.quantiles)
         self.rule_classifier = RuleBasedClassifier(params.rules)
         self.use_anomaly = params.use_anomaly

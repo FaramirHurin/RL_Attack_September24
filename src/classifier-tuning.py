@@ -11,10 +11,9 @@ from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_sc
 from parameters import ClassificationParameters, CardSimParameters
 from multiprocessing.pool import Pool
 
-USE_ANOMALY = True
-WITH_MODIFICATION = True
-N_REPEATS = 10
-POOL_SIZE = 20
+WITH_MODIFICATION = False
+N_REPEATS = 5
+POOL_SIZE = 5
 CACHE_ROOT = "cache"
 
 
@@ -23,9 +22,10 @@ def compute_f1(clf: ClassificationParameters, seed: int):
     trx, payers, terminals = cardsim.load_simulation_data(os.path.join(CACHE_ROOT, f"seed-{seed}"))
     banksys = Banksys(trx, payers, terminals, clf, silent=True)
     t_start = banksys.current_time
-    t_end = t_start + timedelta(days=30)
+    t_end = t_start + timedelta(days=10)
     labels = banksys._transactions.filter(pl.col("timestamp").is_between(t_start, t_end))["is_fraud"].to_numpy()
-    features = pl.DataFrame(banksys._fast_forward(t_end, compute_features=True, show_progress=False), schema=banksys.schema)
+    banksys._fast_forward(t_end, compute_features=True, show_progress=False)
+    features = pl.DataFrame(banksys.training_features, schema=banksys.schema)
     predicted = banksys.clf.predict(features)
     f1 = float(f1_score(labels, predicted))
     metrics = {
@@ -39,7 +39,10 @@ def compute_f1(clf: ClassificationParameters, seed: int):
 
 
 def objective(trial: optuna.Trial):
-    clf = ClassificationParameters.suggest(trial, use_anomaly=USE_ANOMALY)
+    use_anomaly = trial.suggest_categorical("use_anomaly", [True, False])
+    use_rules = trial.suggest_categorical("use_rules", [True, False])
+    use_statistical = trial.suggest_categorical("use_statistical", [True, False])
+    clf = ClassificationParameters.suggest(trial, use_anomaly=use_anomaly, use_rules=use_rules, use_statistical=use_statistical)
     with Pool(POOL_SIZE) as pool:
         results = pool.starmap(compute_f1, [(clf, seed) for seed in range(N_REPEATS)])
     f1s, metrics = zip(*results)
@@ -58,8 +61,11 @@ if __name__ == "__main__":
     )
     study = optuna.create_study(
         storage=JournalStorage(JournalFileBackend(file_path="clf-tuning.journal")),
-        study_name=f"anomaly-{USE_ANOMALY}-modification-{WITH_MODIFICATION}",
+        study_name="weak-classifier",
         direction=optuna.study.StudyDirection.MAXIMIZE,
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=200, n_jobs=4)
+    try:
+        study.optimize(objective, n_trials=500, n_jobs=6)
+    except Exception as e:
+        logging.error(f"Optimization failed: {e}", exc_info=True)
