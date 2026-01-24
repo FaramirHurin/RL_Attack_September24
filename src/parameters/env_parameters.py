@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=True)
 class EnvParameters:
     n_episodes: int = 6000
     terminal_fract: float = 0.1

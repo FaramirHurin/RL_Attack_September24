@@ -42,8 +42,8 @@ def test_invalid_dates():
     params = Parameters(
         cardsim=CardSimParameters(n_days=50, n_payers=100),
         clf_params=ClassificationParameters(
-            _training_duration=timedelta(days=30),
-            _aggregation_windows=(timedelta(days=30),),
+            float_training_duration_s=timedelta(days=30),
+            float_aggregation_windows_s=(timedelta(days=30),),
         ),
     )  # Not enough data for the classification system
     transactions, cards, terminals = params.cardsim.load_simulation_data(params.dataset_dir)
@@ -100,10 +100,10 @@ def test_balance_and_date():
         pl.DataFrame([Payer(0, 10, 25, 500, AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)]),
         pl.DataFrame([Terminal(0, 75, 95, AGG_WINDOWS), Terminal(1, 17, 56, AGG_WINDOWS)]),
         params=ClassificationParameters(
-            _training_duration=timedelta(days=30),
+            float_training_duration_s=timedelta(days=30),
             balance_factor=1,
             fp_rate=0.0,
-            _aggregation_windows=AGG_WINDOWS,
+            float_aggregation_windows_s=AGG_WINDOWS,
         ),
     )
     system.clf = MockClassificationSystem()
@@ -137,7 +137,7 @@ def test_n_transacations_per_card():
         trx_df,
         pl.DataFrame([Payer(0, 10, 25, 500, AGG_WINDOWS), Payer(1, 20, 30, 1000, AGG_WINDOWS)]),
         pl.DataFrame([Terminal(0, 75, 95, AGG_WINDOWS), Terminal(1, 17, 56, AGG_WINDOWS)]),
-        params=ClassificationParameters(_training_duration=timedelta(days=30), balance_factor=1),
+        params=ClassificationParameters(float_training_duration_s=timedelta(days=30), balance_factor=1),
     )
     system.clf = MockClassificationSystem()
 
@@ -185,8 +185,8 @@ def test_make_features():
         terminals,
         params=ClassificationParameters(
             balance_factor=1,
-            _aggregation_windows=AGG_WINDOWS,
-            _training_duration=timedelta(days=30),
+            float_aggregation_windows_s=AGG_WINDOWS,
+            float_training_duration_s=timedelta(days=30),
         ),
         clf=clf,
     )
@@ -286,9 +286,9 @@ def test_aggregated_features():
         payers,
         terminals,
         params=ClassificationParameters(
-            _training_duration=timedelta(days=30),
+            float_training_duration_s=timedelta(days=30),
             balance_factor=1,
-            _aggregation_windows=AGG_WINDOWS,
+            float_aggregation_windows_s=AGG_WINDOWS,
         ),
         clf=clf,
     )

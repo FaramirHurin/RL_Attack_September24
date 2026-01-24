@@ -67,15 +67,10 @@ class Arguments(Tap):
 
 
 def run(p: Parameters, rundir: str, quiet: bool = False, override: bool = False) -> Run | None:
-    # utils.init_tb_logger(os.path.join("runs", f"{p.agent_name}-{datetime.now().isoformat().replace(':', '-')}"))
     logging.info(f"Starting run with seed {p.seed}...")
     if not override:
         try:
-            run = Run.load(rundir)
-            if run.params == p:
-                logging.info(f"Run with seed {p.seed} already exists at {rundir}, skipping...")
-                return run
-            logging.info(f"Run directory {rundir} exists but parameters differ, re-running...")
+            return Run.load(rundir)
         except FileNotFoundError:
             pass
     p.seed_random()
